@@ -76,30 +76,85 @@ export function ProfilePage() {
                             <Card className="p-8 space-y-8">
                                 {/* Profile Pic Section */}
                                 <div className="flex items-center space-x-6">
-                                    <div className="h-24 w-24 rounded-full bg-accent/20 flex items-center justify-center text-4xl border-2 border-accent/50">
+                                    <div className="h-24 w-24 rounded-full bg-accent/20 flex items-center justify-center text-4xl border-2 border-accent/50 overflow-hidden relative group">
+                                        {/* Placeholder for actual image if available, else icon */}
                                         <User className="h-10 w-10 text-accent" />
+                                        <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center cursor-pointer transition-opacity">
+                                            <span className="text-xs text-white font-medium">Change</span>
+                                        </div>
                                     </div>
                                     <div>
                                         <h3 className="text-xl font-medium text-foreground">John Doe</h3>
                                         <p className="text-foreground-muted">Professor of Physics</p>
-                                        <Button variant="secondary" size="sm" className="mt-3">{t('profile.changeAvatar')}</Button>
+                                        <Button variant="secondary" size="sm" className="mt-3">{t('profile.changeAvatar') || 'Change Avatar'}</Button>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-6">
+                                    {/* Personal Info */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
-                                            <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.firstName')}</label>
-                                            <Input defaultValue="John" />
+                                            <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.fullName') || 'Full Name'}</label>
+                                            <Input defaultValue="John Doe" placeholder="Full Name" />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.lastName')}</label>
-                                            <Input defaultValue="Doe" />
+                                            <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.preferredName') || 'Preferred Name'}</label>
+                                            <Input defaultValue="Johnny" placeholder="Preferred Name" />
                                         </div>
                                     </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.age') || 'Age'}</label>
+                                            <Input type="number" defaultValue="35" placeholder="Age" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.gender') || 'Gender'}</label>
+                                            <select className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white border-black/10 text-foreground focus-visible:ring-accent/50 focus-visible:ring-offset-white shadow-sm dark:bg-[#0F0F12] dark:border-white/10 dark:text-foreground dark:focus-visible:ring-accent/50 dark:focus-visible:ring-offset-background-base">
+                                                <option value="" disabled>Select Gender</option>
+                                                <option value="male">Male</option>
+                                                <option value="female">Female</option>
+                                                <option value="non-binary">Non-binary</option>
+                                                <option value="prefer-not-to-say">Prefer not to say</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.location') || 'Location'}</label>
+                                            <Input defaultValue="Cambridge, MA" placeholder="City, State" />
+                                        </div>
+                                    </div>
+
+                                    {/* Preferences */}
+                                    <div className="pt-4 border-t border-white/5">
+                                        <h4 className="text-sm font-medium text-foreground mb-4">Preferences</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.primaryLanguage') || 'Primary Language'}</label>
+                                                <select className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white border-black/10 text-foreground focus-visible:ring-accent/50 focus-visible:ring-offset-white shadow-sm dark:bg-[#0F0F12] dark:border-white/10 dark:text-foreground dark:focus-visible:ring-accent/50 dark:focus-visible:ring-offset-background-base">
+                                                    <option value="en">English</option>
+                                                    <option value="es">Spanish</option>
+                                                    <option value="fr">French</option>
+                                                    <option value="de">German</option>
+                                                    <option value="zh">Chinese</option>
+                                                    <option value="hi">Hindi</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.tonePreference') || 'Tone Preference'}</label>
+                                                <select className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white border-black/10 text-foreground focus-visible:ring-accent/50 focus-visible:ring-offset-white shadow-sm dark:bg-[#0F0F12] dark:border-white/10 dark:text-foreground dark:focus-visible:ring-accent/50 dark:focus-visible:ring-offset-background-base">
+                                                    <option value="professional">Professional</option>
+                                                    <option value="casual">Casual</option>
+                                                    <option value="friendly">Friendly</option>
+                                                    <option value="concise">Concise</option>
+                                                    <option value="explanatory">Explanatory</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-2">
                                         <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.email')}</label>
-                                        <Input defaultValue="john.doe@university.edu" />
+                                        <Input defaultValue="john.doe@university.edu" disabled className="opacity-75 cursor-not-allowed" />
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.institution')}</label>
