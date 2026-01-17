@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt');
 
 // Generate JWT Helper
 const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
+    return jwt.sign({ id }, process.env.JWT_SECRET || 'asvix_dev_secret_key_12345', {
         expiresIn: '30d',
     });
 };
