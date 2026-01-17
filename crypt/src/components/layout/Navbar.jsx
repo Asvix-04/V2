@@ -37,7 +37,7 @@ export function Navbar() {
     return (
         <nav className="fixed top-0 z-50 w-full border-b border-border-base dark:border-white/5 bg-background-base/80 backdrop-blur-xl">
             <div className="container relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-                <Link to="/" className="flex items-center space-x-2">
+                <Link to="/home" className="flex items-center space-x-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/20">
                         <BookOpen className="h-5 w-5 text-accent" />
                     </div>
@@ -46,7 +46,7 @@ export function Navbar() {
 
                 {/* Desktop Nav - Centered */}
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden items-center space-x-6 md:flex">
-                    <NavLink to="/" icon={LayoutGrid}>{t('nav.home')}</NavLink>
+                    <NavLink to="/home" icon={LayoutGrid}>{t('nav.home')}</NavLink>
                     {isLoggedIn && <NavLink to="/dashboard" icon={GraduationCap}>{t('nav.dashboard')}</NavLink>}
                     <NavLink to="/chat" icon={MessageSquare}>{t('nav.chat')}</NavLink>
                 </div>

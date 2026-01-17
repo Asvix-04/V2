@@ -27,12 +27,10 @@ export function DashboardPage() {
             <div className="flex flex-col justify-between space-y-4 md:flex-row md:items-center md:space-y-0">
                 <div>
                     <h1 className="text-3xl font-semibold text-foreground">
-                        {isTeacher ? "Teacher Workspace" : "Student Dashboard"}
+                        My Dashboard
                     </h1>
                     <p className="text-foreground-muted">
-                        {isTeacher
-                            ? "Manage lesson plans and review curriculum coverage."
-                            : "Track your progress and continue learning."}
+                        Manage your documents, chats, and learning progress.
                     </p>
                 </div>
                 <div className="flex space-x-4">
@@ -63,12 +61,12 @@ export function DashboardPage() {
                         </div>
                         <div className="grid grid-cols-2 gap-4 pt-2">
                             <div className="text-center p-2 rounded-lg bg-accent/5 dark:bg-white/5">
-                                <div className="text-2xl font-bold text-accent">{isTeacher ? "12" : "85%"}</div>
-                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">{isTeacher ? "Plans" : "Mastery"}</div>
+                                <div className="text-2xl font-bold text-accent">85%</div>
+                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">Mastery</div>
                             </div>
                             <div className="text-center p-2 rounded-lg bg-accent/5 dark:bg-white/5">
-                                <div className="text-2xl font-bold text-foreground dark:text-white">{isTeacher ? "4" : "12"}</div>
-                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">{isTeacher ? "Classes" : "Hours"}</div>
+                                <div className="text-2xl font-bold text-foreground dark:text-white">12</div>
+                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">Hours</div>
                             </div>
                         </div>
                     </Card>
@@ -119,48 +117,46 @@ export function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* File Upload Section - Teacher Only */}
-                    {isTeacher && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <Card className="p-6 border-border-base dark:border-white/5">
-                                <h3 className="text-lg font-semibold text-foreground mb-4">Upload Course Materials</h3>
-                                <FileUpload onUpload={addDocument} />
-                            </Card>
+                    {/* File Upload Section - Available to All */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card className="p-6 border-border-base dark:border-white/5">
+                            <h3 className="text-lg font-semibold text-foreground mb-4">Upload Documents</h3>
+                            <FileUpload onUpload={addDocument} />
+                        </Card>
 
-                            <Card className="p-6 border-border-base dark:border-white/5 flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-semibold text-foreground">Recent Uploads</h3>
-                                    <Link to="/documents">
-                                        <Button variant="ghost" size="sm" className="text-accent hover:text-accent-bright">
-                                            View All <ArrowRight className="ml-1 h-3 w-3" />
-                                        </Button>
-                                    </Link>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                    {recentDocs.length > 0 ? (
-                                        recentDocs.map(doc => (
-                                            <div key={doc.id} className="flex items-center space-x-3 p-2 rounded-md bg-accent/5 hover:bg-accent/10 transition-colors">
-                                                <div className="h-8 w-8 rounded bg-accent/20 flex items-center justify-center text-accent">
-                                                    <FileText className="h-4 w-4" />
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-foreground truncate">{doc.name}</p>
-                                                    <p className="text-[10px] text-foreground-muted">
-                                                        {(doc.size / 1024 / 1024).toFixed(1)} MB • {new Date(doc.date).toLocaleDateString()}
-                                                    </p>
-                                                </div>
+                        <Card className="p-6 border-border-base dark:border-white/5 flex flex-col">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-foreground">Recent Uploads</h3>
+                                <Link to="/documents">
+                                    <Button variant="ghost" size="sm" className="text-accent hover:text-accent-bright">
+                                        View All <ArrowRight className="ml-1 h-3 w-3" />
+                                    </Button>
+                                </Link>
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                {recentDocs.length > 0 ? (
+                                    recentDocs.map(doc => (
+                                        <div key={doc.id} className="flex items-center space-x-3 p-2 rounded-md bg-accent/5 hover:bg-accent/10 transition-colors">
+                                            <div className="h-8 w-8 rounded bg-accent/20 flex items-center justify-center text-accent">
+                                                <FileText className="h-4 w-4" />
                                             </div>
-                                        ))
-                                    ) : (
-                                        <div className="h-full flex flex-col items-center justify-center text-foreground-muted opacity-60">
-                                            <FileText className="h-8 w-8 mb-2" />
-                                            <p className="text-sm">No recent documents</p>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium text-foreground truncate">{doc.name}</p>
+                                                <p className="text-[10px] text-foreground-muted">
+                                                    {(doc.size / 1024 / 1024).toFixed(1)} MB • {new Date(doc.date).toLocaleDateString()}
+                                                </p>
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            </Card>
-                        </div>
-                    )}
+                                    ))
+                                ) : (
+                                    <div className="h-full flex flex-col items-center justify-center text-foreground-muted opacity-60">
+                                        <FileText className="h-8 w-8 mb-2" />
+                                        <p className="text-sm">No recent documents</p>
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+                    </div>
 
                     {/* Recent Plans / Courses List */}
                     <Card className="p-6 min-h-[400px] border-border-base dark:border-white/5">

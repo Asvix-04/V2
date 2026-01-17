@@ -1,28 +1,20 @@
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const admin = require('firebase-admin');
+const serviceAccount = require('./serviceAccountKey.json');
 
 const connectDB = async () => {
     try {
-        // Try connecting to the provided URI first
-        if (process.env.MONGO_URI && !process.env.MONGO_URI.includes('<db_password>')) {
-            const conn = await mongoose.connect(process.env.MONGO_URI);
-            console.log(`MongoDB Connected: ${conn.connection.host}`);
-            return;
+        if (!admin.apps.length) {
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount)
+            });
+            console.log('Firebase Admin SDK Initialized -> Firestore Connected');
         }
-
-        // Fallback to In-Memory Database
-        console.log("External MongoDB not configured or failed. Starting In-Memory MongoDB...");
-        const mongod = await MongoMemoryServer.create();
-        const uri = mongod.getUri();
-
-        const conn = await mongoose.connect(uri);
-        console.log(`In-Memory MongoDB Connected: ${conn.connection.host}`);
-
     } catch (error) {
-        console.error(`Error: ${error.message}`);
-        // If even in-memory fails, then exit
+        console.error('Firebase Initialization Error:', error.message);
         process.exit(1);
     }
 };
+
+const db = admin.apps.length ? admin.firestore() : null; // Access via exports if needed elsewhere, though usually admin.firestore() is global enough
 
 module.exports = connectDB;

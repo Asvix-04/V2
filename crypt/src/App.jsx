@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { Layout } from "./layouts/Layout";
 import { HomePage } from "./pages/HomePage";
@@ -27,7 +27,8 @@ function AnimatedRoutes() {
 
         {/* Main Layout Routes (With Header/Footer) */}
         <Route element={<Layout />}>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<Navigate to="/chat" replace />} />
+          <Route path="/home" element={<HomePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/documents" element={<DocumentsPage />} />

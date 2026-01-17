@@ -16,9 +16,14 @@ const protect = async (req, res, next) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
             // Get user from the token
-            req.user = await User.findById(decoded.id).select('-password');
-
-            next();
+            const user = await User.findById(decoded.id);
+            if (user) {
+                delete user.password; // Manually remove password
+                req.user = user;
+                next();
+            } else {
+                res.status(401).json({ message: 'Not authorized' });
+            }
         } catch (error) {
             console.error(error);
             res.status(401).json({ message: 'Not authorized' });

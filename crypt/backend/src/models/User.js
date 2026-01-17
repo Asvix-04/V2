@@ -1,49 +1,74 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
+const admin = require('firebase-admin');
 
-const userSchema = new mongoose.Schema({
-    name: {
-        type: String,
-        required: [true, 'Please add a name']
-    },
-    email: {
-        type: String,
-        required: [true, 'Please add an email'],
-        unique: true,
-        match: [
-            /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-            'Please add a valid email'
-        ]
-    },
-    role: {
-        type: String,
-        enum: ['student', 'teacher'],
-        default: 'student'
-    },
-    password: {
-        type: String,
-        required: [true, 'Please add a password'],
-        minlength: 6,
-        select: false // Don't return password by default
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
+// Collection Reference
+// Note: db.js handles initialization, so admin.firestore() should work if db.js runs first.
+// However, models are imported in controllers. We need to ensure initialization happens.
+// In this architecture, db.js is imported in app.js and run.
+// So this file will be required *after* initialization if required in controllers.
+// But valid to double check or lazy load.
+
+const db = admin.apps.length ? admin.firestore() : admin.firestore();
+const usersCollection = db.collection('users');
+
+class User {
+    static async create(userData) {
+        const newUser = {
+            name: userData.name,
+            email: userData.email,
+            password: userData.password,
+            role: userData.role || 'student',
+            profilePhoto: userData.profilePhoto || '',
+            preferredName: userData.preferredName || '',
+            age: userData.age || null,
+            gender: userData.gender || '',
+            location: userData.location || '',
+            primaryLanguage: userData.primaryLanguage || 'en',
+            accountStatus: userData.accountStatus || 'active',
+            preferences: {
+                language: 'en',
+                tone: 'neutral',
+                ...(userData.preferences || {})
+            },
+            createdAt: new Date().toISOString()
+        };
+
+        // Unique Email Check
+        const existingSnapshot = await usersCollection.where('email', '==', newUser.email).limit(1).get();
+        if (!existingSnapshot.empty) {
+            throw new Error('User already exists');
+        }
+
+        const docRef = await usersCollection.add(newUser);
+        return { _id: docRef.id, ...newUser };
     }
-});
 
-// Encrypt password using bcrypt
-userSchema.pre('save', async function (next) {
-    if (!this.isModified('password')) {
-        next();
+    static async findOne(query) {
+        if (query.email) {
+            const snapshot = await usersCollection.where('email', '==', query.email).limit(1).get();
+            if (snapshot.empty) return null;
+            const doc = snapshot.docs[0];
+            return { _id: doc.id, ...doc.data() };
+        }
+        return null;
     }
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-});
 
-// Match user entered password to hashed password in database
-userSchema.methods.matchPassword = async function (enteredPassword) {
-    return await bcrypt.compare(enteredPassword, this.password);
-};
+    static async findById(id) {
+        try {
+            const doc = await usersCollection.doc(id).get();
+            if (!doc.exists) return null;
+            return { _id: doc.id, ...doc.data() };
+        } catch (error) {
+            return null;
+        }
+    }
 
-module.exports = mongoose.model('User', userSchema);
+    static async update(id, updateData) {
+        // Remove _id to prevent overwriting document key field (though Firestore ignores it usually)
+        const { _id, ...data } = updateData;
+        await usersCollection.doc(id).update(data);
+        const doc = await usersCollection.doc(id).get();
+        return { _id: doc.id, ...doc.data() };
+    }
+}
+
+module.exports = User;
