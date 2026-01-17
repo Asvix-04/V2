@@ -13,7 +13,7 @@ const protect = async (req, res, next) => {
             token = req.headers.authorization.split(' ')[1];
 
             // Verify token
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'asvix_dev_secret_key_12345');
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
             // Get user from the token
             const user = await User.findById(decoded.id);
