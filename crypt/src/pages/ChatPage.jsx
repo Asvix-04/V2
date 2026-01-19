@@ -38,15 +38,12 @@ export function ChatPage() {
     );
     const [isModeOpen, setIsModeOpen] = React.useState(false);
 
+    const [showLimitModal, setShowLimitModal] = React.useState(false);
+
     const handleSend = (text) => {
         // GUEST LIMIT CHECK
-        if (isGuest && messages.length >= 20) {
-            setMessages((prev) => [...prev, {
-                role: "assistant",
-                content: t("chat.guestLimit"),
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                isError: true
-            }]);
+        if (isGuest && messages.length >= 10) {
+            setShowLimitModal(true);
             return;
         }
 
@@ -109,7 +106,7 @@ export function ChatPage() {
             </div>
 
             {/* Main Chat Area */}
-            <div className="flex flex-1 flex-col">
+            <div className="flex flex-1 flex-col relative">
                 {/* Search, Theme & Actions Top Bar */}
                 {isTeacher && (
                     <div className="flex h-16 items-center justify-between border-b border-border-base dark:border-white/5 bg-background-base/50 px-6 backdrop-blur-md">
@@ -239,13 +236,51 @@ export function ChatPage() {
                                 </div>
                             )}
 
-                            <ChatInput onSend={handleSend} placeholder={t('chat.inputPlaceholder')} disabled={isGuest && messages.length >= 20} />
+                            <ChatInput onSend={handleSend} placeholder={t('chat.inputPlaceholder')} disabled={false} />
                             <p className="mt-2 text-center text-[10px] text-foreground-subtle">
                                 {t('chat.disclaimer')}
                             </p>
                         </div>
                     </div>
                 </div>
+
+                {/* Limit Modal */}
+                <AnimatePresence>
+                    {showLimitModal && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="w-full max-w-md bg-background-base border border-white/10 rounded-xl shadow-2xl p-6 text-center space-y-6"
+                            >
+                                <div className="space-y-2">
+                                    <div className="h-12 w-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                                        <MessageSquare className="h-6 w-6 text-accent" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-foreground">Chat Limit Exceeded</h3>
+                                    <p className="text-foreground-muted">
+                                        You have reached the limit of 10 free messages. Please log in to continue chatting with unlimited access.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    <Link to="/login" className="w-full">
+                                        <Button className="w-full">
+                                            Log In to Continue
+                                        </Button>
+                                    </Link>
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => setShowLimitModal(false)}
+                                        className="text-foreground-muted hover:text-foreground"
+                                    >
+                                        Close
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
             </div>
         </PageTransition>
     );
