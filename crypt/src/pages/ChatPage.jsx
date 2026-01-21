@@ -8,6 +8,7 @@ import { Card } from "../components/ui/Card";
 import { ChatInput } from "../components/ui/ChatInput";
 import { MessageBubble } from "../components/ui/MessageBubble";
 import { PageTransition } from "../components/ui/PageTransition";
+import { VoiceOverlay } from "../components/ui/VoiceOverlay";
 import { ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, MessageSquare, MoreHorizontal, Settings, Share } from "lucide-react";
 import { MdSearch } from "react-icons/md";
 
@@ -39,6 +40,7 @@ export function ChatPage() {
     const [isModeOpen, setIsModeOpen] = React.useState(false);
 
     const [showLimitModal, setShowLimitModal] = React.useState(false);
+    const [isVoiceMode, setIsVoiceMode] = React.useState(false);
 
     const handleSend = (text) => {
         // GUEST LIMIT CHECK
@@ -236,7 +238,12 @@ export function ChatPage() {
                                 </div>
                             )}
 
-                            <ChatInput onSend={handleSend} placeholder={t('chat.inputPlaceholder')} disabled={false} />
+                            <ChatInput
+                                onSend={handleSend}
+                                placeholder={t('chat.inputPlaceholder')}
+                                disabled={false}
+                                onVoiceToggle={() => setIsVoiceMode(true)}
+                            />
                             <p className="mt-2 text-center text-[10px] text-foreground-subtle">
                                 {t('chat.disclaimer')}
                             </p>
@@ -281,6 +288,12 @@ export function ChatPage() {
                         </div>
                     )}
                 </AnimatePresence>
+
+                {/* Voice Overlay */}
+                <VoiceOverlay
+                    isOpen={isVoiceMode}
+                    onClose={() => setIsVoiceMode(false)}
+                />
             </div>
         </PageTransition>
     );

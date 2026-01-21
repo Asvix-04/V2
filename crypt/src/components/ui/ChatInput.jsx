@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Button } from "./Button";
 import { cn } from "../../lib/utils";
-import { MdSend, MdAttachFile, MdMic, MdMicOff } from "react-icons/md";
+import { MdSend, MdAttachFile, MdMic, MdMicOff, MdGraphicEq } from "react-icons/md";
 
 import api from "../../lib/api";
 
@@ -147,6 +147,17 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
             />
 
             <div className="flex items-center space-x-2 ml-2 shrink-0">
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={props.onVoiceToggle}
+                    title="Voice Mode"
+                    className="h-12 w-12 text-foreground-muted hover:text-accent shrink-0 rounded-full"
+                >
+                    <MdGraphicEq size={30} />
+                </Button>
+
                 <Button
                     type="button"
                     variant="ghost"
