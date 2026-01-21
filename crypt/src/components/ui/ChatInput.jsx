@@ -3,11 +3,15 @@ import { Button } from "./Button";
 import { cn } from "../../lib/utils";
 import { MdSend, MdAttachFile, MdMic, MdMicOff } from "react-icons/md";
 
+import api from "../../lib/api";
+
 export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...props }, ref) => {
     const [value, setValue] = React.useState("");
     const [isListening, setIsListening] = React.useState(false);
+    const [isUploading, setIsUploading] = React.useState(false);
     const textareaRef = React.useRef(null);
     const recognitionRef = React.useRef(null);
+    const fileInputRef = React.useRef(null);
 
     React.useEffect(() => {
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -52,6 +56,39 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
         }
     };
 
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        setIsUploading(true);
+        try {
+            const res = await api.post('/chat/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            // Append file link to input
+            const fileLink = `[File: ${file.name}](${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}${res.data.url})`;
+
+            // Clean URL construction - removing /api if double (since backend returns /uploads/...)
+            // Actually, backend returns /uploads/filename. We need to point to server root /uploads
+            // API_URL usually points to /api. So we might need BASE_URL.
+            // Let's assume standard local setup: http://localhost:5001/uploads/...
+            const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5001/api').replace('/api', '');
+            const finalLink = `[File: ${file.name}](${baseUrl}${res.data.url})`;
+
+            setValue((prev) => prev + (prev ? "\n" : "") + finalLink);
+        } catch (error) {
+            console.error("Upload failed", error);
+            alert("Failed to upload file");
+        } finally {
+            setIsUploading(false);
+            // Reset input
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (value.trim() && onSend) {
@@ -79,7 +116,20 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
                 className
             )}
         >
-            <Button type="button" variant="ghost" size="icon" className="h-12 w-12 mr-2 text-foreground-muted hover:text-foreground shrink-0 rounded-full">
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+            />
+            <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className={cn("h-12 w-12 mr-2 text-foreground-muted hover:text-foreground shrink-0 rounded-full", isUploading && "animate-pulse")}
+            >
                 <MdAttachFile size={30} className="rotate-45" />
             </Button>
 

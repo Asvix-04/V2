@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { cn } from "../../lib/utils";
-import { MdPerson, MdSmartToy, MdVolumeUp } from "react-icons/md";
+import { MdPerson, MdSmartToy, MdVolumeUp, MdThumbUp, MdThumbDown } from "react-icons/md";
 import { motion } from "framer-motion";
 import { Button } from "./Button";
 
 export function MessageBubble({ message, isLast }) {
     const isUser = message.role === "user";
+    const [feedback, setFeedback] = useState(null);
 
     const handleSpeak = () => {
         if ('speechSynthesis' in window) {
@@ -40,13 +42,31 @@ export function MessageBubble({ message, isLast }) {
                     </span>
 
                     {!isUser && (
-                        <button
-                            onClick={handleSpeak}
-                            className="text-foreground-muted hover:text-accent transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ml-2"
-                            title="Read aloud"
-                        >
-                            <MdVolumeUp size={22} />
-                        </button>
+                        <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center space-x-1">
+                                <button
+                                    onClick={() => setFeedback('liked')}
+                                    className={cn("p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors", feedback === 'liked' ? "text-green-500" : "text-foreground-muted hover:text-green-500")}
+                                    title="Like"
+                                >
+                                    <MdThumbUp size={16} />
+                                </button>
+                                <button
+                                    onClick={() => setFeedback('disliked')}
+                                    className={cn("p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors", feedback === 'disliked' ? "text-red-500" : "text-foreground-muted hover:text-red-500")}
+                                    title="Dislike"
+                                >
+                                    <MdThumbDown size={16} />
+                                </button>
+                            </div>
+                            <button
+                                onClick={handleSpeak}
+                                className="text-foreground-muted hover:text-accent transition-colors ml-1"
+                                title="Read aloud"
+                            >
+                                <MdVolumeUp size={18} />
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>

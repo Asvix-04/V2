@@ -21,6 +21,10 @@ app.use(helmet());             // Security headers
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
+app.use('/api/chat', require('./routes/chatRoutes'));
+
+// Serve Static Uploads
+app.use('/uploads', express.static('uploads'));
 
 // Base Route
 app.get('/', (req, res) => {
