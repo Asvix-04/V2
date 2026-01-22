@@ -29,7 +29,7 @@ export function MessageBubble({ message, isLast }) {
             )}
 
             <div className={cn(
-                "relative max-w-[80%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed shadow-sm",
+                "relative max-w-[55%] rounded-2xl px-3 py-1.5 text-xs leading-tight shadow-sm",
                 isUser
                     ? "bg-accent text-white rounded-tr-sm"
                     : "bg-white border border-black/5 text-foreground rounded-tl-sm dark:bg-[#1a1a1f] dark:border-white/5"
