@@ -70,12 +70,13 @@ export const translations = {
         "arabic": "Arabic",
         "portuguese": "Portuguese",
 
-        "home.hero.badge": "INTRODUCING ASVIX V2",
+        "home.hero.badge": "INTRODUCING DIGILAB V1",
         "home.hero.title1": "Academic Intelligence",
         "home.hero.title2": "Reimagined.",
         "home.hero.description": "An advanced RAG-powered assistant for the academic world. Tailored experiences for Professors and Students, built on a hybrid knowledge graph engine.",
         "home.hero.teacherBtn": "I am a Teacher",
         "home.hero.studentBtn": "I am a Student",
+        "home.hero.getStarted": "Get Started",
         "home.hero.starsOn": "Wish Shooting Stars",
         "home.hero.starsOff": "Not Wish Shooting Stars",
         "home.hero.3dOn": "Enable 3D Magic",
@@ -164,7 +165,7 @@ export const translations = {
         "common.odia": "ओडिया",
         "common.assamese": "असमिया",
         // Home Page
-        "home.hero.badge": "पेश है ASVIX V2",
+        "home.hero.badge": "पेश है DIGILAB V1",
         "home.hero.title1": "शैक्षणिक बुद्धिमत्ता",
         "home.hero.title2": "पुनर्कल्पित।",
         "home.hero.description": "अकादमिक दुनिया के लिए एक उन्नत RAG-संचालित सहायक। प्रोफेसरों और छात्रों के लिए सिलवाया गया अनुभव, हाइब्रिड नॉलेज ग्राफ इंजन पर निर्मित।",

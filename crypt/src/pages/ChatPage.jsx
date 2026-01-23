@@ -86,11 +86,11 @@ export function ChatPage() {
             <div className="hidden w-80 flex-col border-r border-border-base dark:border-white/5 bg-background-base/50 backdrop-blur-xl lg:flex">
                 <div className="flex h-16 items-center border-b border-border-base dark:border-white/5 px-6">
                     <Link
-                        to={isTeacher ? "/dashboard?mode=teacher" : "/dashboard"}
+                        to={isGuest ? "/" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard")}
                         className="flex items-center space-x-2 text-foreground-muted hover:text-foreground"
                     >
                         <ArrowLeft className="h-4 w-4" />
-                        <span className="text-sm font-medium">{t('chat.backToDashboard')}</span>
+                        <span className="text-sm font-medium">{isGuest ? t('nav.home') : t('chat.backToDashboard')}</span>
                     </Link>
                 </div>
 
