@@ -4,3 +4,9 @@
 env.txt 
 __pycache__/ 
 *.pyc 
+
+node_modules/
+
+
+crypt/crypt-f120d-firebase-adminsdk-fbsvc-54194b19ea.json
+
