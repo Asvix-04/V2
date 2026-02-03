@@ -5,7 +5,8 @@ import { Input } from "../components/ui/Input";
 import { FileUpload } from "../components/ui/FileUpload";
 import { PageTransition } from "../components/ui/PageTransition";
 import { useDocuments } from "../context/DocumentContext";
-import { BookOpen, FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight } from "lucide-react";
+import { BookOpen, FileText, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map } from "lucide-react";
+import { useRoadmaps } from "../context/RoadmapContext";
 
 export function DashboardPage() {
     const [searchParams] = useSearchParams();
@@ -13,6 +14,13 @@ export function DashboardPage() {
     const mode = searchParams.get("mode") || user.role || "student"; // Default to student
     const isTeacher = mode === "teacher";
     const { documents, addDocument } = useDocuments();
+    const { roadmaps, currentRoadmap, userProgress, enroll, getProgressForRoadmap } = useRoadmaps();
+
+    // Calculate Quick Status based on currentRoadmap
+    const currentProgress = currentRoadmap ? getProgressForRoadmap(currentRoadmap.id) : null;
+    const progressPercentage = currentProgress && currentRoadmap
+        ? Math.round((currentProgress.completedTopicIds.length / currentRoadmap.topics.length) * 100)
+        : 0;
 
     // Get 3 most recent documents
     const recentDocs = documents.slice(0, 3);
@@ -52,21 +60,25 @@ export function DashboardPage() {
                     <Card className="p-4 space-y-4 border-border-base dark:border-white/5">
                         <div className="flex items-center space-x-3">
                             <div className="h-10 w-10 rounded-full bg-accent/10 dark:bg-white/5 flex items-center justify-center">
-                                <Settings className="h-5 w-5 text-foreground-muted" />
+                                <Map className="h-5 w-5 text-foreground-muted" />
                             </div>
                             <div>
-                                <h3 className="font-medium text-foreground">Quick Stats</h3>
-                                <p className="text-xs text-foreground-muted">Last 7 days</p>
+                                <h3 className="font-medium text-foreground">Quick Status</h3>
+                                <p className="text-xs text-foreground-muted">
+                                    {currentRoadmap ? currentRoadmap.title : "No active roadmap"}
+                                </p>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4 pt-2">
                             <div className="text-center p-2 rounded-lg bg-accent/5 dark:bg-white/5">
-                                <div className="text-2xl font-bold text-accent">85%</div>
-                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">Mastery</div>
+                                <div className="text-2xl font-bold text-accent">{progressPercentage}%</div>
+                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">Progress</div>
                             </div>
                             <div className="text-center p-2 rounded-lg bg-accent/5 dark:bg-white/5">
-                                <div className="text-2xl font-bold text-foreground dark:text-white">12</div>
-                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">Hours</div>
+                                <div className="text-2xl font-bold text-foreground dark:text-white">
+                                    {currentProgress ? currentProgress.completedTopicIds.length : 0}
+                                </div>
+                                <div className="text-[10px] uppercase tracking-wider text-foreground-muted">Topics</div>
                             </div>
                         </div>
                     </Card>
@@ -92,11 +104,17 @@ export function DashboardPage() {
                 <div className="space-y-6 lg:col-span-3">
                     {/* Action / Suggestion Cards */}
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                        <Link to="/chat?mode=overview">
-                            <Card className="p-6 cursor-pointer hover:bg-accent/5 dark:hover:bg-white/5 transition-colors group h-full border-border-base dark:border-white/5">
-                                <Layout className="h-8 w-8 text-accent mb-4 group-hover:scale-110 transition-transform" />
-                                <h3 className="font-semibold text-foreground">Browse Topics</h3>
-                                <p className="text-sm text-foreground-muted mt-2">Explore related academic concepts.</p>
+                        {/* Roadmaps Section - Replaces Browse Topics */}
+                        <Link to="/roadmaps">
+                            <Card className="p-6 cursor-pointer hover:bg-accent/5 dark:hover:bg-white/5 transition-colors group h-full border-border-base dark:border-white/5 flex flex-col justify-between">
+                                <div>
+                                    <Map className="h-8 w-8 text-accent mb-4 group-hover:scale-110 transition-transform" />
+                                    <h3 className="font-semibold text-foreground">View Your Roadmaps</h3>
+                                    <p className="text-sm text-foreground-muted mt-2">Explore learning paths and track your progress.</p>
+                                </div>
+                                <div className="mt-4 flex items-center text-sm text-accent font-medium">
+                                    Browse All <ArrowRight className="ml-1 h-3 w-3 group-hover:translate-x-1 transition-transform" />
+                                </div>
                             </Card>
                         </Link>
 
@@ -195,3 +213,4 @@ export function DashboardPage() {
         </PageTransition>
     );
 }
+

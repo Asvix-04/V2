@@ -8,8 +8,9 @@ import { Card } from "../components/ui/Card";
 import { ChatInput } from "../components/ui/ChatInput";
 import { MessageBubble } from "../components/ui/MessageBubble";
 import { PageTransition } from "../components/ui/PageTransition";
-import { ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, MessageSquare, MoreHorizontal, Settings, Share } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, MoreVertical, Bot } from "lucide-react";
 import { MdSearch } from "react-icons/md";
+import { useRoadmaps } from "../context/RoadmapContext";
 
 const MOCK_MESSAGES = [
     {
@@ -39,6 +40,27 @@ export function ChatPage() {
     const [isModeOpen, setIsModeOpen] = React.useState(false);
 
     const [showLimitModal, setShowLimitModal] = React.useState(false);
+
+    // Roadmap Integration
+    const { roadmaps, updateTopicProgress, getProgressForRoadmap } = useRoadmaps();
+    const roadmapId = searchParams.get("roadmapId");
+    const topicId = searchParams.get("topicId");
+
+    const activeRoadmap = roadmapId ? roadmaps.find(r => r.id === roadmapId) : null;
+    const activeTopic = activeRoadmap ? activeRoadmap.topics.find(t => t.id === topicId) : null;
+    const userProgress = activeRoadmap ? getProgressForRoadmap(activeRoadmap.id) : null;
+    const isCompleted = userProgress?.completedTopicIds?.includes(topicId);
+
+    // Auto-send topic prompt if present
+    React.useEffect(() => {
+        if (activeTopic) {
+            setMessages([{
+                role: 'assistant',
+                content: `Welcome to the "${activeTopic.title}" module! Here is a brief overview:\n\n${activeTopic.prompt || "Let's dive into this topic."}\n\nAsk me anything about it!`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }]);
+        }
+    }, [activeTopic]);
 
     const handleSend = (text) => {
         // GUEST LIMIT CHECK
@@ -143,6 +165,41 @@ export function ChatPage() {
                             </Button>
                             <Button size="sm" className="bg-accent text-white hover:bg-accent-bright">
                                 <FileText className="h-4 w-4 mr-2" /> {t('chat.savePlan')}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+
+
+                {/* Roadmap Header Overlay */}
+                {activeTopic && (
+                    <div className="flex h-16 items-center justify-between border-b border-border-base dark:border-white/5 bg-background-base/50 px-6 backdrop-blur-md">
+                        <div className="flex items-center space-x-3">
+                            <div className="h-8 w-8 rounded-full bg-accent/10 flex items-center justify-center text-accent">
+                                <Bot className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h2 className="font-semibold text-foreground text-sm">{activeTopic.title}</h2>
+                                <p className="text-xs text-foreground-muted flex items-center">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 mr-2" />
+                                    {activeRoadmap ? activeRoadmap.title : "Guide"}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Button
+                                size="sm"
+                                variant={isCompleted ? "outline" : "default"}
+                                className={isCompleted ? "text-green-400 border-green-400/50" : ""}
+                                onClick={() => {
+                                    if (!isCompleted) {
+                                        updateTopicProgress(roadmapId, topicId, true);
+                                    }
+                                    // Optional: navigate back or stay
+                                }}
+                            >
+                                {isCompleted ? <><CheckCircle className="mr-2 h-4 w-4" /> Completed</> : "Mark Complete"}
                             </Button>
                         </div>
                     </div>
@@ -285,5 +342,3 @@ export function ChatPage() {
         </PageTransition>
     );
 }
-
-

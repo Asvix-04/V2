@@ -3,6 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import { Layout } from "./layouts/Layout";
 import { HomePage } from "./pages/HomePage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { RoadmapsPage } from "./pages/RoadmapsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { LoginPage } from "./pages/auth/LoginPage";
@@ -11,6 +12,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { UIProvider } from "./context/UIContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { DocumentProvider } from "./context/DocumentContext";
+import { RoadmapProvider } from "./context/RoadmapContext";
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -30,6 +32,7 @@ function AnimatedRoutes() {
           <Route path="/" element={<Navigate to="/chat" replace />} />
           <Route path="/home" element={<HomePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/roadmaps" element={<RoadmapsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/documents" element={<DocumentsPage />} />
         </Route>
@@ -43,9 +46,11 @@ function App() {
     <UIProvider>
       <LanguageProvider>
         <DocumentProvider>
-          <BrowserRouter>
-            <AnimatedRoutes />
-          </BrowserRouter>
+          <RoadmapProvider>
+            <BrowserRouter>
+              <AnimatedRoutes />
+            </BrowserRouter>
+          </RoadmapProvider>
         </DocumentProvider>
       </LanguageProvider>
     </UIProvider>
