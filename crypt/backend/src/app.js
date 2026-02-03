@@ -2,13 +2,13 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
-const connectDB = require('./config/db');
+const { initializeFirebase } = require('./config/db');
 
 // Load env vars
 dotenv.config();
 
-// Connect to database
-connectDB();
+// Initialize Firebase
+initializeFirebase();
 
 const app = express();
 

@@ -52,6 +52,7 @@ export function Footer() {
                         <h4 className="mb-6 text-sm font-semibold uppercase tracking-wider text-foreground">Company</h4>
                         <ul className="space-y-4 text-sm text-foreground-muted">
                             <FooterLink to="#">About</FooterLink>
+                            <FooterLink to="/cookies">Cookies</FooterLink>
                             <FooterLink to="#">Careers</FooterLink>
                             <FooterLink to="#">Contact</FooterLink>
                             <FooterLink to="#">Privacy Policy</FooterLink>
@@ -66,7 +67,7 @@ export function Footer() {
                     <div className="mt-4 flex justify-center space-x-6 text-sm text-foreground-subtle sm:mt-0">
                         <Link to="#" className="hover:text-foreground transition-colors">Terms</Link>
                         <Link to="#" className="hover:text-foreground transition-colors">Privacy</Link>
-                        <Link to="#" className="hover:text-foreground transition-colors">Cookies</Link>
+                        <Link to="/cookies" className="hover:text-foreground transition-colors">Cookies</Link>
                     </div>
                 </div>
             </div>

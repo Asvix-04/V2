@@ -1,20 +1,40 @@
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
+const path = require('path');
 
-const connectDB = async () => {
+let db;
+
+const initializeFirebase = () => {
     try {
-        if (!admin.apps.length) {
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount)
-            });
-            console.log('Firebase Admin SDK Initialized -> Firestore Connected');
+        // Check if Firebase is already initialized
+        if (admin.apps.length > 0) {
+            db = admin.firestore();
+            console.log('Firebase already initialized');
+            return db;
         }
+
+        // Initialize Firebase with service account
+        const serviceAccount = require(path.join(__dirname, '../../firebase-key.json'));
+
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`
+        });
+
+        db = admin.firestore();
+        console.log('Firebase initialized successfully');
+        return db;
+
     } catch (error) {
-        console.error('Firebase Initialization Error:', error.message);
+        console.error(`Firebase initialization error: ${error.message}`);
         process.exit(1);
     }
 };
 
-const db = admin.apps.length ? admin.firestore() : null; // Access via exports if needed elsewhere, though usually admin.firestore() is global enough
+const getFirestore = () => {
+    if (!db) {
+        initializeFirebase();
+    }
+    return db;
+};
 
-module.exports = connectDB;
+module.exports = { initializeFirebase, getFirestore };

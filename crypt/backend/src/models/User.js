@@ -1,73 +1,127 @@
-const admin = require('firebase-admin');
-
-// Collection Reference
-// Note: db.js handles initialization, so admin.firestore() should work if db.js runs first.
-// However, models are imported in controllers. We need to ensure initialization happens.
-// In this architecture, db.js is imported in app.js and run.
-// So this file will be required *after* initialization if required in controllers.
-// But valid to double check or lazy load.
-
-const db = admin.apps.length ? admin.firestore() : admin.firestore();
-const usersCollection = db.collection('users');
+const bcrypt = require('bcrypt');
+const { getFirestore } = require('../config/db');
 
 class User {
-    static async create(userData) {
-        const newUser = {
-            name: userData.name,
-            email: userData.email,
-            password: userData.password,
-            role: userData.role || 'student',
-            profilePhoto: userData.profilePhoto || '',
-            preferredName: userData.preferredName || '',
-            age: userData.age || null,
-            gender: userData.gender || '',
-            location: userData.location || '',
-            primaryLanguage: userData.primaryLanguage || 'en',
-            accountStatus: userData.accountStatus || 'active',
-            preferences: {
-                language: 'en',
-                tone: 'neutral',
-                ...(userData.preferences || {})
-            },
-            createdAt: new Date().toISOString()
-        };
-
-        // Unique Email Check
-        const existingSnapshot = await usersCollection.where('email', '==', newUser.email).limit(1).get();
-        if (!existingSnapshot.empty) {
-            throw new Error('User already exists');
-        }
-
-        const docRef = await usersCollection.add(newUser);
-        return { _id: docRef.id, ...newUser };
+    constructor(data) {
+        this.id = data.id || null;
+        this.name = data.name;
+        this.email = data.email;
+        this.password = data.password;
+        this.role = data.role || 'student';
+        this.createdAt = data.createdAt || new Date();
     }
 
-    static async findOne(query) {
-        if (query.email) {
-            const snapshot = await usersCollection.where('email', '==', query.email).limit(1).get();
-            if (snapshot.empty) return null;
-            const doc = snapshot.docs[0];
-            return { _id: doc.id, ...doc.data() };
+    // Validate user data
+    static validate(data) {
+        const errors = [];
+
+        if (!data.name) {
+            errors.push('Please add a name');
         }
-        return null;
+        if (!data.email) {
+            errors.push('Please add an email');
+        } else if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(data.email)) {
+            errors.push('Please add a valid email');
+        }
+        if (!data.password) {
+            errors.push('Please add a password');
+        } else if (data.password.length < 6) {
+            errors.push('Password must be at least 6 characters');
+        }
+        if (data.role && !['student', 'teacher'].includes(data.role)) {
+            errors.push('Role must be either student or teacher');
+        }
+
+        return errors;
     }
 
-    static async findById(id) {
+    // Hash password
+    async hashPassword() {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+    }
+
+    // Compare password
+    async matchPassword(enteredPassword) {
+        return await bcrypt.compare(enteredPassword, this.password);
+    }
+
+    // Create user in Firestore
+    async save() {
+        const db = getFirestore();
+        const usersRef = db.collection('users');
+
         try {
-            const doc = await usersCollection.doc(id).get();
-            if (!doc.exists) return null;
-            return { _id: doc.id, ...doc.data() };
+            if (this.id) {
+                // Update existing user
+                await usersRef.doc(this.id).update({
+                    name: this.name,
+                    email: this.email,
+                    role: this.role,
+                    updatedAt: new Date()
+                });
+            } else {
+                // Create new user
+                const docRef = await usersRef.add({
+                    name: this.name,
+                    email: this.email,
+                    password: this.password,
+                    role: this.role,
+                    createdAt: new Date()
+                });
+                this.id = docRef.id;
+            }
+            return this;
         } catch (error) {
-            return null;
+            throw new Error(`Failed to save user: ${error.message}`);
         }
     }
 
-    static async update(id, updateData) {
-        // Remove _id to prevent overwriting document key field (though Firestore ignores it usually)
-        const { _id, ...data } = updateData;
-        await usersCollection.doc(id).update(data);
-        const doc = await usersCollection.doc(id).get();
-        return { _id: doc.id, ...doc.data() };
+    // Find user by email
+    static async findOne(query) {
+        const db = getFirestore();
+        const usersRef = db.collection('users');
+
+        try {
+            if (query.email) {
+                const snapshot = await usersRef.where('email', '==', query.email).limit(1).get();
+                if (snapshot.empty) {
+                    return null;
+                }
+                const doc = snapshot.docs[0];
+                return new User({
+                    id: doc.id,
+                    ...doc.data()
+                });
+            }
+            return null;
+        } catch (error) {
+            throw new Error(`Failed to find user: ${error.message}`);
+        }
+    }
+
+    // Find user by ID
+    static async findById(id) {
+        const db = getFirestore();
+
+        try {
+            const doc = await db.collection('users').doc(id).get();
+            if (!doc.exists) {
+                return null;
+            }
+            return new User({
+                id: doc.id,
+                ...doc.data()
+            });
+        } catch (error) {
+            throw new Error(`Failed to find user by ID: ${error.message}`);
+        }
+    }
+
+    // Get user without password
+    toJSON() {
+        const { password, ...userWithoutPassword } = this;
+        return userWithoutPassword;
     }
 }
 
