@@ -5,6 +5,7 @@ import { AnimatePresence } from "framer-motion"; // Unused now, but keeping for 
 import { Layout } from "./layouts/Layout";
 import { HomePage } from "./pages/HomePage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { RoadmapsPage } from "./pages/RoadmapsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { LoginPage } from "./pages/auth/LoginPage";
@@ -15,6 +16,7 @@ import { CookiePolicyPage } from "./pages/CookiePolicyPage";
 import { UIProvider } from "./context/UIContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { DocumentProvider } from "./context/DocumentContext";
+import { RoadmapProvider } from "./context/RoadmapContext";
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -48,9 +50,11 @@ function App() {
     <UIProvider>
       <LanguageProvider>
         <DocumentProvider>
-          <BrowserRouter>
-            <AnimatedRoutes />
-          </BrowserRouter>
+          <RoadmapProvider>
+            <BrowserRouter>
+              <AnimatedRoutes />
+            </BrowserRouter>
+          </RoadmapProvider>
         </DocumentProvider>
       </LanguageProvider>
     </UIProvider>

@@ -5,7 +5,7 @@ import { Input } from "../components/ui/Input";
 import { FileUpload } from "../components/ui/FileUpload";
 import { PageTransition } from "../components/ui/PageTransition";
 import { useDocuments } from "../context/DocumentContext";
-import { BookOpen, FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight } from "lucide-react";
+import { BookOpen, FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map } from "lucide-react";
 
 export function DashboardPage() {
     const [searchParams] = useSearchParams();
@@ -92,11 +92,11 @@ export function DashboardPage() {
                 <div className="space-y-6 lg:col-span-3">
                     {/* Action / Suggestion Cards */}
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                        <Link to="/chat?mode=overview">
+                        <Link to="/roadmaps">
                             <Card className="p-6 cursor-pointer hover:bg-accent/5 dark:hover:bg-white/5 transition-colors group h-full border-border-base dark:border-white/5">
-                                <Layout className="h-8 w-8 text-accent mb-4 group-hover:scale-110 transition-transform" />
-                                <h3 className="font-semibold text-foreground">Browse Topics</h3>
-                                <p className="text-sm text-foreground-muted mt-2">Explore related academic concepts.</p>
+                                <Map className="h-8 w-8 text-accent mb-4 group-hover:scale-110 transition-transform" />
+                                <h3 className="font-semibold text-foreground">My Roadmaps</h3>
+                                <p className="text-sm text-foreground-muted mt-2">View and manage your learning roadmaps.</p>
                             </Card>
                         </Link>
 

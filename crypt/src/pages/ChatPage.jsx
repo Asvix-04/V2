@@ -1,6 +1,7 @@
 import * as React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
+import { useRoadmaps } from "../context/RoadmapContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/Button";
@@ -22,8 +23,21 @@ const MOCK_MESSAGES = [
 
 export function ChatPage() {
     const { t } = useLanguage();
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const urlMode = searchParams.get("mode");
+
+    // Roadmap context
+    const roadmapId = searchParams.get("roadmapId");
+    const topicId = searchParams.get("topicId");
+    const { roadmaps, getProgressForRoadmap, updateTopicProgress } = useRoadmaps();
+
+    // Find current roadmap and topic
+    const currentRoadmap = roadmapId ? roadmaps.find(r => r.id === roadmapId) : null;
+    const currentTopic = currentRoadmap?.topics?.find(t => t.id === topicId);
+    const progress = roadmapId ? getProgressForRoadmap(roadmapId) : null;
+    const isTopicCompleted = progress?.completedTopicIds?.includes(topicId) || false;
+    const [markingComplete, setMarkingComplete] = React.useState(false);
 
     // Get user from local storage to determine role
     const user = JSON.parse(localStorage.getItem("user") || "null");
@@ -79,6 +93,31 @@ export function ChatPage() {
             localStorage.setItem('theme', 'dark');
         }
     };
+
+    // Mark topic as complete
+    const handleMarkComplete = async () => {
+        if (!roadmapId || !topicId) return;
+        setMarkingComplete(true);
+        try {
+            await updateTopicProgress(roadmapId, topicId, !isTopicCompleted);
+        } catch (err) {
+            console.error("Error marking topic complete:", err);
+        } finally {
+            setMarkingComplete(false);
+        }
+    };
+
+    // Find next topic in roadmap
+    const getNextTopic = () => {
+        if (!currentRoadmap || !currentTopic) return null;
+        const currentIndex = currentRoadmap.topics.findIndex(t => t.id === topicId);
+        if (currentIndex < currentRoadmap.topics.length - 1) {
+            return currentRoadmap.topics[currentIndex + 1];
+        }
+        return null;
+    };
+
+    const nextTopic = getNextTopic();
 
     return (
         <PageTransition className="relative flex h-screen w-full overflow-hidden bg-background-base text-foreground">
@@ -148,6 +187,56 @@ export function ChatPage() {
                             </Button>
                         </div>
                     </div>
+                )}
+
+                {/* Roadmap Topic Header - Shows when learning from a roadmap */}
+                {currentTopic && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="border-b border-border-base dark:border-white/5 bg-gradient-to-r from-accent/5 via-accent/10 to-accent/5 px-6 py-4"
+                    >
+                        <div className="max-w-3xl mx-auto flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <Link
+                                    to="/roadmaps"
+                                    className="flex items-center gap-2 text-sm text-foreground-muted hover:text-accent transition-colors"
+                                >
+                                    <Map className="h-4 w-4" />
+                                    <span className="hidden sm:inline">{currentRoadmap?.title}</span>
+                                </Link>
+                                <ChevronRight className="h-4 w-4 text-foreground-muted" />
+                                <div className="flex items-center gap-2">
+                                    <BookOpen className="h-4 w-4 text-accent" />
+                                    <span className="font-semibold text-foreground">{currentTopic.title}</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Button
+                                    size="sm"
+                                    onClick={handleMarkComplete}
+                                    disabled={markingComplete}
+                                    className={cn(
+                                        "gap-2 transition-all",
+                                        isTopicCompleted
+                                            ? "bg-green-500/10 text-green-500 border border-green-500/20 hover:bg-green-500/20"
+                                            : "bg-accent text-white hover:bg-accent-bright"
+                                    )}
+                                >
+                                    <CheckCircle className={cn("h-4 w-4", isTopicCompleted && "fill-current")} />
+                                    {markingComplete ? "Saving..." : isTopicCompleted ? "Completed" : "Mark Complete"}
+                                </Button>
+                                {nextTopic && isTopicCompleted && (
+                                    <Link to={`/chat?roadmapId=${roadmapId}&topicId=${nextTopic.id}`}>
+                                        <Button size="sm" variant="outline" className="gap-2 border-accent/30 text-accent hover:bg-accent/10">
+                                            Next: {nextTopic.title}
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </Link>
+                                )}
+                            </div>
+                        </div>
+                    </motion.div>
                 )}
 
                 {/* Messages */}

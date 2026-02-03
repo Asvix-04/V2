@@ -83,13 +83,10 @@ export function LoginPage() {
                     </Button>
                 </form>
 
-                <div className="relative my-8">
-                    <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t border-white/10" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-[#0a0a0c] px-2 text-foreground-muted">Or continue with</span>
-                    </div>
+                <div className="my-8 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-white/10" />
+                    <span className="text-xs uppercase text-foreground-muted">Or continue with</span>
+                    <div className="h-px flex-1 bg-white/10" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

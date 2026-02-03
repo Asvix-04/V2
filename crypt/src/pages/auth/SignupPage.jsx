@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
@@ -24,7 +24,12 @@ export function SignupPage() {
         setLoading(true);
         setError(null);
         try {
-            const { data } = await api.post('/auth/register', formData);
+            // Add default role 'student' if not provided
+            const dataToSend = {
+                ...formData,
+                role: 'student'
+            };
+            const { data } = await api.post('/auth/register', dataToSend);
             localStorage.setItem("user", JSON.stringify(data));
             navigate('/dashboard');
         } catch (err) {

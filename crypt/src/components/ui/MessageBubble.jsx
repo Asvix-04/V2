@@ -2,15 +2,14 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { MdPerson, MdSmartToy, MdVolumeUp, MdThumbUp, MdThumbDown } from "react-icons/md";
 import { motion } from "framer-motion";
-import { Button } from "./Button";
 
-export function MessageBubble({ message, isLast }) {
+export function MessageBubble({ message }) {
     const isUser = message.role === "user";
     const [feedback, setFeedback] = useState(null);
 
     const handleSpeak = () => {
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel(); // Stop current
+        if ("speechSynthesis" in window) {
+            window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(message.content);
             window.speechSynthesis.speak(utterance);
         }
@@ -18,15 +17,40 @@ export function MessageBubble({ message, isLast }) {
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            className={cn("flex w-full space-x-4 group", isUser ? "justify-end" : "justify-start")}
-        >
-            {!isUser && (
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/20 border border-accent/20">
-                    <MdSmartToy size={24} className="text-accent" />
-                </div>
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className={cn(
+                "w-full flex",
+                isUser ? "justify-end" : "justify-start"
             )}
+        >
+            {/* Message container with hover area */}
+            <div
+                className={cn(
+                    "max-w-[75%] md:max-w-[60%]",
+                    isUser ? "text-right" : "text-left"
+                )}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+            >
+                {/* ROLE LABEL */}
+                <div className={cn(
+                    "mb-1 flex items-center gap-2 text-xs text-foreground-muted",
+                    isUser ? "justify-end" : "justify-start"
+                )}>
+                    {isUser ? (
+                        <>
+                            <MdPerson size={14} />
+                            <span>You</span>
+                        </>
+                    ) : (
+                        <>
+                            <MdSmartToy size={14} />
+                            <span>Asvix</span>
+                        </>
+                    )}
+                </div>
 
             <div className={cn(
                 "relative max-w-[55%] rounded-2xl px-3 py-1.5 text-xs leading-tight shadow-sm",
@@ -36,10 +60,44 @@ export function MessageBubble({ message, isLast }) {
             )}>
                 {message.content}
 
-                <div className="mt-2 flex items-center justify-between">
-                    <span className={cn("text-[10px] opacity-60", isUser ? "text-accent-100" : "text-foreground-muted")}>
-                        {message.timestamp}
-                    </span>
+                    {/* Side Action Buttons - Only for bot messages, show on hover */}
+                    {!isUser && (
+                        <div
+                            className={cn(
+                                "flex items-center gap-1 transition-opacity duration-200",
+                                isHovered || feedback ? "opacity-100" : "opacity-0"
+                            )}
+                        >
+                            <button
+                                onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
+                                className={cn(
+                                    "p-1.5 rounded-full hover:bg-green-500/10 transition-colors",
+                                    feedback === 'like' ? "text-green-500 bg-green-500/10" : "text-foreground-muted hover:text-green-500"
+                                )}
+                                title="Good response"
+                            >
+                                <MdThumbUp size={14} />
+                            </button>
+                            <button
+                                onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
+                                className={cn(
+                                    "p-1.5 rounded-full hover:bg-red-500/10 transition-colors",
+                                    feedback === 'dislike' ? "text-red-500 bg-red-500/10" : "text-foreground-muted hover:text-red-500"
+                                )}
+                                title="Bad response"
+                            >
+                                <MdThumbDown size={14} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* FOOTER */}
+                <div className={cn(
+                    "mt-1 flex items-center text-[11px] text-foreground-muted",
+                    isUser ? "justify-end" : "justify-start gap-4"
+                )}>
+                    <span>{message.timestamp}</span>
 
                     {!isUser && (
                         <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -70,12 +128,6 @@ export function MessageBubble({ message, isLast }) {
                     )}
                 </div>
             </div>
-
-            {isUser && (
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 border border-black/5 dark:bg-white/10 dark:border-white/10">
-                    <MdPerson size={24} className="text-foreground" />
-                </div>
-            )}
         </motion.div>
     );
 }

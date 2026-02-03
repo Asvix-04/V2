@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLanguage } from "../context/LanguageContext";
+import { useUI } from "../context/UIContext";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -57,17 +58,27 @@ export function ProfilePage() {
     };
 
     return (
-        <div className="mx-auto max-w-4xl space-y-8 pb-12">
+        <div className="mx-auto max-w-4xl space-y-8 pb-12 relative">
+            {saveStatus === 'success' && (
+                <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+                    <Check className="h-5 w-5" />
+                    <span className="font-medium">Changes saved successfully!</span>
+                </div>
+            )}
+
             <h1 className="text-3xl font-semibold text-foreground">{t('profile.settings')}</h1>
 
             <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
                 {/* Sidebar Navigation */}
                 <div className="md:col-span-4 space-y-2">
-                    {['Profile', 'Notifications', 'Security', 'Billing', 'Settings'].map((item) => (
+                    {['Profile', 'Notifications', 'Security', 'Settings'].map((item) => (
                         <button
                             key={item}
                             onClick={() => setActiveTab(item)}
-                            className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item ? 'bg-accent/10 text-accent' : 'text-foreground-muted hover:text-foreground hover:bg-white/5'}`}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item
+                                ? 'bg-accent text-white shadow-lg shadow-accent/20'
+                                : 'text-foreground-muted hover:bg-white/5 hover:text-foreground'
+                                }`}
                         >
                             {/* Map tab names to translation keys */}
                             {item === 'Profile' && t('nav.profile')}
@@ -77,41 +88,151 @@ export function ProfilePage() {
                             {item === 'Settings' && t('profile.settings')}
                         </button>
                     ))}
-                    <div className="pt-4 border-t border-white/10 mt-4">
-                        <button
-                            onClick={handleSignOut}
-                            className="w-full text-left px-4 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-400/10 transition-colors flex items-center"
-                        >
-                            <LogOut className="h-4 w-4 mr-2" /> {t('profile.signOut')}
-                        </button>
-                    </div>
+
+                    <button
+                        onClick={handleSignOut}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-400/10 transition-all mt-4 border border-red-400/10"
+                    >
+                        <LogOut className="h-4 w-4" />
+                        {t('profile.signOut')}
+                    </button>
                 </div>
 
-                {/* Main Content */}
+                {/* Main Content Area */}
                 <div className="md:col-span-8 space-y-6">
-                    {activeTab === 'Settings' ? (
+                    {activeTab === 'Security' ? (
                         <Card className="p-8 space-y-8">
                             <div>
-                                <h3 className="text-xl font-medium text-foreground">{t('profile.language')}</h3>
-                                <p className="text-foreground-muted">{t('profile.selectLanguage')}</p>
+                                <h2 className="text-xl font-medium text-foreground">Security Settings</h2>
+                                <p className="text-foreground-muted">Manage your account security preferences</p>
+                            </div>
+
+                            {/* Two-Step Verification */}
+                            <Toggle
+                                enabled={twoFactorEnabled}
+                                onChange={() => setTwoFactorEnabled(!twoFactorEnabled)}
+                                icon={Smartphone}
+                                title="Two-Step Verification"
+                                description="Add an extra layer of security to your account"
+                            />
+
+                            {/* Change Password */}
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <Lock className="h-4 w-4 text-accent" />
+                                    <h3 className="text-base font-medium text-foreground">Change Password</h3>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 max-w-md">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-mono text-foreground-subtle uppercase">Current Password</label>
+                                        <Input type="password" placeholder="••••••••" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-mono text-foreground-subtle uppercase">New Password</label>
+                                        <Input type="password" placeholder="••••••••" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-mono text-foreground-subtle uppercase">Confirm New Password</label>
+                                        <Input type="password" placeholder="••••••••" />
+                                    </div>
+                                    <div className="flex justify-between items-center pt-2">
+                                        <Link to="/forgot-password" className="text-sm text-accent hover:underline">
+                                            Forgot Password?
+                                        </Link>
+                                        <Button size="sm">Update Password</Button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Active Sessions */}
+                            <div className="space-y-4 pt-4 border-t border-white/5">
+                                <h3 className="text-base font-medium text-foreground">Active Sessions</h3>
+                                <div className="space-y-3">
+                                    {activeSessions.map((session) => (
+                                        <div key={session.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-black/5 dark:bg-white/5 dark:border-white/5">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-full bg-accent/10 text-accent">
+                                                    {session.icon}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium text-foreground">{session.device}</p>
+                                                    <p className="text-xs text-foreground-muted">{session.location} • {session.lastActive}</p>
+                                                </div>
+                                            </div>
+                                            {session.lastActive !== 'Current Session' && (
+                                                <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-500 hover:bg-red-400/10">
+                                                    Revoke
+                                                </Button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </Card>
+                    ) : activeTab === 'Notifications' ? (
+                        <Card className="p-8 space-y-10">
+                            <div>
+                                <h2 className="text-2xl font-semibold text-foreground">Notification Settings</h2>
+                                <p className="text-foreground-muted">Choose how you want to be notified</p>
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[300px] overflow-y-auto pr-2">
                                 {Object.keys(translations).map((langCode) => (
                                     <Button
-                                        key={langCode}
-                                        variant={language === langCode ? 'default' : 'outline'}
-                                        onClick={() => setLanguage(langCode)}
-                                        className="w-full"
+                                        variant="outline"
+                                        className="gap-2"
+                                        onClick={() => setIsDownloadDropdownOpen(!isDownloadDropdownOpen)}
                                     >
                                         {/* Display the language name using the translation key */}
                                         {t(`${getLangKey(langCode)}`)}
                                     </Button>
-                                ))}
+
+                                    {isDownloadDropdownOpen && (
+                                        <div className="absolute left-0 z-50 mt-1 w-48 rounded-md border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-[#0F0F12]">
+                                            <div className="p-1">
+                                                <button
+                                                    onClick={() => handleDownloadData('txt')}
+                                                    className="flex w-full items-center gap-2 rounded-sm py-2 px-3 text-sm text-foreground hover:bg-accent/10 hover:text-accent transition-colors"
+                                                >
+                                                    <FileText className="h-4 w-4" /> Download as TXT
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDownloadData('pdf')}
+                                                    className="flex w-full items-center gap-2 rounded-sm py-2 px-3 text-sm text-foreground hover:bg-accent/10 hover:text-accent transition-colors"
+                                                >
+                                                    <FileJson className="h-4 w-4" /> Download as PDF
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Danger Zone */}
+                            <div className="space-y-6 pt-6 border-t border-white/5">
+                                <div className="flex items-center gap-2 text-red-500">
+                                    <AlertTriangle className="h-5 w-5" />
+                                    <h3 className="text-xl font-medium">Danger Zone</h3>
+                                </div>
+                                <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-foreground">Deactivate Account</p>
+                                            <p className="text-xs text-foreground-muted">Temporarily disable your account</p>
+                                        </div>
+                                        <Button variant="outline" size="sm" className="text-red-400 border-red-400/20 hover:bg-red-400/10">Deactivate</Button>
+                                    </div>
+                                    <div className="flex items-center justify-between pt-4 border-t border-red-500/10">
+                                        <div>
+                                            <p className="text-sm font-medium text-red-500">Delete Account</p>
+                                            <p className="text-xs text-foreground-muted">Permanently delete your account and data</p>
+                                        </div>
+                                        <Button variant="default" size="sm" className="bg-red-500 hover:bg-red-600 border-none text-white">Delete Account</Button>
+                                    </div>
+                                </div>
                             </div>
                         </Card>
                     ) : (
-                        // Default Profile View
                         <>
                             <Card className="p-8 space-y-8">
                                 {/* Profile Pic Section */}
@@ -123,6 +244,13 @@ export function ProfilePage() {
                                             <span className="text-xs text-white font-medium">Change</span>
                                         </div>
                                     </div>
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={handlePhotoChange}
+                                    />
                                     <div className="flex-1">
                                         <h3 className="text-xl font-medium text-foreground">John Doe</h3>
                                         <p className="text-foreground-muted">Professor of Physics</p>
@@ -235,15 +363,22 @@ export function ProfilePage() {
                                         <h3 className="text-lg font-medium text-foreground">{t('profile.subscription')}</h3>
                                         <p className="text-foreground-muted mt-1">You are currently on the <span className="text-accent font-semibold">Pro Academic</span> plan.</p>
                                     </div>
-                                    <span className="px-3 py-1 rounded-full bg-accent/20 text-accent text-xs font-bold border border-accent/50">{t('profile.active')}</span>
-                                </div>
 
-                                <div className="mt-6 flex items-center justify-between p-4 rounded-lg bg-gray-50 border border-black/5 dark:bg-white/5 dark:border-white/5">
-                                    <div className="flex items-center">
-                                        <CreditCard className="h-5 w-5 text-foreground-muted mr-3" />
-                                        <span className="text-sm">•••• •••• •••• 4242</span>
+                                    <div className="flex gap-4">
+                                        {[
+                                            { id: 'light', icon: Sun, label: 'Light' },
+                                            { id: 'dark', icon: Moon, label: 'Dark' }
+                                        ].map((t_mode) => (
+                                            <button
+                                                key={t_mode.id}
+                                                onClick={() => setTheme(t_mode.id)}
+                                                className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${theme === t_mode.id ? 'border-accent bg-accent/5' : 'border-black/5 dark:border-white/5 hover:bg-white/5'}`}
+                                            >
+                                                <t_mode.icon className={`h-6 w-6 ${theme === t_mode.id ? 'text-accent' : 'text-foreground-muted'}`} />
+                                                <span className={`text-sm font-medium ${theme === t_mode.id ? 'text-accent' : 'text-foreground'}`}>{t_mode.label}</span>
+                                            </button>
+                                        ))}
                                     </div>
-                                    <Button variant="ghost" size="sm">{t('profile.update')}</Button>
                                 </div>
                             </Card>
                         </>
