@@ -1,0 +1,41 @@
+name: Deploy Backend Chatbot to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Backend_chatbot/**"
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push Backend_chatbot to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Configure git
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+
+          # Clone HF Space repo (shallow) into a temp directory
+          git clone --depth 1 https://asvix:$HF_TOKEN@huggingface.co/spaces/asvix/digilab hf_deploy
+
+          # Remove old files (except .git)
+          cd hf_deploy
+          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
+
+          # Copy Backend_chatbot files to root of HF repo
+          cp -r ../Backend_chatbot/* .
+          cp ../Backend_chatbot/.dockerignore . 2>/dev/null || true
+
+          # Commit and push
+          git add .
+          git diff --staged --quiet && echo "No changes to deploy" && exit 0
+          git commit -m "Deploy from GitHub Actions - $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          git push
