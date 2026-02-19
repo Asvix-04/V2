@@ -55,8 +55,11 @@ export function ChatPage() {
 
     const [showLimitModal, setShowLimitModal] = React.useState(false);
     const [isVoiceMode, setIsVoiceMode] = React.useState(false);
+    const [isLoading, setIsLoading] = React.useState(false);
 
-    const handleSend = (text) => {
+    const CHATBOT_API_URL = import.meta.env.VITE_CHATBOT_API_URL || "https://asvix-digilab.hf.space";
+
+    const handleSend = async (text) => {
         // GUEST LIMIT CHECK
         if (isGuest && messages.length >= 10) {
             setShowLimitModal(true);
@@ -69,17 +72,41 @@ export function ChatPage() {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
         setMessages((prev) => [...prev, newMsg]);
+        setIsLoading(true);
 
-        // Simulate AI response
-        setTimeout(() => {
+        try {
+            const response = await fetch(`${CHATBOT_API_URL}/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    message: text,
+                    options: { use_history: true },
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to get response");
+            }
+
             setMessages((prev) => [...prev, {
                 role: "assistant",
-                content: isTeacher
-                    ? "I have analyzed the topic. Here is a suggested lesson plan structure including prerequisites and assessment strategies."
-                    : "Here is the explanation for your question, essentially breaking down the core concepts.",
+                content: data.reply,
+                sources: data.sources,
+                meta: data.meta,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             }]);
-        }, 1000);
+        } catch (error) {
+            console.error("Chat API error:", error);
+            setMessages((prev) => [...prev, {
+                role: "assistant",
+                content: "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     // Theme Toggle Logic
@@ -329,8 +356,8 @@ export function ChatPage() {
 
                             <ChatInput
                                 onSend={handleSend}
-                                placeholder={t('chat.inputPlaceholder')}
-                                disabled={false}
+                                placeholder={isLoading ? "Thinking..." : t('chat.inputPlaceholder')}
+                                disabled={isLoading}
                                 onVoiceToggle={() => setIsVoiceMode(true)}
                             />
                             <p className="mt-2 text-center text-[10px] text-foreground-subtle">

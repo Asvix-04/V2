@@ -1,6 +1,7 @@
 import os
 import logging
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,6 +28,7 @@ def get_chatbot():
 def create_app(testing: bool = False):
     app = Flask(__name__)
     app.config["TESTING"] = testing
+    CORS(app, resources={r"/*": {"origins": "*"}})
 
     @app.errorhandler(Exception)
     def handle_exception(e):
