@@ -25,7 +25,7 @@ class EnhancedHybridRetriever:
       (those live in the system prompt only)
     """
     
-    def __init__(self, pinecone_index: str = "pdf-knowledge-base"):
+    def __init__(self, pinecone_index: str = "media-literacy-new"):
         self.pinecone_client = PineconeClient(pinecone_index)
         self.neo4j_client = Neo4jClient()
         self.query_expander = QueryExpander()
@@ -175,3 +175,4 @@ class EnhancedHybridRetriever:
 
 # Backwards compatibility
 HybridRetriever = EnhancedHybridRetriever
+
