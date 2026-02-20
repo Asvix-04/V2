@@ -1,17 +1,35 @@
 import os
+import hashlib
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _deterministic_hash(value: str) -> str:
+    """Deterministic hash that is stable across Python processes and restarts.
+    
+    FIX for Issue #4: Python's built-in hash() is randomized per process
+    (PYTHONHASHSEED), so neo4j_id generated during ingestion won't match
+    the IDs looked up during retrieval. Using SHA-256 truncated to 12 hex chars.
+    """
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()[:12]
+
+
 class PineconeClient:
     def __init__(self, index_name: str = "pdf-knowledge-base"):
+        # FIX for Issue #7: Validate API key before proceeding
         self.api_key = os.getenv("PINECONE_API_KEY")
+        if not self.api_key:
+            raise ValueError(
+                "PINECONE_API_KEY not found in environment variables. "
+                "Please set it in your .env file."
+            )
+        
         self.index_name = index_name
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         
-        # NEW: Initialize Pinecone with new API
         from pinecone import Pinecone, ServerlessSpec
         
         # Initialize Pinecone client
@@ -28,7 +46,7 @@ class PineconeClient:
                 metric="cosine",
                 spec=ServerlessSpec(
                     cloud="aws",
-                    region=os.getenv("PINECONE_ENVIRONMENT", "us-east-1")  # Use your environment
+                    region=os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
                 )
             )
         
@@ -47,13 +65,17 @@ class PineconeClient:
         for chunk in chunks:
             embedding = self.create_embeddings([chunk.text])[0]
             
+            # FIX for Issue #4: Use deterministic hash instead of Python hash()
+            section_path_str = ' > '.join(chunk.section_path)
+            neo4j_id = f"section_{_deterministic_hash(section_path_str)}"
+            
             vector = {
                 'id': chunk.chunk_id,
                 'values': embedding,
                 'metadata': {
                     **chunk.metadata,
                     'text': chunk.text[:500],  # Store first 500 chars for reference
-                    'neo4j_id': f"section_{hash(' > '.join(chunk.section_path)) % 1000000}",
+                    'neo4j_id': neo4j_id,
                     'type': 'document_chunk'
                 }
             }
