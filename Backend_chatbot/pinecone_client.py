@@ -18,7 +18,7 @@ def _deterministic_hash(value: str) -> str:
 
 
 class PineconeClient:
-    def __init__(self, index_name: str = "pdf-knowledge-base"):
+    def __init__(self, index_name: str = "media-literacy-new"):
         # FIX for Issue #7: Validate API key before proceeding
         self.api_key = os.getenv("PINECONE_API_KEY")
         if not self.api_key:
