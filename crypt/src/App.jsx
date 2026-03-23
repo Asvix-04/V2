@@ -19,6 +19,8 @@ import { Contributors } from "./pages/Contributors";
 import { Features } from "./pages/Features";
 import { TermsAndConditions } from "./pages/TermsAndConditions";
 import { Methodology } from "./pages/Methodology";
+import { PrivacyPolicy } from "./pages/PrivacyPolicy";
+import { ContactPage } from "./pages/ContactPage";
 import { UIProvider } from "./context/UIContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { DocumentProvider } from "./context/DocumentContext";
@@ -104,6 +106,8 @@ function AnimatedRoutes() {
         <Route path="/features" element={<Features />} />
         <Route path="/terms" element={<TermsAndConditions />} />
         <Route path="/methodology" element={<Methodology />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/contact" element={<ContactPage />} />
       </Route>
     </Routes>
   );

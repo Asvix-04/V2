@@ -1,6 +1,7 @@
 import { Github, Twitter, Linkedin, Facebook } from "lucide-react";
 import { Logo } from "../ui/Logo";
 import { Link } from "react-router-dom";
+import logo from "../../assets/image.png";
 
 export function Footer() {
     return (
@@ -30,14 +31,14 @@ export function Footer() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-12 md:grid-cols-4 lg:gap-8">
+                <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:gap-8">
                     {/* Brand Column */}
                     <div className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/20">
-                                <Logo className="h-5 w-5 text-accent" />
+                        <div className="flex items-center space-x-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-lg overflow-hidden shadow-lg">
+                                <img src={logo} alt="DigiLab Logo" className="h-full w-full object-contain" />
                             </div>
-                            <span className="text-xl font-semibold tracking-tight text-foreground">Digilab</span>
+                            <span className="text-2xl font-bold tracking-tight text-foreground">Digilab</span>
                         </div>
                         <p className="max-w-xs text-sm text-foreground-muted">
                             Empowering the next generation of learners and educators with AI-driven academic intelligence.
@@ -50,39 +51,16 @@ export function Footer() {
                         </div>
                     </div>
 
-                    {/* Product Column */}
-                    <div>
-                        <h4 className="mb-6 text-sm font-semibold uppercase tracking-wider text-foreground">Product</h4>
-                        <ul className="space-y-4 text-sm text-foreground-muted">
-                            <FooterLink to="/features">Features</FooterLink>
-                            <FooterLink to="/methodology">Methodology</FooterLink>
-                            <FooterLink to="#">Integration</FooterLink>
-                            <FooterLink to="#">Pricing</FooterLink>
-                        </ul>
-                    </div>
-
-                    {/* Resources Column */}
-                    <div>
-                        <h4 className="mb-6 text-sm font-semibold uppercase tracking-wider text-foreground">Resources</h4>
-                        <ul className="space-y-4 text-sm text-foreground-muted">
-                            <FooterLink to="#">Documentation</FooterLink>
-                            <FooterLink to="#">API Reference</FooterLink>
-                            <FooterLink to="#">Community</FooterLink>
-                            <FooterLink to="#">Blog</FooterLink>
-                        </ul>
-                    </div>
-
                     {/* Company Column */}
                     <div>
                         <h4 className="mb-6 text-sm font-semibold uppercase tracking-wider text-foreground">Company</h4>
                         <ul className="space-y-4 text-sm text-foreground-muted">
                             <FooterLink to="/about">About</FooterLink>
                             <FooterLink to="/terms">Terms & Conditions</FooterLink>
-                            <FooterLink to="/contributors">Contributors</FooterLink>
                             <FooterLink to="/cookies">Cookies</FooterLink>
-                            <FooterLink to="#">Careers</FooterLink>
-                            <FooterLink to="#">Contact</FooterLink>
-                            <FooterLink to="#">Privacy Policy</FooterLink>
+                            <FooterLink to="/privacy">Privacy Policy</FooterLink>
+                            <FooterLink to="/contributors">Contributors</FooterLink>
+                            <FooterLink to="/contact">Contact</FooterLink>
                         </ul>
                     </div>
                 </div>
@@ -93,8 +71,9 @@ export function Footer() {
                     </p>
                     <div className="mt-4 flex justify-center space-x-6 text-sm text-foreground-subtle sm:mt-0">
                         <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-                        <Link to="#" className="hover:text-foreground transition-colors">Privacy</Link>
+                        <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
                         <Link to="/cookies" className="hover:text-foreground transition-colors">Cookies</Link>
+                        <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
                     </div>
                 </div>
             </div>
