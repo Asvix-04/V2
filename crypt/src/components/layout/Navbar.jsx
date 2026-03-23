@@ -5,7 +5,7 @@ import { Button } from "../ui/Button";
 import { cn } from "../../lib/utils";
 import { GraduationCap, LayoutGrid, MessageSquare, User, Settings, LogOut } from "lucide-react";
 import { useLanguage } from "../../context/LanguageContext";
-import logo from "../../assets/image.png";
+import { Logo } from "../ui/Logo";
 
 export function Navbar() {
     const location = useLocation();
@@ -38,10 +38,8 @@ export function Navbar() {
     return (
         <nav className="fixed top-0 z-50 w-full border-b border-border-base dark:border-white/5 bg-background-base/80 backdrop-blur-xl">
             <div className="container relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-                <Link to="/home" className="flex items-center space-x-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg overflow-hidden shadow-lg">
-                        <img src={logo} alt="DigiLab Logo" className="h-full w-full object-contain" />
-                    </div>
+                <Link to="/home" className="flex items-center space-x-2">
+                    <Logo className="h-8 w-8" style={{ color: '#5c67f2' }} />
                     <span className="text-xl font-bold tracking-tight text-foreground">DigiLab</span>
                 </Link>
 

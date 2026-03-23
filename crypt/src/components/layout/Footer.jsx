@@ -34,10 +34,8 @@ export function Footer() {
                 <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:gap-8">
                     {/* Brand Column */}
                     <div className="space-y-4">
-                        <div className="flex items-center space-x-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-lg overflow-hidden shadow-lg">
-                                <img src={logo} alt="DigiLab Logo" className="h-full w-full object-contain" />
-                            </div>
+                        <div className="flex items-center space-x-2">
+                            <Logo className="h-8 w-8" style={{ color: '#5c67f2' }} />
                             <span className="text-2xl font-bold tracking-tight text-foreground">Digilab</span>
                         </div>
                         <p className="max-w-xs text-sm text-foreground-muted">
