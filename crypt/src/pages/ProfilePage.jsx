@@ -64,7 +64,7 @@ export function ProfilePage() {
             activeSessions: activeSessions.map(s => ({ device: s.device, location: s.location }))
         };
 
-        const content = `ASVIX PROFILE DATA EXPORT\nGenerated on: ${new Date().toLocaleString()}\n\n` +
+        const content = `DIGILAB PROFILE DATA EXPORT\nGenerated on: ${new Date().toLocaleString()}\n\n` +
             `Full Name: ${userData.name}\n` +
             `Email: ${userData.email}\n` +
             `Language: ${userData.language}\n` +
@@ -79,7 +79,7 @@ export function ProfilePage() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `asvix_profile_data.${format}`;
+        link.download = `digilab_profile_data.${format}`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

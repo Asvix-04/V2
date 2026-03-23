@@ -20,7 +20,7 @@ export function CookiePolicyPage() {
                                 </h1>
                             </div>
                             <p className="text-lg text-foreground-muted max-w-2xl">
-                                Transparency in how Digilab protects and uses your data. We believe in clear, honest communication about our data practices.
+                                Transparency in how DigiLab protects and uses your data. We believe in clear, honest communication about our data practices.
                             </p>
                         </div>
                     </div>
@@ -92,7 +92,7 @@ export function CookiePolicyPage() {
                                 <div>
                                     <h2 className="text-2xl font-bold text-foreground mb-2">Privacy-First EduTech</h2>
                                     <p className="text-foreground-muted leading-relaxed">
-                                        At Digilab, we prioritize your privacy while delivering exceptional academic intelligence tools.
+                                        At DigiLab, we prioritize your privacy while delivering exceptional academic intelligence tools.
                                         This comprehensive policy explains exactly how cookies enhance your experience while keeping your study data secure.
                                     </p>
                                 </div>

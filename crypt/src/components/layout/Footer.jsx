@@ -1,4 +1,5 @@
-import { Github, Twitter, Linkedin, Facebook, BookOpen } from "lucide-react";
+import { Github, Twitter, Linkedin, Facebook } from "lucide-react";
+import { Logo } from "../ui/Logo";
 import { Link } from "react-router-dom";
 
 export function Footer() {
@@ -34,7 +35,7 @@ export function Footer() {
                     <div className="space-y-4">
                         <div className="flex items-center space-x-2">
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/20">
-                                <BookOpen className="h-5 w-5 text-accent" />
+                                <Logo className="h-5 w-5 text-accent" />
                             </div>
                             <span className="text-xl font-semibold tracking-tight text-foreground">Digilab</span>
                         </div>

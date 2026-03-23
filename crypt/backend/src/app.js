@@ -28,7 +28,7 @@ app.use('/uploads', express.static('uploads'));
 
 // Base Route
 app.get('/', (req, res) => {
-    res.send('Asvix API is running...');
+    res.send('DigiLab API is running...');
 });
 
 // Error Handler

@@ -6,7 +6,8 @@ import { Input } from "../components/ui/Input";
 import { FileUpload } from "../components/ui/FileUpload";
 import { PageTransition } from "../components/ui/PageTransition";
 import { useDocuments } from "../context/DocumentContext";
-import { BookOpen, FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map, RotateCcw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map, RotateCcw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Logo } from "../components/ui/Logo";
 import api from "../lib/api";
 
 export function DashboardPage() {
@@ -133,7 +134,7 @@ export function DashboardPage() {
                     </Card>
 
                     <Card className="p-4 border-border-base dark:border-white/5">
-                        <h4 className="mb-4 text-sm font-medium text-foreground-muted">RECENT ACTIVITY</h4>
+                        <h4 className="mb-4 text-sm font-medium text-foreground-muted">RECENT CHATS</h4>
                         <ul className="space-y-3">
                             {isLoadingSessions ? (
                                 <li className="text-sm text-foreground-muted p-2">Loading activity...</li>
@@ -193,16 +194,16 @@ export function DashboardPage() {
                                         </div>
                                     )}
                                 </div>
-                                <h3 className="font-semibold text-foreground">{isTeacher ? "Export Reports" : "Review Notes & Trash"}</h3>
+                                <h3 className="font-semibold text-foreground">{isTeacher ? "Export Reports" : "Retrieve Chats"}</h3>
                                 <p className="text-sm text-foreground-muted mt-2">
-                                    {isTeacher ? "Access your saved content." : "Restore deleted chats or view notes."}
+                                    {isTeacher ? "Access your saved content." : "Retrieve or restore your deleted chats."}
                                 </p>
 
                                 {!isTeacher && showDeleted && (
                                     <div className="mt-6 space-y-3 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar" onClick={(e) => e.stopPropagation()}>
-                                        <h4 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">Restorable Chats</h4>
+                                        <h4 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">Retrieve Chats</h4>
                                         {isLoadingDeleted ? (
-                                            <p className="text-sm text-foreground-muted py-4">Loading trash...</p>
+                                            <p className="text-sm text-foreground-muted py-4">Loading chats...</p>
                                         ) : deletedSessions.length > 0 ? (
                                             deletedSessions.map((session) => (
                                                 <div key={session.id} className="flex items-center justify-between p-3 rounded-lg bg-accent/5 border border-white/5 hover:bg-accent/10 transition-colors">
@@ -225,8 +226,8 @@ export function DashboardPage() {
                                             ))
                                         ) : (
                                             <div className="flex flex-col items-center justify-center py-8 text-foreground-muted opacity-60">
-                                                <Trash2 className="h-8 w-8 mb-2" />
-                                                <p className="text-sm">Trash is empty</p>
+                                                <RotateCcw className="h-8 w-8 mb-2" />
+                                                <p className="text-sm">No chats to retrieve</p>
                                             </div>
                                         )}
                                     </div>

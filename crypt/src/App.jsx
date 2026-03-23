@@ -1,7 +1,7 @@
+import * as React from "react";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
-
-import { AnimatePresence } from "framer-motion"; // Unused now, but keeping for reference or removal
+import { AnimatePresence } from "framer-motion";
 
 import { Layout } from "./layouts/Layout";
 import { HomePage } from "./pages/HomePage";
@@ -23,6 +23,34 @@ import { UIProvider } from "./context/UIContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { DocumentProvider } from "./context/DocumentContext";
 import { RoadmapProvider } from "./context/RoadmapContext";
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ color: "red", padding: "20px" }}>
+          <h1>Something went wrong.</h1>
+          <pre>{this.state.error && this.state.error.toString()}</pre>
+          <pre>{this.state.error && this.state.error.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Redirect first-time visitors to /chat, then show HomePage on subsequent visits
 function FirstVisitRedirect() {
@@ -65,7 +93,6 @@ function AnimatedRoutes() {
       {/* Main Layout Routes (With Header/Footer) */}
       <Route element={<Layout />}>
         <Route path="/" element={<FirstVisitRedirect />} />
-        {/* Redirect /home to / to support existing links */}
         <Route path="/home" element={<Navigate to="/" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/roadmaps" element={<RoadmapsPage />} />
@@ -90,7 +117,9 @@ function App() {
           <RoadmapProvider>
             <BrowserRouter>
               <ScrollToTop />
-              <AnimatedRoutes />
+              <ErrorBoundary>
+                <AnimatedRoutes />
+              </ErrorBoundary>
             </BrowserRouter>
           </RoadmapProvider>
         </DocumentProvider>

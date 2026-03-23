@@ -38,7 +38,7 @@ const Card = React.forwardRef(({ className, children, spotlight = true, ...props
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             className={cn(
-                "relative overflow-hidden transition-all duration-300",
+                "relative transition-all duration-300",
                 // Light Mode (Neumorphism: Lifted -> Submerged/Pressed on Hover)
                 "rounded-[32px] bg-background-base border border-black/5 shadow-neu hover:shadow-neu-pressed hover:translate-y-1",
                 // Dark Mode (Linear / Glass)

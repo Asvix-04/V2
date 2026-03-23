@@ -10,7 +10,8 @@ import { ChatInput } from "../components/ui/ChatInput";
 import { MessageBubble } from "../components/ui/MessageBubble";
 import { PageTransition } from "../components/ui/PageTransition";
 import { VoiceOverlay } from "../components/ui/VoiceOverlay";
-import { ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map, Trash2, AlertCircle, Loader2, Wifi, WifiOff, Plus, User as UserIcon, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, FileText, Layout, Lightbulb, MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map, Trash2, AlertCircle, Loader2, Wifi, WifiOff, Plus, User as UserIcon, X } from "lucide-react";
+import { Logo } from "../components/ui/Logo";
 import { MdSearch } from "react-icons/md";
 import chatbotApi from "../lib/chatbotApi";
 import api from "../lib/api";
@@ -95,7 +96,7 @@ export function ChatPage() {
     const [error, setError] = React.useState(null);
     const [isConnected, setIsConnected] = React.useState(false);
     const [isCheckingConnection, setIsCheckingConnection] = React.useState(true);
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth >= 1024);
     const [isIncognito, setIsIncognito] = React.useState(false);
     const messagesEndRef = React.useRef(null);
 
@@ -358,6 +359,23 @@ export function ChatPage() {
 
     const nextTopic = getNextTopic();
 
+    const handleNewChatRef = React.useRef(handleNewChat);
+    React.useEffect(() => {
+        handleNewChatRef.current = handleNewChat;
+    });
+
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.altKey && e.key.toLowerCase() === 'n') {
+                e.preventDefault();
+                handleNewChatRef.current();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     return (
         <PageTransition className="relative flex h-screen w-full overflow-hidden bg-background-base text-foreground">
             {/* Sidebar - Context / History */}
@@ -617,7 +635,7 @@ export function ChatPage() {
                                             </Link>
                                             <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-foreground-muted shrink-0" />
                                             <div className="flex items-center gap-2">
-                                                <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
+                                                <Logo className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-accent shrink-0" />
                                                 <span className="font-semibold text-sm sm:text-base text-foreground truncate max-w-[150px] sm:max-w-none">{currentTopic.title}</span>
                                             </div>
                                         </div>

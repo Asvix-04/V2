@@ -8,6 +8,9 @@ class User {
         this.email = data.email;
         this.password = data.password;
         this.role = data.role || 'student';
+        this.googleId = data.googleId || null;
+        this.githubId = data.githubId || null;
+        this.profilePhoto = data.profilePhoto || null;
         this.createdAt = data.createdAt || new Date();
     }
 
@@ -67,6 +70,9 @@ class User {
                     email: this.email,
                     password: this.password,
                     role: this.role,
+                    googleId: this.googleId,
+                    githubId: this.githubId,
+                    profilePhoto: this.profilePhoto,
                     createdAt: new Date()
                 });
                 this.id = docRef.id;

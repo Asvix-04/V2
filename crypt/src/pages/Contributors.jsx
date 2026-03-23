@@ -172,7 +172,7 @@ export function Contributors() {
             </span>
           </h1>
           <p className="text-foreground-muted max-w-2xl mx-auto">
-            Meet the talented team behind Asvix — building intelligent academic
+            Meet the talented team behind DigiLab — building intelligent academic
             experiences through AI and modern technology.
           </p>
         </div>

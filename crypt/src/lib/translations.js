@@ -17,10 +17,10 @@ export const translations = {
         "chat.share": "Share",
         "chat.savePlan": "Save Plan",
         "chat.inputPlaceholder": "Type your message here...",
-        "chat.disclaimer": "Digilab Learning Assistant can make mistakes. Verify important information.",
+        "chat.disclaimer": "DigiLab Learning Assistant can make mistakes. Verify important information.",
         "chat.guestLimit": "Guest limit reached. Please log in to continue.",
         "chat.loginToContinue": "Login to Continue",
-        "chat.welcomeGuest": "Welcome, Guest! You can chat with Asvix in restricted mode.",
+        "chat.welcomeGuest": "Welcome, Guest! You can chat with DigiLab in restricted mode.",
 
         // Profile Page
         "profile.settings": "Account Settings",
@@ -91,7 +91,7 @@ export const translations = {
         "home.features.card3.title": "Concept Mapping",
         "home.features.card3.desc": "Visualize connections between topics.",
         "home.features.card4.title": "Ready to transform your workflow?",
-        "home.features.card4.desc": "Join hundreds of early adopters piloting Asvix.",
+        "home.features.card4.desc": "Join hundreds of early adopters piloting DigiLab.",
         "home.features.card4.system": "SYSTEM ONLINE",
         "home.features.card4.btn": "Get Started",
 
@@ -186,7 +186,7 @@ export const translations = {
         "home.features.card3.title": "संकल्पना मानचित्रण",
         "home.features.card3.desc": "विषयों के बीच संबंधों की कल्पना करें।",
         "home.features.card4.title": "अपनी कार्यप्रणाली को बदलने के लिए तैयार हैं?",
-        "home.features.card4.desc": "Asvix का संचालन करने वाले सैकड़ों शुरुआती उपयोगकर्ताओं में शामिल हों।",
+        "home.features.card4.desc": "DigiLab का संचालन करने वाले सैकड़ों शुरुआती उपयोगकर्ताओं में शामिल हों।",
         "home.features.card4.system": "सिस्टम ऑनलाइन",
         "home.features.card4.btn": "शुरू करें",
 
@@ -217,10 +217,10 @@ export const translations = {
         "chat.share": "साझा करें",
         "chat.savePlan": "योजना सहेजें",
         "chat.inputPlaceholder": "अपना संदेश यहाँ लिखें...",
-        "chat.disclaimer": "Digilab Learning Assistant गलतियाँ कर सकता है। महत्वपूर्ण जानकारी की पुष्टि करें।",
+        "chat.disclaimer": "DigiLab Learning Assistant गलतियाँ कर सकता है। महत्वपूर्ण जानकारी की पुष्टि करें।",
         "chat.guestLimit": "गेस्ट सीमा पूरी हो गई। जारी रखने के लिए कृपया लॉग इन करें।",
         "chat.loginToContinue": "जारी रखने के लिए लॉग इन करें",
-        "chat.welcomeGuest": "स्वागत है! आप प्रतिबंधित मोड में Digilab के साथ चैट कर सकते हैं।",
+        "chat.welcomeGuest": "स्वागत है! आप प्रतिबंधित मोड में DigiLab के साथ चैट कर सकते हैं।",
         "chat.classroomPlan": "कक्षा योजना",
         "chat.deepDive": "गहन विश्लेषण",
         "chat.overview": "अवलोकन"

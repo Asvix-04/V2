@@ -3,8 +3,9 @@ import { Link, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "../ui/Button";
 import { cn } from "../../lib/utils";
-import { BookOpen, GraduationCap, LayoutGrid, MessageSquare, User, Settings, LogOut } from "lucide-react";
+import { GraduationCap, LayoutGrid, MessageSquare, User, Settings, LogOut } from "lucide-react";
 import { useLanguage } from "../../context/LanguageContext";
+import { Logo } from "../ui/Logo";
 
 export function Navbar() {
     const location = useLocation();
@@ -39,7 +40,7 @@ export function Navbar() {
             <div className="container relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
                 <Link to="/home" className="flex items-center space-x-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/20">
-                        <BookOpen className="h-5 w-5 text-accent" />
+                        <Logo className="h-5 w-5 text-accent" />
                     </div>
                     <span className="text-lg font-semibold tracking-tight">DigiLab</span>
                 </Link>

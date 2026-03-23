@@ -12,7 +12,7 @@ export function DocumentProvider({ children }) {
     // Initialize from localStorage or empty array
     const [documents, setDocuments] = React.useState(() => {
         if (typeof window !== "undefined") {
-            const saved = localStorage.getItem("asvix_documents");
+            const saved = localStorage.getItem("digilab_documents");
             return saved ? JSON.parse(saved) : [];
         }
         return [];
@@ -21,7 +21,7 @@ export function DocumentProvider({ children }) {
     // Persist to localStorage whenever documents change
     React.useEffect(() => {
         if (typeof window !== "undefined") {
-            localStorage.setItem("asvix_documents", JSON.stringify(documents));
+            localStorage.setItem("digilab_documents", JSON.stringify(documents));
         }
     }, [documents]);
 

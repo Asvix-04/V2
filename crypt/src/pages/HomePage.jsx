@@ -6,7 +6,9 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageTransition } from "../components/ui/PageTransition";
 import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star, StarOff } from "lucide-react";
+import { Logo } from "../components/ui/Logo";
 import { useUI } from "../context/UIContext";
+import { PerformanceStats } from "../components/PerformanceStats";
 
 function PricingFeature({ children, highlighted = false }) {
     return (
@@ -159,7 +161,7 @@ export function HomePage() {
                     {/* Hero Card */}
                     <Card className="col-span-1 md:col-span-4 md:row-span-2 p-8 flex flex-col justify-end group text-foreground dark:text-white border-border-base dark:border-white/5">
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60 z-0 opacity-0 dark:opacity-100 transition-opacity" />
-                        <BookOpen className="h-12 w-12 text-accent mb-4 z-10" />
+                        <Logo className="h-12 w-12 text-accent mb-4 z-10" />
                         <h3 className="text-2xl font-semibold z-10">{t('home.features.card1.title')}</h3>
                         <p className="mt-2 text-foreground-muted dark:text-gray-300 max-w-md z-10 group-hover:text-foreground dark:group-hover:text-white transition-colors">
                             {t('home.features.card1.desc')}
@@ -261,6 +263,12 @@ export function HomePage() {
                         </Card>
                     </motion.div>
                 </div>
+            </section>
+
+            {/* Performance Metrics Section */}
+            <section className="relative py-12">
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-accent/[0.02] to-transparent pointer-events-none" />
+                <PerformanceStats />
             </section>
         </PageTransition>
     );

@@ -34,7 +34,6 @@ const initializeFirebase = () => {
 
     } catch (error) {
         console.error(`Firebase initialization error: ${error.message}`);
-        // Don't exit process, allow server to run for other tasks
         return null;
     }
 };
@@ -46,4 +45,8 @@ const getFirestore = () => {
     return db;
 };
 
-module.exports = { initializeFirebase, getFirestore };
+const getAuth = () => {
+    return admin.auth();
+};
+
+module.exports = { initializeFirebase, getFirestore, getAuth };
