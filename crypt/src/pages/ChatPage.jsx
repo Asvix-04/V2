@@ -865,7 +865,7 @@ export function ChatPage() {
 
             <AnimatePresence>
 
-                {isSidebarOpen && (
+                {!isIncognito && isSidebarOpen && (
 
                     <>
 
@@ -893,11 +893,11 @@ export function ChatPage() {
 
                             transition={{ type: "spring", damping: 25, stiffness: 200 }}
 
-                            className="fixed inset-y-0 left-0 z-[60] flex w-80 flex-col border-r border-zinc-200 dark:border-white/5 bg-white dark:bg-zinc-900 backdrop-blur-xl lg:relative lg:flex h-full"
+                            className="fixed inset-y-0 left-0 z-[60] flex w-80 flex-col border-r border-zinc-200 dark:border-white/5 bg-white dark:bg-zinc-950 backdrop-blur-xl lg:relative lg:flex h-full"
 
                         >
 
-                            <div className="flex h-16 items-center justify-between border-b border-zinc-200 dark:border-white/5 px-4 bg-white/80 dark:bg-zinc-900/80 sticky top-0 z-10">
+                            <div className="flex h-16 items-center justify-between border-b border-zinc-200 dark:border-white/5 px-4 bg-white/80 dark:bg-zinc-950/80 sticky top-0 z-10">
 
                                 <Link
 
@@ -1025,7 +1025,7 @@ export function ChatPage() {
 
 
 
-                            <div className="mt-auto border-t border-zinc-200 dark:border-white/5 p-4 bg-zinc-50 dark:bg-zinc-900/50">
+                            <div className="mt-auto border-t border-zinc-200 dark:border-white/5 p-4 bg-zinc-50 dark:bg-zinc-950/50">
 
                                 <Link
 
@@ -1033,7 +1033,7 @@ export function ChatPage() {
 
                                     onClick={() => setIsSidebarOpen(false)}
 
-                                    className="flex w-full items-center gap-3 rounded-xl p-3 transition-all hover:bg-zinc-100 dark:hover:bg-white/5 group bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-white/5"
+                                    className="flex w-full items-center gap-3 rounded-xl p-3 transition-all hover:bg-zinc-100 dark:hover:bg-white/5 group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5"
 
                                 >
 
@@ -1111,7 +1111,11 @@ export function ChatPage() {
 
                     <button
 
-                        onClick={() => setIsIncognito(!isIncognito)}
+                        onClick={() => {
+                            const nextIncognito = !isIncognito;
+                            setIsIncognito(nextIncognito);
+                            if (nextIncognito) setIsSidebarOpen(false);
+                        }}
 
                         title={isIncognito ? "Turn off incognito" : "Turn on incognito"}
 
@@ -1426,11 +1430,7 @@ export function ChatPage() {
 
                                     <div className="text-center mb-10">
 
-                                        <div className="h-20 w-20 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-sm border border-blue-100 dark:border-blue-900/30">
 
-                                            <MessageSquare className="h-10 w-10 text-blue-600 dark:text-blue-400" />
-
-                                        </div>
 
                                         <h1 className="text-4xl font-bold tracking-tight mb-3 text-zinc-900 dark:text-white">{greeting}</h1>
 
