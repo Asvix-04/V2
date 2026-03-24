@@ -87,7 +87,17 @@ export function ChatPage() {
     const [isCheckingConnection, setIsCheckingConnection] = React.useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const [isIncognito, setIsIncognito] = React.useState(false);
+    const [selectedLanguage, setSelectedLanguage] = React.useState('en-IN');
     const messagesEndRef = React.useRef(null);
+
+    const LANGUAGE_OPTIONS = [
+        { code: 'en-IN', label: '🇮🇳 English' },
+        { code: 'hi-IN', label: '🇮🇳 Hindi' },
+        { code: 'ta-IN', label: '🇮🇳 Tamil' },
+        { code: 'te-IN', label: '🇮🇳 Telugu' },
+        { code: 'bn-IN', label: '🇮🇳 Bengali' },
+        { code: 'mr-IN', label: '🇮🇳 Marathi' },
+    ];
 
     // Check backend health and fetch sessions on mount
     React.useEffect(() => {
@@ -208,10 +218,12 @@ export function ChatPage() {
         };
         setMessages((prev) => [...prev, userMsg]);
 
-        // Call the real API
+        // Call the real API (use textToText for non-English)
         setIsLoading(true);
         try {
-            const response = await chatbotApi.sendMessage(text);
+            const response = selectedLanguage === 'en-IN'
+                ? await chatbotApi.sendMessage(text)
+                : await chatbotApi.textToText(text, selectedLanguage);
             const assistantMsg = {
                 role: "assistant",
                 content: response.answer,
@@ -266,6 +278,25 @@ export function ChatPage() {
             setIsLoading(false);
         }
     };
+
+    // Handle voice-to-voice message result from VoiceOverlay
+    const handleVoiceMessage = React.useCallback(({ transcription, answer, audioBase64 }) => {
+        const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const userMsg = {
+            role: 'user',
+            content: transcription || '🎤 Voice message',
+            timestamp: ts,
+            isVoice: true,
+        };
+        const assistantMsg = {
+            role: 'assistant',
+            content: answer || '🔊 Audio response',
+            timestamp: ts,
+            isVoice: !!audioBase64,
+        };
+        setMessages(prev => [...prev, userMsg, assistantMsg]);
+    }, []);
+
 
     // Theme Toggle Logic
     const toggleTheme = () => {
@@ -627,7 +658,20 @@ export function ChatPage() {
                                     animate={{ opacity: 1, scale: 1 }}
                                     className="flex-1 flex flex-col items-center justify-center p-4 max-w-4xl mx-auto w-full"
                                 >
-                                    <h1 className="text-4xl font-bold tracking-tight mb-10">How can I help you?</h1>
+                                    <h1 className="text-4xl font-bold tracking-tight mb-6">How can I help you?</h1>
+
+                                    {/* Language selector */}
+                                    <div className="mb-4 flex justify-center">
+                                        <select
+                                            value={selectedLanguage}
+                                            onChange={(e) => setSelectedLanguage(e.target.value)}
+                                            className="text-xs rounded-full border border-border-base dark:border-white/10 bg-background-base dark:bg-white/5 text-foreground-muted px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent/50 cursor-pointer transition-all"
+                                        >
+                                            {LANGUAGE_OPTIONS.map(opt => (
+                                                <option key={opt.code} value={opt.code}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
                                     <div className="w-full relative px-4">
                                         <ChatInput
@@ -759,9 +803,20 @@ export function ChatPage() {
                                                 disabled={isLoading || !isConnected}
                                                 onVoiceToggle={() => setIsVoiceMode(true)}
                                             />
-                                            <p className="mt-2 text-center text-[10px] text-foreground-subtle">
-                                                {t('chat.disclaimer')}
-                                            </p>
+                                            <div className="mt-2 flex items-center justify-between px-1">
+                                                <select
+                                                    value={selectedLanguage}
+                                                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                                                    className="text-xs rounded-full border border-border-base dark:border-white/10 bg-background-base dark:bg-white/5 text-foreground-muted px-3 py-1 focus:outline-none focus:ring-1 focus:ring-accent/50 cursor-pointer transition-all"
+                                                >
+                                                    {LANGUAGE_OPTIONS.map(opt => (
+                                                        <option key={opt.code} value={opt.code}>{opt.label}</option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-[10px] text-foreground-subtle">
+                                                    {t('chat.disclaimer')}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -811,6 +866,8 @@ export function ChatPage() {
                 <VoiceOverlay
                     isOpen={isVoiceMode}
                     onClose={() => setIsVoiceMode(false)}
+                    onVoiceMessage={handleVoiceMessage}
+                    responseLanguage={selectedLanguage}
                 />
             </div>
         </PageTransition>
