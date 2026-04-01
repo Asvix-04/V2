@@ -1,305 +1,398 @@
-from google import genai
-from google.genai import types
 from typing import List, Dict, Any
-import os
-import json
-import re
+import os, json, re, time
 from dotenv import load_dotenv
 from hybrid_retriever import HybridRetriever
+from llm_client import UnifiedLLMClient, AVAILABLE_MODELS, ModelConfig
 
 load_dotenv()
 
-# ─────────────────────────────────────────────────────────────
-# Default message for out-of-scope questions
-# ─────────────────────────────────────────────────────────────
-OUT_OF_SCOPE_MESSAGE = (
-    "This question is outside the scope of the Media Literacy course materials. "
-    "I'm Digilab — I can help you with topics covered in your IGNOU Mass Communication "
-    "and Journalism syllabus, including:\n\n"
-    "• Journalism (print, online, radio, television)\n"
-    "• Digital Photography & Videography\n"
-    "• Media Literacy & Media Ethics\n"
-    "• Advertising & Public Relations\n"
-    "• Social Media & Digital Communication\n"
-    "• Visual Communication & Photojournalism\n"
-    "• Communication Theory & Research Methods\n\n"
-    "Try asking about one of these topics!"
-)
+OUT_OF_SCOPE_MESSAGE = """This question is outside the scope of the Media Literacy course materials.
+
+I'm Digilab — I can help you with topics covered in your IGNOU Mass Communication and Journalism syllabus, including:
+
+• Journalism (print, online, radio, television)
+• Digital Photography & Videography
+• Media Literacy & Media Ethics
+• Advertising & Public Relations
+• Social Media & Digital Communication
+• Visual Communication & Photojournalism
+• Communication Theory & Research Methods
+
+Try asking about one of these topics!"""
+
+RATE_LIMIT_MESSAGE = "I'm currently experiencing high traffic. Please wait a moment and try again."
 
 
 class PDFChatbot:
     """
-    IGNOU Media Literacy Course Chatbot — Digilab.
-    
-    Powered by Google Gemini (new google-genai SDK).
-    Uses: genai.Client(api_key=...) → client.models.generate_content(...)
-    Model: gemini-3-flash-preview
-    
-    Design goals:
-    - 95%+ accuracy on syllabus questions
-    - Zero LLM overshadowing (every claim traceable to retrieved material)
-    - Clean rejection of off-topic questions
-    - IGNOU exam-ready answer format
+    IGNOU Media Literacy Course Chatbot — Digilab v7.
+
+    v7 changes — Dynamic Answer Length (Idea 5):
+
+    PROBLEM SOLVED:
+        The old system prompt forced a hard minimum of 250 words for every
+        answer regardless of question complexity. "What is FM radio?" got
+        six paragraphs when two sentences would suffice. Students using
+        DigiLab for quick revision were getting over-explained answers.
+
+    HOW IT WORKS (two-part Idea 5):
+
+    Part 1 — System prompt rewritten:
+        Removed the hardcoded 250-word floor entirely. Replaced with a
+        philosophy: match answer length to the [LENGTH] tag in each prompt.
+        The LLM now understands short/medium/long as distinct modes.
+
+    Part 2 — _detect_length_instruction():
+        Scans the FULL question using re.search() (not re.match()) so it
+        catches compound questions like "What is X and explain Y?" correctly.
+        Long patterns checked FIRST — if any part of the question demands
+        explanation/discussion/comparison, the whole answer is LONG.
+        Returns a [LENGTH: ...] tag injected directly into the synthesis prompt.
+
+    Combined effect:
+        System prompt sets the philosophy (no padding, obey the LENGTH tag).
+        Length tag gives the LLM a specific per-question instruction.
+        Together they align LLM behaviour with question intent reliably.
+
+    All v6 gating, validation, and grounding logic unchanged.
+    No re-indexing required. Deploy and restart.
     """
-    
-    def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "GEMINI_API_KEY not found in environment variables. "
-                "Set it in your .env file. "
-                "Get your key from https://aistudio.google.com/apikey"
-            )
-        
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-3-flash-preview"
+
+    def __init__(self, model_config: ModelConfig = None):
+        if model_config is None:
+            model_config = AVAILABLE_MODELS["1"]
+        self.model_config = model_config
+        self.llm_client = UnifiedLLMClient(model_config)
         self.retriever = HybridRetriever()
         self.conversation_history = []
         self._system_prompt = self._get_system_prompt()
-    
-    def _call_gemini(
-        self,
-        prompt: str,
-        system_instruction: str = None,
-        temperature: float = 0.4,
-        max_output_tokens: int = 2500,
-        top_p: float = 0.95,
-        max_retries: int = 3,
-    ) -> str:
-        """Call Gemini via the new google-genai SDK."""
-        config = types.GenerateContentConfig(
+
+    def switch_model(self, model_config: ModelConfig):
+        """Switch LLM model without losing conversation history."""
+        self.llm_client = UnifiedLLMClient(model_config)
+        self.model_config = model_config
+
+    def _call_llm(self, prompt, system_instruction=None, temperature=0.4,
+                  max_output_tokens=2500, top_p=0.95, max_retries=3, timeout=60):
+        return self.llm_client.generate(
+            prompt=prompt,
+            system_instruction=system_instruction,
             temperature=temperature,
             max_output_tokens=max_output_tokens,
             top_p=top_p,
+            max_retries=max_retries,
+            timeout=timeout,
         )
-        
-        if system_instruction:
-            config.system_instruction = system_instruction
-        
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-            config=config,
+
+    # ─────────────────────────────────────────────────────────
+    # Dynamic length detection (Idea 5 — Part 2)
+    # ─────────────────────────────────────────────────────────
+
+    def _detect_length_instruction(self, question: str) -> str:
+        """
+        Scans the FULL question for intent keywords and returns a [LENGTH] tag.
+
+        Design decisions:
+        1. re.search() not re.match() — catches keywords anywhere, handles
+           compound questions: "What is X and explain Y?" → LONG (correct).
+        2. LONG checked first — highest-demand keyword wins. Prevents
+           "Define radio and discuss its characteristics." → SHORT (wrong).
+        3. "briefly" prefix → always MEDIUM regardless of following keyword.
+           "write a short/brief note" → MEDIUM (short answer expected).
+        4. advantages/disadvantages/characteristics/types etc. in "what are"
+           → LONG because these require enumerated structured answers.
+        5. IGNOU exam keywords covered: elaborate, examine, critically,
+           trace, illustrate, justify, assess — all in IGNOU question papers.
+        6. JUDGE is the safe fallback — LLM decides based on context.
+        """
+        q = question.lower().strip()
+
+        # Special prefixes — override long-pattern detection
+        if re.search(r'\bbriefly\b', q):
+            return (
+                "[LENGTH: MEDIUM — Answer in 1 to 2 focused paragraphs. "
+                "Cover the key points clearly. No padding.]"
+            )
+        if re.search(r'\bwrite a (short|brief) note\b', q):
+            return (
+                "[LENGTH: MEDIUM — Answer in 1 to 2 focused paragraphs. "
+                "Cover the key points clearly. No padding.]"
+            )
+
+        # LONG — check first, any match means full structured answer needed
+        long_patterns = [
+            r'\bexplain\b', r'\bdescribe\b', r'\bdiscuss\b',
+            r'\belaborate\b', r'\bexamine\b', r'\banalyse\b',
+            r'\banalyze\b', r'\bcritically\b', r'\bevaluate\b',
+            r'\bassess\b', r'\bcompare\b', r'\bdifferentiate\b',
+            r'\bdistinguish\b', r'\btrace\b', r'\billustrate\b',
+            r'\bjustify\b', r'\bwrite a note\b', r'\bwrite an essay\b',
+            r'\bin detail\b', r'\bwith examples\b',
+            r'\bwhat are the (different|various|key|main|major|important)\b',
+            r'\bwhat are the (advantages|disadvantages|merits|demerits|pros|cons)\b',
+            r'\bwhat are the (types|characteristics|features|elements|principles|stages|steps)\b',
+            r'\bhow has\b', r'\bhow have\b',
+            r'\bwhat factors\b', r'\bwhat role\b',
+            r'\bwhat impact\b', r'\bwhat challenges\b',
+        ]
+
+        # MEDIUM — 1 to 2 focused paragraphs
+        medium_patterns = [
+            r'\bwhat is the (role|importance|significance|purpose|function|need)\b',
+            r'\bwhat is the (difference|distinction)\b',
+            r'\bhow does\b', r'\bwhy is\b', r'\bwhy are\b', r'\bwhy do\b',
+            r'\bwhat do you (mean|understand) by\b',
+            r'\bhow is\b', r'\bgive an overview\b',
+        ]
+
+        # SHORT — 2 to 4 sentences
+        short_patterns = [
+            r'\bwhat is\b', r'\bwhat are\b', r'\bdefine\b', r'\bname\b',
+            r'\bstate\b', r'\blist\b', r'\bwho is\b', r'\bwho was\b',
+            r'\bwhen was\b', r'\bwhen did\b', r'\bwhere is\b', r'\bwhich\b',
+            r'\bhow many\b', r'\bhow much\b', r'\bwhat does\b', r'\bwhat was\b',
+        ]
+
+        for pattern in long_patterns:
+            if re.search(pattern, q):
+                return (
+                    "[LENGTH: LONG — Write a complete, structured, exam-ready answer. "
+                    "Include an introduction, detailed body with all relevant points, and a conclusion. "
+                    "Use bullet points only when listing distinct items.]"
+                )
+
+        for pattern in medium_patterns:
+            if re.search(pattern, q):
+                return (
+                    "[LENGTH: MEDIUM — Answer in 1 to 2 focused paragraphs. "
+                    "Cover the key points clearly without padding. "
+                    "No need for a full introduction/conclusion structure.]"
+                )
+
+        for pattern in short_patterns:
+            if re.search(pattern, q):
+                return (
+                    "[LENGTH: SHORT — Answer in 2 to 4 sentences maximum. "
+                    "Give a direct, precise answer. Do not add extra paragraphs, "
+                    "bullet points, or background context unless explicitly asked.]"
+                )
+
+        return (
+            "[LENGTH: JUDGE — Answer as long as the question genuinely requires. "
+            "Do not pad. Do not repeat points. Stop when the question is fully answered.]"
         )
-        
-        return response.text
-    
+
+    # ─────────────────────────────────────────────────────────
+    # Main question handler
+    # ─────────────────────────────────────────────────────────
+
     def ask_question(self, question: str, use_history: bool = True) -> Dict[str, Any]:
-        """Process question and generate exam-ready answer."""
+        """
+        Process question and generate a dynamically-sized exam-ready answer.
+
+        GATING LOGIC (unchanged from v5/v6):
+          < 0.020              → HARD REJECT
+          >= 0.020             → Always validate
+          val_score <= 4       → REFUSE
+          is_main=False, <7    → REFUSE
+        """
         print("🔍 Analyzing question and retrieving context...")
-        
         try:
-            # Retrieve enhanced context
             retrieved_context = self.retriever.retrieve(question)
-            
-            # No results at all
+
             if not retrieved_context.vector_results:
-                return {
-                    'answer': OUT_OF_SCOPE_MESSAGE,
-                    'sources': [],
-                    'vector_results': [],
-                    'graph_context': {},
-                    'expanded_queries': []
-                }
-            
-            # ── STEP 1: Check if top retrieval score is too low ──
-            # If the best chunk scores below 0.55, the question is likely off-topic
+                return {'answer': OUT_OF_SCOPE_MESSAGE, 'sources': [],
+                        'vector_results': [], 'graph_context': {}, 'expanded_queries': []}
+
             top_score = max(r.score for r in retrieved_context.vector_results)
-            if top_score < 0.55:
-                print(f"⚠️ Top retrieval score too low ({top_score:.3f}) — likely off-topic")
-                return {
-                    'answer': OUT_OF_SCOPE_MESSAGE,
-                    'sources': [],
-                    'vector_results': retrieved_context.vector_results,
-                    'graph_context': retrieved_context.graph_context,
-                    'expanded_queries': retrieved_context.expanded_queries
-                }
-            
-            # ── STEP 2: Content Sufficiency Validation ──
-            print("🔬 Validating content sufficiency...")
+
+            if top_score < 0.020:
+                print(f"⚠️ Top score {top_score:.4f} — truly off-topic, refusing")
+                return {'answer': OUT_OF_SCOPE_MESSAGE, 'sources': [],
+                        'vector_results': retrieved_context.vector_results,
+                        'graph_context': retrieved_context.graph_context,
+                        'expanded_queries': retrieved_context.expanded_queries}
+
+            if top_score >= 0.06:
+                print(f"📊 High retrieval score ({top_score:.4f}) — validating topic relevance...")
+            elif top_score >= 0.030:
+                print(f"🔬 Medium score ({top_score:.4f}) — validating content sufficiency...")
+            else:
+                print(f"🔬 Borderline score ({top_score:.4f}) — validating content sufficiency...")
+
             validation_result = self._validate_content_sufficiency(question, retrieved_context)
-            
-            validation_failed = validation_result.get('_validation_error', False)
-            
-            if validation_failed:
-                print("⚠️ Validation error — proceeding with answer generation")
-            elif validation_result['completeness_score'] < 4:
-                # Score 1-3: Truly off-topic or unrelated
-                print(f"⚠️ Content unrelated (score: {validation_result['completeness_score']}/10)")
-                return {
-                    'answer': OUT_OF_SCOPE_MESSAGE,
-                    'sources': [r.metadata for r in retrieved_context.vector_results],
-                    'vector_results': retrieved_context.vector_results,
-                    'graph_context': retrieved_context.graph_context,
-                    'expanded_queries': retrieved_context.expanded_queries,
-                    'validation': validation_result
+
+            if validation_result.get('_validation_error', False):
+                print("⚠️ Validation error — using score-based fallback")
+                if top_score < 0.040:
+                    return {'answer': OUT_OF_SCOPE_MESSAGE, 'sources': [],
+                            'vector_results': retrieved_context.vector_results,
+                            'graph_context': retrieved_context.graph_context,
+                            'expanded_queries': retrieved_context.expanded_queries}
+                validation_result = {
+                    "completeness_score": 5, "can_fully_answer": False,
+                    "is_main_subject": False, "topic_directly_discussed": False,
+                    "reasoning": "Validation unavailable — cautious fallback",
+                    "_validation_error": True
                 }
-            elif validation_result['completeness_score'] < 6:
-                # Score 4-5: Tangentially related — check if it's actually answerable
-                if not validation_result.get('topic_directly_discussed', False):
-                    print(f"⚠️ Topic not directly discussed (score: {validation_result['completeness_score']}/10)")
-                    return {
-                        'answer': OUT_OF_SCOPE_MESSAGE,
+            else:
+                val_score = validation_result.get('completeness_score', 5)
+                is_main = validation_result.get('is_main_subject', True)
+                print(f"📊 Validation — score: {val_score}/10 | main_subject: {is_main}")
+
+                if val_score <= 4:
+                    print(f"🚫 Validator: score={val_score} <= 4 — refusing")
+                    return {'answer': OUT_OF_SCOPE_MESSAGE, 'sources': [],
+                            'vector_results': retrieved_context.vector_results,
+                            'graph_context': retrieved_context.graph_context,
+                            'expanded_queries': retrieved_context.expanded_queries}
+
+                if not is_main and val_score < 7:
+                    print(f"🚫 Validator: is_main_subject=False, score={val_score} < 7 — only incidental mention")
+                    return {'answer': OUT_OF_SCOPE_MESSAGE, 'sources': [],
+                            'vector_results': retrieved_context.vector_results,
+                            'graph_context': retrieved_context.graph_context,
+                            'expanded_queries': retrieved_context.expanded_queries}
+
+            prompt = self._build_synthesis_prompt(question, retrieved_context, validation_result)
+            print("🤖 Generating answer...")
+            answer = self._call_llm(
+                prompt=prompt,
+                system_instruction=self._system_prompt,
+                temperature=0.3,
+                max_output_tokens=self.model_config.default_max_tokens,
+            )
+
+            if answer is None:
+                return {'answer': RATE_LIMIT_MESSAGE,
                         'sources': [r.metadata for r in retrieved_context.vector_results],
                         'vector_results': retrieved_context.vector_results,
                         'graph_context': retrieved_context.graph_context,
                         'expanded_queries': retrieved_context.expanded_queries,
-                        'validation': validation_result
-                    }
-                else:
-                    print(f"📝 Partial content (score: {validation_result['completeness_score']}/10) — answering with inference")
-            else:
-                score = validation_result['completeness_score']
-                if score < 8:
-                    print(f"📝 Good content (score: {score}/10)")
-                else:
-                    print(f"✅ Excellent content (score: {score}/10)")
-            
-            # ── STEP 3: Generate Answer ──
-            prompt = self._build_synthesis_prompt(question, retrieved_context, validation_result)
-            
-            print("🤖 Generating answer...")
-            
-            answer = self._call_gemini(
-                prompt=prompt,
-                system_instruction=self._system_prompt,
-                temperature=0.3,  # Slightly lower for higher accuracy
-                max_output_tokens=2500,
-            )
-            
-            # Store in history
+                        'validation': validation_result}
+
             if use_history:
                 self.conversation_history.append({
-                    'question': question,
-                    'answer': answer,
+                    'question': question, 'answer': answer,
                     'sources': [r.metadata for r in retrieved_context.vector_results],
                     'expanded_queries': retrieved_context.expanded_queries,
                     'validation': validation_result
                 })
-            
-            return {
-                'answer': answer,
-                'sources': [r.metadata for r in retrieved_context.vector_results],
-                'vector_results': retrieved_context.vector_results,
-                'graph_context': retrieved_context.graph_context,
-                'expanded_queries': retrieved_context.expanded_queries,
-                'validation': validation_result
-            }
-            
+
+            return {'answer': answer,
+                    'sources': [r.metadata for r in retrieved_context.vector_results],
+                    'vector_results': retrieved_context.vector_results,
+                    'graph_context': retrieved_context.graph_context,
+                    'expanded_queries': retrieved_context.expanded_queries,
+                    'validation': validation_result}
+
         except Exception as e:
             print(f"Error: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                'answer': f"I encountered an error: {str(e)}",
-                'sources': [],
-                'vector_results': [],
-                'graph_context': {},
-                'expanded_queries': []
-            }
-    
+            import traceback; traceback.print_exc()
+            return {'answer': f"I encountered an error: {str(e)}", 'sources': [],
+                    'vector_results': [], 'graph_context': {}, 'expanded_queries': []}
+
+    # ─────────────────────────────────────────────────────────
+    # explain_selection — for api_server.py /chat/explain-selection
+    # ─────────────────────────────────────────────────────────
+
+    def explain_selection(self, selected_text: str, full_bot_message: str) -> Dict[str, str]:
+        prompt = (
+            f"A student highlighted this part of an answer:\n\"{selected_text}\"\n\n"
+            f"Full answer context:\n{full_bot_message}\n\n"
+            f"Explain the highlighted part in 2-4 clear sentences, grounded in the course content above."
+        )
+        explanation = self._call_llm(
+            prompt=prompt,
+            system_instruction=(
+                "You are Digilab, an IGNOU academic assistant. "
+                "Explain clearly and concisely. Stay grounded in the provided course content."
+            ),
+            temperature=0.3,
+            max_output_tokens=500,
+        )
+        return {"explanation": explanation or RATE_LIMIT_MESSAGE}
+
+    # ─────────────────────────────────────────────────────────
+    # Validation
+    # ─────────────────────────────────────────────────────────
+
     def _validate_content_sufficiency(self, question: str, retrieved_context: Any) -> Dict[str, Any]:
-        """
-        Validate if retrieved content can ACTUALLY answer the question.
-        
-        KEY CHANGE: The validator now explicitly checks whether the question
-        is answerable from the context, not just whether related words appear.
-        This catches off-topic questions like "who is Donald Trump?" where
-        social media chunks mention US politics but can't answer the question.
-        """
-        
-        validation_prompt = f"""You are a strict content validator for an academic course chatbot. Your job is to determine if the retrieved context can ACTUALLY ANSWER the specific question asked.
+        """Confidence signal — always runs, never skipped by score alone."""
+        validation_prompt = f"""You are evaluating whether a student's question is genuinely covered by the course material provided.
 
-IMPORTANT: Do NOT give a high score just because the context mentions a related topic. The context must contain information that DIRECTLY ANSWERS what the student is asking.
+STUDENT QUESTION: {question}
 
-Examples of CORRECT scoring:
-- Question: "Who is Donald Trump?" + Context mentions US elections → Score 2 (context cannot answer who someone is)
-- Question: "What is photojournalism?" + Context defines photojournalism → Score 9 (directly answerable)
-- Question: "What are types of cameras?" + Context discusses SLR and DSLR → Score 8 (directly answerable)
-- Question: "What is blockchain?" + Context discusses social media → Score 1 (completely unrelated)
-- Question: "Challenges of online journalism" + Context mentions online journalism trends → Score 6 (partially answerable)
-
-QUESTION: {question}
-
-CONTEXT (first 3000 chars):
+COURSE MATERIAL EXCERPT (first 3000 chars):
 {retrieved_context.combined_context[:3000]}
 
-SCORING RULES:
-1-3: Context CANNOT answer this question at all (off-topic, about a person/event not in syllabus, or unrelated)
-4-5: Context has fragments that touch the topic but CANNOT form a proper answer
-6-7: Context has enough material to construct a partial but useful answer
-8-10: Context directly and comprehensively answers the question
+Answer TWO things carefully:
 
-Respond ONLY with valid JSON:
-{{"completeness_score": <number>, "can_fully_answer": <true/false>, "topic_directly_discussed": <true/false>, "reasoning": "<brief>"}}"""
+QUESTION 1 — COMPLETENESS SCORE (1-10):
+1-3: Topic absent, or appears only as a passing word/example within a different concept
+4-5: Topic is mentioned tangentially or used only as an illustrative example
+6-7: Topic is a genuine subject with partial coverage
+8-10: Topic is a main subject comprehensively covered
+
+QUESTION 2 — IS MAIN SUBJECT (true/false):
+Return FALSE if the topic only appears as: a real-world example, a passing mention, or background context.
+Return TRUE only if the material directly TEACHES or EXPLAINS the topic itself.
+
+CRITICAL EXAMPLES:
+  Q: "what is cricket?" — Material has cricket as example of sports commentary.
+     → completeness_score: 2, is_main_subject: false
+  Q: "what is radio journalism?" — Material has full units on radio journalism.
+     → completeness_score: 9, is_main_subject: true
+  Q: "history of photography" — MNM-003 has a dedicated Unit 1 on this.
+     → completeness_score: 9, is_main_subject: true
+  Q: "photo editing ethics" — MNM-003 Unit 8 covers ethical aspects of photo editing.
+     → completeness_score: 7, is_main_subject: true
+
+Respond ONLY as a single JSON object with no markdown:
+{{"completeness_score": <1-10>, "can_fully_answer": <true/false>, "is_main_subject": <true/false>, "topic_directly_discussed": <true/false>, "reasoning": "<one sentence>"}}"""
 
         try:
-            validation_text = self._call_gemini(
+            validation_text = self._call_llm(
                 prompt=validation_prompt,
-                system_instruction="You are a strict content validator. Respond with ONLY a JSON object, nothing else. No markdown, no explanation.",
+                system_instruction="Respond with ONLY a JSON object. No markdown, no explanation, no code fences.",
                 temperature=0.1,
                 max_output_tokens=300,
-                max_retries=1,
+                max_retries=2,
             )
-            
-            # Rate limit on validation — fail open
             if validation_text is None:
-                print("⚠️ Validation rate-limited — proceeding with answer")
-                return {
-                    "completeness_score": 0,
-                    "can_fully_answer": True,
-                    "topic_directly_discussed": True,
-                    "reasoning": "Validation skipped due to rate limit",
-                    "_validation_error": True
-                }
-            
-            validation_result = self._parse_validation_json(validation_text)
-            
-            if validation_result is None:
-                raise ValueError(f"Could not parse validation response: {validation_text[:200]}")
-            
-            validation_result['_validation_error'] = False
-            return validation_result
-            
+                return {"completeness_score": 2, "can_fully_answer": False, "is_main_subject": False,
+                        "topic_directly_discussed": False, "reasoning": "Rate limit", "_validation_error": True}
+
+            result = self._parse_validation_json(validation_text)
+            if result is None:
+                print(f"⚠️ Validation parse failed: {validation_text[:200]}")
+                return {"completeness_score": 2, "can_fully_answer": False, "is_main_subject": False,
+                        "topic_directly_discussed": False, "reasoning": "Parse failed", "_validation_error": True}
+
+            if 'is_main_subject' not in result:
+                result['is_main_subject'] = result.get('topic_directly_discussed', True)
+            result['_validation_error'] = False
+            return result
+
         except Exception as e:
             print(f"⚠️ Validation error: {e}")
-            return {
-                "completeness_score": 0,
-                "can_fully_answer": True,
-                "topic_directly_discussed": True,
-                "reasoning": f"Validation error — proceeding with answer",
-                "_validation_error": True
-            }
-    
+            return {"completeness_score": 2, "can_fully_answer": False, "is_main_subject": False,
+                    "topic_directly_discussed": False, "reasoning": "Exception", "_validation_error": True}
+
     def _parse_validation_json(self, text: str) -> dict:
-        """
-        Robust JSON parser for Gemini validation responses.
-        
-        Handles common Gemini quirks:
-        1. Markdown code fences (```json ... ```)
-        2. Preamble text before JSON
-        3. Truncated strings inside JSON
-        4. Completely malformed JSON — falls back to regex score extraction
-        """
+        """5-step robust JSON parser for LLM validation responses."""
         if not text:
             return None
-        
         text = text.strip()
-        
-        # Step 1: Strip markdown fences
         text = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.MULTILINE)
         text = re.sub(r'\n?\s*```\s*$', '', text, flags=re.MULTILINE)
         text = text.strip()
-        
-        # Step 2: Try direct JSON parse
         try:
             result = json.loads(text)
             if 'completeness_score' in result:
                 return result
         except json.JSONDecodeError:
             pass
-        
-        # Step 3: Extract JSON object from surrounding text
         json_match = re.search(r'\{[^{}]*\}', text)
         if json_match:
             try:
@@ -307,9 +400,7 @@ Respond ONLY with valid JSON:
                 if 'completeness_score' in result:
                     return result
             except json.JSONDecodeError:
-                # Step 4: Try fixing truncated strings by closing them
                 raw = json_match.group(0)
-                # Close any unterminated string and object
                 fixed = raw
                 if fixed.count('"') % 2 != 0:
                     fixed += '"'
@@ -321,49 +412,59 @@ Respond ONLY with valid JSON:
                         return result
                 except json.JSONDecodeError:
                     pass
-        
-        # Step 5: Last resort — regex extract just the score
         score_match = re.search(r'completeness_score["\s:]+(\d+)', text)
-        topic_match = re.search(r'topic_directly_discussed["\s:]+(\w+)', text)
-        
         if score_match:
             score = int(score_match.group(1))
-            topic_discussed = True
-            if topic_match:
-                topic_discussed = topic_match.group(1).lower() == 'true'
-            
-            return {
-                "completeness_score": score,
-                "can_fully_answer": score >= 7,
-                "topic_directly_discussed": topic_discussed,
-                "reasoning": "Parsed from malformed JSON via regex fallback"
-            }
-        
+            topic_match = re.search(r'topic_directly_discussed["\s:]+(\w+)', text)
+            main_match = re.search(r'is_main_subject["\s:]+(\w+)', text)
+            topic = topic_match.group(1).lower() == 'true' if topic_match else True
+            is_main = main_match.group(1).lower() == 'true' if main_match else topic
+            return {"completeness_score": score, "can_fully_answer": score >= 7,
+                    "is_main_subject": is_main, "topic_directly_discussed": topic,
+                    "reasoning": "Parsed via regex fallback"}
         return None
-    
+
+    # ─────────────────────────────────────────────────────────
+    # System prompt (v7 — dynamic length philosophy)
+    # ─────────────────────────────────────────────────────────
+
     def _get_system_prompt(self) -> str:
-        """
-        System prompt — IGNOU exam-oriented, 95% accuracy target.
-        
-        TIGHTER INFERENCE RULES than previous version:
-        - Can only elaborate on terms/concepts EXPLICITLY PRESENT in retrieved chunks
-        - Cannot connect to general knowledge even if academically correct
-        - Must stay within the paragraph-level context of what's retrieved
-        - If a concept is only mentioned in passing (1 sentence), can add 1-2
-          explanatory sentences max — not a full paragraph
-        """
-        return """You are Digilab, an expert academic assistant for IGNOU's Mass Communication and Journalism programme.
-
-You help students write exam-ready answers by synthesizing course material into clear, complete explanations.
+        return """You are Digilab, an expert academic assistant for IGNOU's Mass Communication and Journalism programme. You help students write exam-ready answers.
 
 ═══════════════════════════════════════
-ANSWER STRUCTURE
+ANSWER LENGTH — OBEY THE [LENGTH] TAG
 ═══════════════════════════════════════
 
-Write like a knowledgeable professor — confident, structured, thorough.
+Every prompt includes a [LENGTH: ...] tag. Follow it strictly.
+
+[LENGTH: SHORT]
+→ 2 to 4 sentences only.
+→ Give a direct, precise answer. No introduction, no conclusion, no bullet points.
+→ Example: "What is FM radio?" → One definition sentence + one key fact. Done.
+
+[LENGTH: MEDIUM]
+→ 1 to 2 focused paragraphs.
+→ Cover the key points clearly. No padding.
+→ No need for full intro/conclusion structure.
+
+[LENGTH: LONG]
+→ Full structured answer: introduction, detailed body, conclusion.
+→ Use bullet points only when listing distinct items.
+→ Include all relevant points from the course material.
+
+[LENGTH: JUDGE]
+→ No strong signal detected. Answer as long as genuinely required.
+→ Stop when the question is fully answered. Do not pad.
+
+CRITICAL: NEVER pad an answer to meet a word count.
+A complete 3-sentence answer is better than a padded 10-sentence answer that repeats itself.
+
+═══════════════════════════════════════
+ANSWER STRUCTURE (for LONG answers only)
+═══════════════════════════════════════
 
 For DESCRIPTIVE / EXPLAIN questions:
-• 1-2 sentence definition or introduction
+• 1-2 sentence introduction
 • Detailed explanation (2-3 paragraphs)
 • 5-7 substantive points where relevant
 • Brief conclusion
@@ -371,8 +472,7 @@ For DESCRIPTIVE / EXPLAIN questions:
 For COMPARISON questions:
 • Brief intro defining both concepts
 • Key features of each (4-5 points each)
-• Clear differences
-• Brief conclusion
+• Clear differences → Brief conclusion
 
 For LIST / ENUMERATE questions:
 • Brief intro, then items with explanation for each
@@ -381,91 +481,97 @@ For LIST / ENUMERATE questions:
 FORMATTING RULES
 ═══════════════════════════════════════
 
-1. PARAGRAPH BREAKS: Use breaks ONLY between major sections (intro → body → conclusion). Do NOT put a blank line between every paragraph. Paragraphs within the same section should flow together. Think textbook formatting — breaks only at clear topic shifts.
-
-2. BOLD KEY TERMS: Bold important concepts when first mentioned using **keyword** format. Bold 5-10 genuinely important terms per answer. Do not over-bold.
-
-3. BULLET POINTS: Use only when listing distinct items. Each bullet must be 1-2 substantive sentences minimum.
-
-═══════════════════════════════════════
-INFERENCE RULES (CRITICAL FOR ACCURACY)
-═══════════════════════════════════════
-
-Your source is the course material provided in each prompt. Follow these rules STRICTLY:
-
-TIER 1 — ALWAYS ALLOWED:
-✅ Directly state facts, definitions, and explanations that appear in the retrieved material.
-✅ Rephrase and restructure information from the material for clarity.
-✅ Combine information from different retrieved chunks into a coherent answer.
-
-TIER 2 — ALLOWED WITH CARE (bounded inference):
-✅ If the material NAMES a concept (e.g., "immediacy is a feature of online journalism"), you may add 1-2 sentences explaining what that concept means in context.
-✅ If the material lists items briefly (e.g., "types include X, Y, Z"), you may expand each item with a short explanation that is consistent with the material's discussion.
-✅ You may add transitional phrases: "Furthermore...", "Building on this...", "In this context..."
-✅ You may use standard academic definitions to clarify technical terms that appear in the material.
-
-TIER 3 — NEVER ALLOWED (prevents LLM overshadowing):
-❌ Do NOT introduce theories, models, or frameworks not mentioned in the material.
-❌ Do NOT name people, researchers, or scholars not present in the material.
-❌ Do NOT add dates, statistics, numbers, or specific facts not in the material.
-❌ Do NOT invent examples. Only use examples from the material or clearly generic ones like "for instance, a journalist might..."
-❌ Do NOT contradict the material.
-❌ Do NOT write about topics the material doesn't cover, even if you know the answer.
-❌ Do NOT stretch tangentially related content to answer unrelated questions.
-
-THE ACCURACY TEST: For every sentence in your answer, ask: "Is this directly stated in the material, OR is it a reasonable 1-2 sentence elaboration of something that IS stated?" If neither, DELETE that sentence.
+1. PARAGRAPH BREAKS: Only between major sections. NOT between every sentence.
+2. BOLD KEY TERMS: Bold important concepts on first mention using **keyword** format.
+3. BULLET POINTS: Only when listing distinct items. Each bullet 1-2 sentences minimum.
+4. SHORT answers: plain prose only — no headers, no bullets unless listing is the task.
 
 ═══════════════════════════════════════
-WHAT NEVER TO DO
+GROUNDING RULES — READ CAREFULLY
 ═══════════════════════════════════════
 
-❌ NEVER say "The materials do not fully elaborate..." or "The sections do not explain..."
-❌ NEVER write meta-commentary about retrieved content
-❌ NEVER produce an answer that is mostly disclaimers
-❌ NEVER chain citations: "According to Unit 3... As stated in Unit 5..."
-❌ NEVER refuse to answer if you have relevant material
-❌ NEVER say "based on the retrieved content" or "the provided material"
-❌ NEVER add a blank line between every paragraph
+The course material provided in the prompt is YOUR ONLY SOURCE OF FACTS.
+
+1. PRESERVE SOURCE LANGUAGE: When the material states a definition, key phrase, or technical term, use the SAME wording.
+
+2. STRICT FACT SOURCING: Every person's name, date, year, statistic, researcher, and specific detail in your answer MUST appear in the retrieved course material. If a fact is not in the material, do not write it.
+
+3. PARTIAL ANSWERS ARE FINE: If the material only partially covers the question, answer what you CAN. End with one sentence like "The course material covers [aspect X]; other aspects are not addressed in the available sections."
+
+4. EXAMPLE VS SUBJECT: If the confidence level says LOW or MEDIUM:
+   ❌ DO NOT define or explain the topic using your world knowledge
+   ✅ DO answer only if the material explicitly TEACHES that topic as its subject
 
 ═══════════════════════════════════════
-TONE AND LENGTH
+HARD PROHIBITIONS
 ═══════════════════════════════════════
 
-• Confident but accurate. Academic but readable.
-• Minimum 250 words for descriptive questions, 150 for short-answer questions.
-• Reference the course naturally: "As discussed in Unit 3..." — once or twice per answer max.
-• If some aspect isn't covered, add ONE brief sentence at the very end noting this."""
+❌ NEVER add people, researchers, or scholars not named in the material
+❌ NEVER add dates, years, or statistics not present in the material
+❌ NEVER add book titles, publication names, or citations not in the material
+❌ NEVER introduce theories or frameworks not referenced in the material
+❌ NEVER invent examples — use only examples explicitly from the material
+❌ NEVER say "The materials do not elaborate..." or "The provided material..."
+❌ NEVER write meta-commentary about what the sources do or don't contain
+❌ NEVER pad an answer with external knowledge to fill length
+❌ NEVER use world knowledge to define a topic that only appears as a passing example
+
+SELF-CHECK: Before finishing, scan your answer. For every name, date, and specific fact — is it in the material above? If not, delete it."""
+
+    # ─────────────────────────────────────────────────────────
+    # Synthesis prompt builder (v7 — injects [LENGTH] tag)
+    # ─────────────────────────────────────────────────────────
 
     def _build_synthesis_prompt(self, question: str, retrieved_context: Any, validation: Dict) -> str:
-        """Build the prompt sent to Gemini. Includes confidence signal."""
-        
+        """
+        v7: Calls _detect_length_instruction() and injects the [LENGTH] tag
+        into the prompt above the course material, giving the LLM a specific
+        per-question length instruction alongside the confidence signal.
+        """
         history = ""
         if self.conversation_history:
             history = "Previous conversation:\n"
             for conv in self.conversation_history[-2:]:
                 history += f"Q: {conv['question']}\nA: {conv['answer'][:200]}...\n\n"
-        
-        # Confidence signal based on validation
-        score = validation.get('completeness_score', 10)
-        if validation.get('_validation_error', False):
-            confidence_note = ""
-        elif score >= 8:
-            confidence_note = "\n[CONFIDENCE: HIGH — The course material comprehensively covers this topic. Provide a thorough, detailed answer.]\n"
-        elif score >= 6:
-            confidence_note = "\n[CONFIDENCE: MEDIUM — The course material partially covers this topic. Answer based on what is available. You may use bounded inference (Tier 2) to fill small gaps. Note any major uncovered aspect briefly at the end.]\n"
-        else:
-            confidence_note = "\n[CONFIDENCE: LOW — Limited material available. Answer only what the material supports. Do not stretch.]\n"
-        
-        prompt = f"""{history}Student's Question:
-{question}
-{confidence_note}
-Course Material:
-{retrieved_context.combined_context}
 
-Write a complete, exam-ready answer:"""
-        
-        return prompt
-        
+        val_score = validation.get('completeness_score', 7)
+        is_main = validation.get('is_main_subject', True)
+        has_error = validation.get('_validation_error', False)
+
+        if has_error:
+            confidence_note = "\n[CONFIDENCE: MEDIUM — Answer strictly from the material below. Do NOT use world knowledge.]\n"
+        elif val_score >= 8 and is_main:
+            confidence_note = "\n[CONFIDENCE: HIGH — Material comprehensively covers this. Give a thorough answer using source language.]\n"
+        elif val_score >= 7 and is_main:
+            confidence_note = "\n[CONFIDENCE: HIGH — Material directly covers this. Give a thorough answer using source language.]\n"
+        elif val_score >= 5 and is_main:
+            confidence_note = "\n[CONFIDENCE: MEDIUM — Material partially covers this. Answer only what the material supports. Do NOT fill gaps.]\n"
+        else:
+            confidence_note = (
+                "\n[CONFIDENCE: LOW — The material may only MENTION this topic as a passing example. "
+                "DO NOT define or explain using world knowledge. Answer ONLY if the material explicitly teaches this.]\n"
+            )
+
+        # NEW in v7 — detect and inject length instruction
+        length_instruction = self._detect_length_instruction(question)
+
+        return (
+            f"{history}"
+            f"Student's Question:\n{question}\n\n"
+            f"{length_instruction}\n"
+            f"{confidence_note}\n"
+            f"Course Material (YOUR ONLY SOURCE — use the exact terms and facts written here):\n"
+            f"{retrieved_context.combined_context}\n\n"
+            f"INSTRUCTION: Identify the most relevant sentences from the material above. "
+            f"Build your answer from those sentences only. "
+            f"Strictly follow the [LENGTH] instruction — do not exceed it or pad to fill it.\n\n"
+            f"Write your answer:"
+        )
+
+    # ─────────────────────────────────────────────────────────
+    # Utilities
+    # ─────────────────────────────────────────────────────────
+
     def clear_history(self):
-        """Clear conversation history"""
+        """Clear conversation history."""
         self.conversation_history = []
