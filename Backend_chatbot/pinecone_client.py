@@ -18,7 +18,7 @@ def _deterministic_hash(value: str) -> str:
 
 
 class PineconeClient:
-    def __init__(self, index_name: str = "media-literacy-new"):
+    def __init__(self, index_name: str = "pdf-knowledge-base"):
         # FIX for Issue #7: Validate API key before proceeding
         self.api_key = os.getenv("PINECONE_API_KEY")
         if not self.api_key:
@@ -74,7 +74,10 @@ class PineconeClient:
                 'values': embedding,
                 'metadata': {
                     **chunk.metadata,
-                    'text': chunk.text[:500],  # Store first 500 chars for reference
+                    # Increased from 500 → 1500 chars. Truncating at 500 means the LLM
+                    # only gets a sentence or two of context per chunk, causing it to
+                    # fill missing content with hallucinated facts.
+                    'text': chunk.text[:1500],
                     'neo4j_id': neo4j_id,
                     'type': 'document_chunk'
                 }
