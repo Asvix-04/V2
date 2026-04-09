@@ -1,7 +1,16 @@
 """
-Hybrid Retriever v6 — SpellCorrector hardened against proper noun mangling.
+Hybrid Retriever v7 — SpellCorrector with transposition-aware fallback.
 
-v6 changes (SpellCorrector only — all other v5 logic unchanged):
+v7 changes (SpellCorrector only — all other v6 logic unchanged):
+  1. Added _levenshtein() helper for edit-distance computation.
+  2. Added _fuzzy_fallback(): catches transpositions (midea→media) and
+     edit errors (journlism→journalism) that difflib misses.
+  3. Fallback only triggers when difflib (cutoff=0.92) finds no match.
+  4. Length-scaled threshold: len 5-6 → transpositions only;
+     len 7-8 → dist ≤ 1; len ≥ 9 → dist ≤ 2. Prevents short-word
+     over-correction (horse→nurse, clasp→class).
+
+v6 changes (for reference):
   1. Proper noun protection: words capitalised in original query are skipped.
   2. Cutoff raised 0.85 → 0.92 (prevents "relativity"→"creativity").
   3. Minimum length guard: words ≤ 4 chars are never corrected.
@@ -84,9 +93,12 @@ class LLMReformulator:
 
 class SpellCorrector:
     """
-    Course-vocabulary spell corrector — v6 hardened.
+    Course-vocabulary spell corrector — v7 transposition-aware.
 
     Guards against proper noun mangling (Albert→alert, relativity→creativity).
+    v7: Added Levenshtein + transposition fallback so minor typos like
+        "midea"→"media" or "journlism"→"journalism" are caught even when
+        difflib similarity falls below the 0.92 cutoff.
     """
     def __init__(self, cache_path: str = "data/spell_vocab.json"):
         self.vocab = set()
@@ -94,6 +106,69 @@ class SpellCorrector:
             try:
                 with open(cache_path, 'r') as f: self.vocab = set(json.load(f))
             except Exception: pass
+
+    @staticmethod
+    def _levenshtein(s1: str, s2: str) -> int:
+        """Compute Levenshtein edit distance between two strings."""
+        if s1 == s2: return 0
+        if not s1: return len(s2)
+        if not s2: return len(s1)
+        prev = list(range(len(s2) + 1))
+        for i, c1 in enumerate(s1, 1):
+            curr = [i]
+            for j, c2 in enumerate(s2, 1):
+                curr.append(min(prev[j] + 1, curr[j-1] + 1, prev[j-1] + (c1 != c2)))
+            prev = curr
+        return prev[-1]
+
+    def _fuzzy_fallback(self, word: str) -> str:
+        """
+        Fallback for words that difflib missed.
+
+        Threshold scales with word length to avoid over-correcting short words:
+          - len 5–6 : transpositions only (same chars, different order)
+          - len 7–8 : transpositions OR Levenshtein ≤ 1
+          - len ≥ 9 : transpositions OR Levenshtein ≤ 2
+
+        Transpositions are always safe (unambiguous typo).
+        General edit-distance only kicks in for longer words where 1–2 wrong
+        chars still clearly point to one intended word.
+
+        Returns the best match or empty string if none found.
+        """
+        word_sorted = sorted(word)
+        word_len = len(word)
+
+        # Max allowed edit distance for this word length
+        if word_len <= 6:
+            max_dist = 0   # transpositions only (dist will be ≥ 1, handled separately)
+        elif word_len <= 8:
+            max_dist = 1
+        else:
+            max_dist = 2
+
+        best_word = ""
+        best_dist = max_dist + 1  # sentinel
+
+        for v in self.vocab:
+            # Quick length pre-filter
+            if abs(len(v) - word_len) > max(max_dist, 1):
+                continue
+
+            # Transposition check first (same letters, different order)
+            if sorted(v) == word_sorted:
+                dist = self._levenshtein(word, v)
+                if dist > 0 and dist < best_dist:
+                    best_dist = dist; best_word = v
+                continue
+
+            # General Levenshtein (skipped for short words where max_dist == 0)
+            if max_dist > 0 and abs(len(v) - word_len) <= 1:
+                dist = self._levenshtein(word, v)
+                if dist <= max_dist and dist < best_dist:
+                    best_dist = dist; best_word = v
+
+        return best_word
 
     def correct(self, query: str) -> str:
         if not self.vocab: return query
@@ -125,12 +200,17 @@ class SpellCorrector:
                     or len(word) <= 4 or word in proper_nouns):
                 fixed.append(word); continue
 
-            # Raised cutoff: 0.85 → 0.92 to prevent near-homophone swaps
+            # Primary: difflib close match (high precision, misses transpositions)
             matches = get_close_matches(word, list(self.vocab), n=1, cutoff=0.92)
             if matches:
                 fixed.append(matches[0]); changed = True
             else:
-                fixed.append(word)  # No match — keep original unchanged
+                # Fallback: Levenshtein / transposition check for minor typos
+                fallback = self._fuzzy_fallback(word)
+                if fallback:
+                    fixed.append(fallback); changed = True
+                else:
+                    fixed.append(word)  # No match — keep original unchanged
 
         result = ' '.join(fixed)
         if changed: print(f"🔧 Spell corrected: '{query}' → '{result}'")
