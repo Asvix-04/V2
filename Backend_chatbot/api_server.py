@@ -4,6 +4,7 @@ api_server.py — FastAPI server for Media Literacy Chatbot.
 Merged version combining:
 - Downloads api_server.py  (speech-to-speech, text-to-text, Sarvam, rate limiting, S2S timing log)
 - worker/api_server.py     (MySQL reference links, DB health check)
+- worker 1/api_server.py   (explain-selection endpoint)
 
 All features from every version are preserved and active.
 """
@@ -81,6 +82,7 @@ class ChatResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     reference_links: List[ReferenceLink] = []
+    follow_up_questions: Optional[Dict[str, Any]] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -131,17 +133,17 @@ async def startup_event():
     global chatbot, sarvam_client
     try:
         chatbot = PDFChatbot()
-        print("Chatbot initialized successfully")
+        print("✅ Chatbot initialized successfully")
     except Exception as e:
-        print(f" Error initializing chatbot: {e}")
+        print(f"❌ Error initializing chatbot: {e}")
         raise
 
     try:
         sarvam_client = SarvamClient()
-        print("Sarvam speech client initialized successfully")
+        print("✅ Sarvam speech client initialized successfully")
     except Exception as e:
         sarvam_client = None
-        print(f"Sarvam speech client unavailable: {e}")
+        print(f"⚠️  Sarvam speech client unavailable: {e}")
 
     db_ok = check_db_connection()
     if db_ok:
@@ -267,8 +269,8 @@ async def chat(request: QuestionRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
-        # ── 1. Get chatbot answer ──
-        result = chatbot.ask_question(
+        # ── 1. Get chatbot answer + follow-up questions ──
+        result = chatbot.ask_question_with_follow_ups(
             question=request.question.strip(),
             use_history=request.use_history if request.use_history is not None else True,
         )
@@ -299,6 +301,7 @@ async def chat(request: QuestionRequest):
             "validation": result.get("validation"),
             "metadata": build_metadata(result, ref_links),
             "reference_links": ref_links,
+            "follow_up_questions": result.get("follow_up_questions"),
         }
 
     except Exception as e:
@@ -460,31 +463,6 @@ async def text_to_text(request: TextToTextRequest):
         "sources": _compact_sources(result.get("sources", [])),
         "expanded_queries": result.get("expanded_queries", []),
         "validation": result.get("validation"),
-    }
-
-
-@app.get("/metrics")
-async def get_metrics():
-    # Get totals
-    totals = db.collection("summary").document("totals").get().to_dict() or {}
-
-    # Get avg response time (last 100 queries)
-    recent = db.collection("queries") \
-        .order_by("timestamp", direction="DESCENDING") \
-        .limit(100).stream()
-
-    times = [doc.to_dict()["response_time_ms"] for doc in recent]
-
-    total = totals.get("total_queries", 0)
-    return {
-        "total_queries": total,
-        "successful_queries": totals.get("successful_queries", 0),
-        "failed_queries": totals.get("failed_queries", 0),
-        "off_topic_queries": totals.get("off_topic_queries", 0),
-        "query_success_rate": totals.get("successful_queries", 0) / max(total, 1),
-        "query_failure_rate": totals.get("failed_queries", 0) / max(total, 1),
-        "off_topic_rate": totals.get("off_topic_queries", 0) / max(total, 1),
-        "avg_response_time_ms": round(sum(times) / max(len(times), 1)),
     }
 
 

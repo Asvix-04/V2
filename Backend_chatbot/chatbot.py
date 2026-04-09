@@ -658,14 +658,15 @@ class PDFChatbot:
                 user_question=question,
                 include_follow_up=True
             )
+            type_1_questions = follow_ups.get("type_1_general", [])
             type_2_questions = follow_ups.get("type_2_context_aware", [])
-            follow_ups["type_1_general"] = []
+            all_questions = type_2_questions + type_1_questions
             follow_ups["follow_up_items"] = [
-                {"question": q, "href": f"#ask={quote(q)}", "query": q}
-                for q in type_2_questions
+                {"question": q, "href": f"#ask={quote(q)}", "query": q, "type": "type_2" if q in type_2_questions else "type_1"}
+                for q in all_questions
             ]
             follow_ups["follow_up_markdown_links"] = [
-                f"[{q}](#ask={quote(q)})" for q in type_2_questions
+                f"[{q}](#ask={quote(q)})" for q in all_questions
             ]
             response['follow_up_questions'] = follow_ups
         else:
