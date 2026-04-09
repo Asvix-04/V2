@@ -81,6 +81,7 @@ class ChatResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     reference_links: List[ReferenceLink] = []
+    follow_up_questions: Optional[Dict[str, Any]] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -307,7 +308,7 @@ async def chat(request: QuestionRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
-        result = chatbot.ask_question(
+        result = chatbot.ask_question_with_follow_ups(
             question=request.question.strip(),
             use_history=request.use_history,
         )
@@ -322,6 +323,7 @@ async def chat(request: QuestionRequest):
             "validation": result.get("validation"),
             "metadata": build_metadata(result, ref_links),
             "reference_links": ref_links,
+            "follow_up_questions": result.get("follow_up_questions"),
         }
 
     except Exception as e:
