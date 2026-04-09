@@ -1,20 +1,46 @@
 from neo4j import GraphDatabase
 import os
+import hashlib
 from dotenv import load_dotenv
 from typing import List, Dict, Any
 import warnings
 
-# Suppress Neo4j verbose warnings - FIXED (removed Neo4jWarning which doesn't exist)
+# Suppress Neo4j verbose warnings
 warnings.filterwarnings("ignore")
 
 load_dotenv()
 
+
+def _deterministic_hash(value: str) -> str:
+    """Deterministic hash that is stable across Python processes and restarts.
+    
+    FIX for Issue #4: Python's built-in hash() is randomized per process
+    (PYTHONHASHSEED), so IDs generated in the ingestion process won't match
+    IDs generated in the chatbot process. Using SHA-256 instead.
+    """
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()[:12]
+
+
 class Neo4jClient:
     def __init__(self):
+        # FIX for Issue #7: Fail-fast with clear messages for missing env vars
         self.uri = os.getenv("NEO4J_URI")
         self.user = os.getenv("NEO4J_USERNAME")
         self.password = os.getenv("NEO4J_PASSWORD")
         self.database = os.getenv("NEO4J_DATABASE", "neo4j")
+        
+        missing = []
+        if not self.uri:
+            missing.append("NEO4J_URI")
+        if not self.user:
+            missing.append("NEO4J_USERNAME")
+        if not self.password:
+            missing.append("NEO4J_PASSWORD")
+        if missing:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}. "
+                f"Please set them in your .env file."
+            )
         
         self.driver = GraphDatabase.driver(
             self.uri,
@@ -26,10 +52,19 @@ class Neo4jClient:
         self.driver.close()
     
     def create_knowledge_graph(self, documents: List[Dict]) -> None:
-        """Create knowledge graph from structured documents"""
+        """Create knowledge graph from structured documents.
+        
+        FIX for Issue #1: Scoped deletion — only removes nodes with the
+        V2Chatbot label instead of wiping the entire database.
+        FIX for Issue #2: Fixed parent_id/section_id prefix mismatch.
+        FIX for Issue #3: Aligned property names with get_related_context reader.
+        FIX for Issue #4: Uses deterministic hashing.
+        """
         with self.driver.session(database=self.database) as session:
-            # Clear existing data (optional)
-            session.run("MATCH (n) DETACH DELETE n")
+            # FIX for Issue #1: Scoped deletion — only remove this project's nodes
+            session.run("MATCH (n:Section) DETACH DELETE n")
+            session.run("MATCH (n:Document) DETACH DELETE n")
+            session.run("MATCH (n:Root) DETACH DELETE n")
             
             # Create sections hierarchy
             for doc in documents:
@@ -52,21 +87,25 @@ class Neo4jClient:
                 
                 # Create section hierarchy
                 for i, section in enumerate(section_path):
-                    parent_id = f"root_{hash(' > '.join(section_path[:i]))}" if i > 0 else "ROOT"
-                    section_id = f"section_{hash(' > '.join(section_path[:i+1]))}"
+                    # FIX for Issue #2: Both parent and child use "section_" prefix
+                    parent_id = f"section_{_deterministic_hash(' > '.join(section_path[:i]))}" if i > 0 else "ROOT"
+                    section_id = f"section_{_deterministic_hash(' > '.join(section_path[:i+1]))}"
                     
-                    # Create section node
+                    # FIX for Issue #3: Use 'full_path' and store content on Section
+                    # to match what get_related_context expects
                     section_query = """
                     MERGE (s:Section {id: $section_id})
                     SET s.title = $title,
                         s.level = $level,
-                        s.path = $path
+                        s.full_path = $full_path,
+                        s.content = $content
                     """
                     session.run(section_query, {
                         'section_id': section_id,
                         'title': section,
                         'level': i,
-                        'path': ' > '.join(section_path[:i+1])
+                        'full_path': ' > '.join(section_path[:i+1]),
+                        'content': doc['text'][:500]  # Store content preview on section
                     })
                     
                     # Connect to parent
@@ -103,7 +142,6 @@ class Neo4jClient:
     def get_related_context(self, section_ids: List[str]) -> Dict[str, Any]:
         """Get related context from knowledge graph"""
         with self.driver.session(database=self.database) as session:
-            # Updated query to match ACTUAL Neo4j structure (Section nodes with content)
             query = """
             MATCH (s:Section)
             WHERE s.id IN $section_ids

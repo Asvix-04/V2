@@ -72,6 +72,10 @@ def is_heading_candidate(line: str) -> bool:
     """
     CRITICAL: Enhanced heading detection for proper hierarchy.
     This is essential for your RAG pipeline to work correctly.
+    
+    FIX for Issue #9: Tightened Pattern 5 (Title Case) to require that
+    MOST words are capitalized (true Title Case), not just the first word.
+    This prevents regular sentences from being misclassified as headings.
     """
     stripped = line.strip()
     if not stripped:
@@ -93,12 +97,25 @@ def is_heading_candidate(line: str) -> bool:
     if stripped.isupper() and 3 < len(stripped) < 80 and not stripped.endswith("."):
         return True
     
-    # PATTERN 5: Title Case headers (short, no period)
-    if (stripped[0].isupper() and 
-        len(stripped) < 80 and 
+    # PATTERN 5 (FIXED for Issue #9): Title Case headers
+    # Must be short AND most words must be capitalized (true Title Case)
+    # This prevents lines like "Media has changed over time" from being
+    # misclassified as headings.
+    if (len(stripped) < 80 and 
         not stripped.endswith((".", "?", "!", ":")) and
-        stripped.count(" ") <= 10):
-        return True
+        stripped.count(" ") <= 8):
+        words = stripped.split()
+        if len(words) >= 2:
+            # Skip small words for Title Case check
+            small_words = {'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 
+                          'at', 'to', 'for', 'of', 'with', 'by', 'is', 'as'}
+            significant_words = [w for w in words if w.lower() not in small_words]
+            if significant_words:
+                capitalized = sum(1 for w in significant_words if w[0].isupper())
+                ratio = capitalized / len(significant_words)
+                # At least 80% of significant words must be capitalized
+                if ratio >= 0.8:
+                    return True
     
     return False
 
@@ -342,6 +359,9 @@ def postprocess_global(text: str) -> str:
     - remove known running headers (CAREFULLY - don't remove content headers)
     - fix spaced section numbers
     - normalize spaces/newlines
+    
+    FIX for Issue #8: Made "& Videography" removal scoped to standalone
+    running header lines only, instead of replacing it everywhere in content.
     """
 
     # 1) Remove running header "Digital Photography" ONLY if it's standalone
@@ -353,8 +373,16 @@ def postprocess_global(text: str) -> str:
         flags=re.MULTILINE
     )
 
-    # 2) Remove trailing "& Videography" phrases
-    text = re.sub(r"\s*&\s*Videography", "", text)
+    # 2) FIX for Issue #8: Only remove "& Videography" on standalone header lines
+    #    e.g., "Digital Photography & Videography" as a running header
+    #    Previously this removed "& Videography" from ALL content, corrupting
+    #    sentences like "the course covers Photography & Videography techniques"
+    text = re.sub(
+        r"^Digital Photography\s*&\s*Videography\s*$",
+        "",
+        text,
+        flags=re.MULTILINE
+    )
 
     # 3) Fix patterns like "1. 2.1" → "1.2.1" (spaced section numbers)
     text = re.sub(r"(\d)\.\s+(\d)", r"\1.\2", text)
