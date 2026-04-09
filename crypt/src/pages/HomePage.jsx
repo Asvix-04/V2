@@ -243,17 +243,16 @@ export function HomePage() {
                                     100% FREE
                                 </div>
                                 <h3 className="text-2xl font-semibold text-foreground">All Features Included</h3>
-                                <p className="mt-2 text-sm text-foreground-muted">Everything you need for learning and teaching — no limits.</p>
                             </div>
                             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                                <PricingFeature highlighted>{t('pricing.feat.basicChat')}</PricingFeature>
-                                <PricingFeature highlighted>{t('pricing.feat.unlimited')}</PricingFeature>
-                                <PricingFeature highlighted>{t('pricing.feat.planning')}</PricingFeature>
-                                <PricingFeature highlighted>{t('pricing.feat.files')}</PricingFeature>
-                                <PricingFeature highlighted>{t('pricing.feat.mapping')}</PricingFeature>
-                                <PricingFeature highlighted>{t('pricing.feat.speed')}</PricingFeature>
-                                <PricingFeature highlighted>{t('pricing.feat.public')}</PricingFeature>
-                                <PricingFeature highlighted>{t('pricing.feat.support')}</PricingFeature>
+                                <PricingFeature highlighted>Real-time Voice Interactions</PricingFeature>
+                                <PricingFeature highlighted>Engineered with Sarvam: India’s Own AI</PricingFeature>
+                                <PricingFeature highlighted>Multilingual Support</PricingFeature>
+                                <PricingFeature highlighted>Deep Concept Mapping</PricingFeature>
+                                <PricingFeature highlighted>Multi-model Support</PricingFeature>
+                                <PricingFeature highlighted>Fast and quick responses</PricingFeature>
+                                <PricingFeature highlighted>Accurate and robust responses</PricingFeature>
+                                <PricingFeature highlighted>Source grounding information</PricingFeature>
                             </ul>
                             <Link to="/signup">
                                 <Button className="w-full shadow-[0_0_20px_-5px_rgba(94,106,210,0.4)]">

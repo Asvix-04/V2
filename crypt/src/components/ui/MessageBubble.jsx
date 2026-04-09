@@ -113,6 +113,17 @@ export function MessageBubble({ message }) {
                         {message.timestamp}
                     </span>
 
+                    {message.modelName && (
+                        <span className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded-full ml-3 border font-medium bg-black/5 dark:bg-white/5",
+                            message.modelName.includes('Flash') ? "text-blue-500 border-blue-500/20" : 
+                            message.modelName.includes('Original') ? "text-zinc-500 border-zinc-500/20" :
+                            "text-purple-500 border-purple-500/20"
+                        )}>
+                            via {message.modelName}
+                        </span>
+                    )}
+
                 </div>
             </div>
         </motion.div>

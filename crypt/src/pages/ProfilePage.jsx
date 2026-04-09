@@ -17,16 +17,7 @@ export function ProfilePage() {
     const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
     const [saveStatus, setSaveStatus] = useState(null);
 
-    // Profile State
-    const [profileData, setProfileData] = useState({
-        fullName: "John Doe",
-        preferredName: "Johnny",
-        age: "35",
-        gender: "male",
-        location: "Cambridge, MA",
-        tone: "professional",
-        avatar: null // Will store the preview URL
-    });
+    // formData is used for all profile state
 
     const fileInputRef = useRef(null);
 
@@ -180,7 +171,6 @@ export function ProfilePage() {
             const { data } = await api.put('/auth/profile', updatedData);
             setUserData(data);
             localStorage.setItem("user", JSON.stringify(data));
-            alert(t('profile.saveChanges') + " Success!"); // Simple feedback
         } catch (error) {
             console.error("Failed to update profile", error);
             alert("Failed to update profile");
@@ -237,24 +227,29 @@ export function ProfilePage() {
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
-                setProfileData(prev => ({ ...prev, avatar: reader.result }));
+                setFormData(prev => ({ ...prev, profilePhoto: reader.result }));
             };
             reader.readAsDataURL(file);
         }
     };
 
-    const handleSaveChanges = () => {
-        // Mocking API call
+    const handleSaveChanges = async () => {
         setSaveStatus('saving');
-        setTimeout(() => {
-            setSaveStatus('success');
-            setTimeout(() => setSaveStatus(null), 3000);
-        }, 8000);
+        await handleUpdateProfile();
+        setSaveStatus('success');
+        setTimeout(() => setSaveStatus(null), 3000);
     };
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setProfileData(prev => ({ ...prev, [name]: value }));
+        if (name === 'tone') {
+            setFormData(prev => ({
+                ...prev,
+                preferences: { ...prev.preferences, tone: value }
+            }));
+        } else {
+            setFormData(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     if (isFetching && !userData && !formData.email) return <div className="p-8 text-center">Loading...</div>;
@@ -514,8 +509,8 @@ export function ProfilePage() {
                                         onClick={() => fileInputRef.current.click()}
                                         className="h-24 w-24 rounded-full bg-accent/20 flex items-center justify-center text-4xl border-2 border-accent/50 overflow-hidden relative group cursor-pointer"
                                     >
-                                        {profileData.avatar ? (
-                                            <img src={profileData.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                                        {formData.profilePhoto ? (
+                                            <img src={formData.profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
                                         ) : (
                                             <User className="h-10 w-10 text-accent" />
                                         )}
@@ -531,16 +526,7 @@ export function ProfilePage() {
                                         onChange={handlePhotoChange}
                                     />
                                     <div className="flex-1">
-                                        <h3 className="text-xl font-medium text-foreground">{profileData.fullName}</h3>
-                                        <p className="text-foreground-muted">Professor of Physics</p>
-                                        <Button
-                                            variant="secondary"
-                                            size="sm"
-                                            className="mt-3"
-                                            onClick={() => fileInputRef.current.click()}
-                                        >
-                                            {t('profile.changeAvatar')}
-                                        </Button>
+                                        <h3 className="text-xl font-medium text-foreground">{formData.name || "User"}</h3>
                                     </div>
                                     <div className="flex flex-col items-end justify-center">
                                         <div className="px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-500 text-xs font-medium">
@@ -555,8 +541,8 @@ export function ProfilePage() {
                                         <div className="space-y-2">
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.firstName')}</label>
                                             <Input
-                                                name="fullName"
-                                                value={profileData.fullName}
+                                                name="name"
+                                                value={formData.name}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.firstName')}
                                             />
@@ -565,7 +551,7 @@ export function ProfilePage() {
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.preferredName')}</label>
                                             <Input
                                                 name="preferredName"
-                                                value={profileData.preferredName}
+                                                value={formData.preferredName}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.preferredName')}
                                             />
@@ -578,7 +564,7 @@ export function ProfilePage() {
                                             <Input
                                                 name="age"
                                                 type="number"
-                                                value={profileData.age}
+                                                value={formData.age}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.age')}
                                             />
@@ -587,7 +573,7 @@ export function ProfilePage() {
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.gender')}</label>
                                             <select
                                                 name="gender"
-                                                value={profileData.gender}
+                                                value={formData.gender}
                                                 onChange={handleInputChange}
                                                 className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white border-black/10 text-foreground focus-visible:ring-accent/50 focus-visible:ring-offset-white shadow-sm dark:bg-[#0F0F12] dark:border-white/10 dark:text-foreground dark:focus-visible:ring-accent/50 dark:focus-visible:ring-offset-background-base"
                                             >
@@ -602,7 +588,7 @@ export function ProfilePage() {
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.location')}</label>
                                             <Input
                                                 name="location"
-                                                value={profileData.location}
+                                                value={formData.location}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.location')}
                                             />
@@ -648,7 +634,7 @@ export function ProfilePage() {
                                                 <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.tone')}</label>
                                                 <select
                                                     name="tone"
-                                                    value={profileData.tone}
+                                                    value={formData.preferences?.tone || "neutral"}
                                                     onChange={handleInputChange}
                                                     className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white border-black/10 text-foreground focus-visible:ring-accent/50 focus-visible:ring-offset-white shadow-sm dark:bg-[#0F0F12] dark:border-white/10 dark:text-foreground dark:focus-visible:ring-accent/50 dark:focus-visible:ring-offset-background-base"
                                                 >
@@ -664,7 +650,7 @@ export function ProfilePage() {
 
                                     <div className="space-y-2">
                                         <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.email')}</label>
-                                        <Input defaultValue="john.doe@university.edu" disabled className="opacity-75 cursor-not-allowed" />
+                                        <Input value={formData.email} disabled className="opacity-75 cursor-not-allowed" />
                                     </div>
 
                                 </div>

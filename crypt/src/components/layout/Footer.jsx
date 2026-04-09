@@ -31,7 +31,7 @@ export function Footer() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:gap-8">
+                <div className="grid grid-cols-1 gap-12 lg:grid-cols-3 lg:gap-8 items-start">
                     {/* Brand Column */}
                     <div className="space-y-4">
                         <div className="flex items-center space-x-2">
@@ -49,30 +49,23 @@ export function Footer() {
                         </div>
                     </div>
 
-                    {/* Company Column */}
-                    <div>
-                        <h4 className="mb-6 text-sm font-semibold uppercase tracking-wider text-foreground">Company</h4>
-                        <ul className="space-y-4 text-sm text-foreground-muted">
+                    {/* Links Column - Aligned with "What We Do" and filling till the right side */}
+                    <div className="lg:col-span-2">
+                        <ul className="flex flex-wrap items-center gap-x-8 gap-y-4 text-sm text-foreground-muted lg:justify-start">
                             <FooterLink to="/about">About</FooterLink>
-                            <FooterLink to="/terms">Terms & Conditions</FooterLink>
-                            <FooterLink to="/cookies">Cookies</FooterLink>
-                            <FooterLink to="/privacy">Privacy Policy</FooterLink>
                             <FooterLink to="/contributors">Contributors</FooterLink>
+                            <FooterLink to="/terms">Terms & Conditions</FooterLink>
+                            <FooterLink to="/privacy">Privacy</FooterLink>
+                            <FooterLink to="/cookies">Cookies</FooterLink>
                             <FooterLink to="/contact">Contact</FooterLink>
                         </ul>
                     </div>
                 </div>
 
-                <div className="mt-16 border-t border-white/5 pt-8 text-center sm:flex sm:items-center sm:justify-between sm:text-left">
+                <div className="mt-16 border-t border-white/5 pt-8 text-center">
                     <p className="text-sm text-foreground-subtle">
                         &copy; {new Date().getFullYear()} Digilab A Learning Assistant. All rights reserved.
                     </p>
-                    <div className="mt-4 flex justify-center space-x-6 text-sm text-foreground-subtle sm:mt-0">
-                        <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-                        <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
-                        <Link to="/cookies" className="hover:text-foreground transition-colors">Cookies</Link>
-                        <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
-                    </div>
                 </div>
             </div>
         </footer>

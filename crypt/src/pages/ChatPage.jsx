@@ -25,13 +25,17 @@ import {
     ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, 
     MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map, 
     Trash2, AlertCircle, Loader2, Wifi, WifiOff, Plus, User as UserIcon, X,
-    CornerDownRight 
+    CornerDownRight, Sparkles, Zap, ChevronDown
 } from "lucide-react";
 import { MdSearch } from "react-icons/md";
 
 import chatbotApi from "../lib/chatbotApi";
-
 import api from "../lib/api";
+
+const MODELS = [
+    { id: "Gemini 2.5 Flash", name: "Gemini 2.5 Flash", description: "Speed and intelligence for everyday learning.", icon: Sparkles, color: "text-blue-500" },
+    { id: "Gemini 2.5 Pro", name: "Gemini 2.5 Pro", description: "Advanced reasoning for high-stakes problems.", icon: Zap, color: "text-purple-500" }
+];
 
 
 
@@ -250,6 +254,15 @@ export function ChatPage() {
     const [isCheckingConnection, setIsCheckingConnection] = React.useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth >= 1024);
     const [isIncognito, setIsIncognito] = React.useState(false);
+    const [selectedModel, setSelectedModel] = React.useState(() => {
+        const saved = localStorage.getItem("selectedModelId");
+        return MODELS.find(m => m.id === saved) || MODELS[0];
+    });
+    const [isModelDropdownOpen, setIsModelDropdownOpen] = React.useState(false);
+
+    React.useEffect(() => {
+        localStorage.setItem("selectedModelId", selectedModel.id);
+    }, [selectedModel]);
 
     const messagesEndRef = React.useRef(null);
 
@@ -625,13 +638,10 @@ export function ChatPage() {
             const response = await chatbotApi.sendMessage(apiPayload);
 
             const assistantMsg = {
-
                 role: "assistant",
-
                 content: response.answer,
-
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-
+                modelName: selectedModel.name
             };
 
 
@@ -1088,53 +1098,93 @@ export function ChatPage() {
             <div className="flex flex-1 flex-col relative">
 
                 <div className={cn(
-
                     "flex h-16 items-center px-4 sm:px-6 transition-all duration-300 z-50 sticky top-0 backdrop-blur-md border-b",
-
-                    isIncognito ? "bg-zinc-900 justify-between border-white/5" : "bg-white/50 dark:bg-zinc-950/50 border-transparent justify-end"
-
+                    isIncognito ? "bg-zinc-900 justify-between border-white/5" : "bg-white/50 dark:bg-zinc-950/50 border-transparent justify-between"
                 )}>
-
-                    {isIncognito && (
-
+                    {isIncognito ? (
                         <div className="flex items-center gap-2">
-
                             <IncognitoIcon className="h-5 w-5 text-zinc-300" />
-
                             <span className="text-sm font-semibold text-zinc-200 tracking-tight">Incognito chat</span>
-
                         </div>
+                    ) : (
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group"
+                            >
+                                <span className="text-lg font-bold tracking-tight">
+                                    {selectedModel.name}
+                                </span>
+                                <ChevronDown className={cn("h-4 w-4 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
+                            </button>
 
+                            <AnimatePresence>
+                                {isModelDropdownOpen && (
+                                    <>
+                                        <div 
+                                            className="fixed inset-0 z-10" 
+                                            onClick={() => setIsModelDropdownOpen(false)}
+                                        />
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            className="absolute top-full left-0 mt-2 w-72 p-2 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
+                                        >
+                                            <div className="space-y-1">
+                                                {MODELS.map((model) => (
+                                                    <button
+                                                        key={model.id}
+                                                        onClick={() => {
+                                                            setSelectedModel(model);
+                                                            setIsModelDropdownOpen(false);
+                                                        }}
+                                                        className={cn(
+                                                            "w-full flex items-start gap-3 p-3 rounded-xl transition-all text-left",
+                                                            selectedModel.id === model.id 
+                                                                ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
+                                                                : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
+                                                        )}
+                                                    >
+                                                        <div className={cn("mt-0.5", model.color)}>
+                                                            <model.icon className="h-4 w-4" />
+                                                        </div>
+                                                        <div>
+                                                            <p className={cn("text-xs font-bold leading-none mb-1", selectedModel.id === model.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
+                                                                {model.name}
+                                                            </p>
+                                                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                                                                {model.description}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </motion.div>
+                                    </>
+                                )}
+                            </AnimatePresence>
+                        </div>
                     )}
 
-
-
                     <button
-
                         onClick={() => {
                             const nextIncognito = !isIncognito;
                             setIsIncognito(nextIncognito);
-                            if (nextIncognito) setIsSidebarOpen(false);
+                            if (nextIncognito) {
+                                setIsSidebarOpen(false);
+                                setIsModelDropdownOpen(false);
+                            }
                         }}
-
                         title={isIncognito ? "Turn off incognito" : "Turn on incognito"}
-
                         className={cn(
-
                             "transition-all duration-200 p-2 rounded-full outline-none focus:outline-none",
-
                             isIncognito
-
                                 ? "text-zinc-400 hover:text-white hover:bg-white/5"
-
                                 : "text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
-
                         )}
-
                     >
-
                         {isIncognito ? <X className="h-5 w-5" /> : <IncognitoIcon className="h-7 w-7" />}
-
                     </button>
 
                 </div>
