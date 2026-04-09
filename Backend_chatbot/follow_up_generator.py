@@ -138,7 +138,12 @@ class FollowUpGenerator:
 
 Assistant Response: {assistant_response}
 
-Generate ONLY Type 2 context-aware follow-up questions in JSON format.
+Generate BOTH Type 1 and Type 2 follow-up questions in JSON format.
+
+Type 1 - General Questions (2-3 questions):
+- Broader conceptual questions about related topics from the answer
+- Help the student explore the subject further
+- Format examples: "What is X?", "What are the types of X?", "How does X work?"
 
 Type 2 - Context-Aware Questions (2-3 questions):
 - Questions that reference and build on what was already discussed
@@ -148,11 +153,11 @@ Type 2 - Context-Aware Questions (2-3 questions):
 
 Return ONLY valid JSON (no markdown, no extras):
 {{
+    "type_1_general": ["question1", "question2"],
     "type_2_context_aware": ["question1", "question2", "question3"]
 }}
 
 Requirements:
-- Do not generate general or unrelated questions
 - Every question must be grounded in the provided response/context
 - All questions should be natural and conversational
 - Avoid questions already answered in the response
@@ -191,7 +196,7 @@ Requirements:
         )
 
         return {
-            "type_1_general": [],
+            "type_1_general": type_1[:3],
             "type_2_context_aware": type_2[:3],
             "status": "fallback"
         }
@@ -429,12 +434,12 @@ Requirements:
                 # Accept both old and new formats; normalize to current output schema.
                 if "type_2_context_aware" in parsed and isinstance(parsed.get("type_2_context_aware"), list):
                     return {
-                        "type_1_general": [],
+                        "type_1_general": parsed.get("type_1_general", []),
                         "type_2_context_aware": parsed.get("type_2_context_aware", [])
                     }
                 if "type_1_general" in parsed and "type_2_context_aware" in parsed:
                     return {
-                        "type_1_general": [],
+                        "type_1_general": parsed.get("type_1_general", []),
                         "type_2_context_aware": parsed.get("type_2_context_aware", [])
                     }
         
@@ -457,9 +462,9 @@ Requirements:
         # Check minimum content
         if len(output["type_2_context_aware"]) < 1:
             return False
-        
+
         # Check that items are non-empty strings
-        all_questions = output["type_2_context_aware"]
+        all_questions = output.get("type_2_context_aware", []) + output.get("type_1_general", [])
         for q in all_questions:
             if not isinstance(q, str) or len(q.strip()) < 5:
                 return False
