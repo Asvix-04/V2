@@ -125,48 +125,50 @@ class SpellCorrector:
         """
         Fallback for words that difflib missed.
 
-        Threshold scales with word length to avoid over-correcting short words:
-          - len 5–6 : transpositions only (same chars, different order)
-          - len 7–8 : transpositions OR Levenshtein ≤ 1
-          - len ≥ 9 : transpositions OR Levenshtein ≤ 2
+        Two separate thresholds:
+          TRANSPOSITION (same chars, different order) — always allowed up to
+            dist ≤ 2, regardless of word length. These are unambiguously typos.
+          GENERAL Levenshtein — length-scaled to avoid false corrections:
+            - len 5–6 : NOT allowed (too risky for short words)
+            - len 7–8 : dist ≤ 1
+            - len ≥ 9 : dist ≤ 2
 
-        Transpositions are always safe (unambiguous typo).
-        General edit-distance only kicks in for longer words where 1–2 wrong
-        chars still clearly point to one intended word.
-
-        Returns the best match or empty string if none found.
+        Returns the best (lowest edit distance) match, or empty string.
         """
         word_sorted = sorted(word)
         word_len = len(word)
 
-        # Max allowed edit distance for this word length
+        # Max Levenshtein allowed for general (non-transposition) edits
         if word_len <= 6:
-            max_dist = 0   # transpositions only (dist will be ≥ 1, handled separately)
+            general_max = 0   # general edits not allowed for short words
         elif word_len <= 8:
-            max_dist = 1
+            general_max = 1
         else:
-            max_dist = 2
+            general_max = 2
 
         best_word = ""
-        best_dist = max_dist + 1  # sentinel
+        best_dist = 99
 
         for v in self.vocab:
-            # Quick length pre-filter
-            if abs(len(v) - word_len) > max(max_dist, 1):
-                continue
+            v_len = len(v)
 
-            # Transposition check first (same letters, different order)
+            # --- Transposition path: same sorted chars ---
             if sorted(v) == word_sorted:
-                dist = self._levenshtein(word, v)
-                if dist > 0 and dist < best_dist:
-                    best_dist = dist; best_word = v
+                # Length must be identical for a true transposition
+                if v_len == word_len:
+                    dist = self._levenshtein(word, v)
+                    if 0 < dist <= 2 and dist < best_dist:
+                        best_dist = dist; best_word = v
                 continue
 
-            # General Levenshtein (skipped for short words where max_dist == 0)
-            if max_dist > 0 and abs(len(v) - word_len) <= 1:
-                dist = self._levenshtein(word, v)
-                if dist <= max_dist and dist < best_dist:
-                    best_dist = dist; best_word = v
+            # --- General Levenshtein path ---
+            if general_max == 0:
+                continue
+            if abs(v_len - word_len) > general_max:
+                continue
+            dist = self._levenshtein(word, v)
+            if dist <= general_max and dist < best_dist:
+                best_dist = dist; best_word = v
 
         return best_word
 
@@ -194,23 +196,29 @@ class SpellCorrector:
         words = query.lower().split()
         fixed = []; changed = False
 
-        for word in words:
+        for raw_word in words:
+            # Strip leading/trailing punctuation so "litaracy??" → "litaracy"
+            word = raw_word.strip('.,!?;:\'"()[]{}')
+
             # Skip: stopword, already in vocab, too short, or proper noun
             if (word in stopwords or word in self.vocab
                     or len(word) <= 4 or word in proper_nouns):
-                fixed.append(word); continue
+                fixed.append(raw_word); continue
 
             # Primary: difflib close match (high precision, misses transpositions)
             matches = get_close_matches(word, list(self.vocab), n=1, cutoff=0.92)
             if matches:
-                fixed.append(matches[0]); changed = True
+                # Re-attach any trailing punctuation to the corrected word
+                suffix = raw_word[len(word):]
+                fixed.append(matches[0] + suffix); changed = True
             else:
                 # Fallback: Levenshtein / transposition check for minor typos
                 fallback = self._fuzzy_fallback(word)
                 if fallback:
-                    fixed.append(fallback); changed = True
+                    suffix = raw_word[len(word):]
+                    fixed.append(fallback + suffix); changed = True
                 else:
-                    fixed.append(word)  # No match — keep original unchanged
+                    fixed.append(raw_word)  # No match — keep original unchanged
 
         result = ' '.join(fixed)
         if changed: print(f"🔧 Spell corrected: '{query}' → '{result}'")
