@@ -265,6 +265,7 @@ export function ChatPage() {
     }, [selectedModel]);
 
     const messagesEndRef = React.useRef(null);
+    const [followUpQuestions, setFollowUpQuestions] = React.useState([]);
 
 
 
@@ -536,7 +537,7 @@ export function ChatPage() {
         setError(null);
 
         setQuotedText(null);
-
+        setFollowUpQuestions([]);
 
 
         if (searchParams.has("sessionId")) {
@@ -596,6 +597,7 @@ export function ChatPage() {
 
 
         setError(null);
+        setFollowUpQuestions([]);
 
 
 
@@ -643,6 +645,10 @@ export function ChatPage() {
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 modelName: selectedModel.name
             };
+
+            // Extract follow-up questions from backend response
+            const followUps = response.type_2_context_aware || response.follow_ups || [];
+            setFollowUpQuestions(followUps.slice(0, 3));
 
 
 
@@ -1287,6 +1293,35 @@ export function ChatPage() {
 
                                             ))}
 
+                                            {/* Follow-up Question Chips */}
+                                            <AnimatePresence>
+                                                {followUpQuestions.length > 0 && !isLoading && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: 15 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        exit={{ opacity: 0, y: -10 }}
+                                                        transition={{ duration: 0.3, delay: 0.2 }}
+                                                        className="flex flex-wrap gap-2 px-4 pt-2"
+                                                    >
+                                                        {followUpQuestions.map((q, i) => (
+                                                            <motion.button
+                                                                key={i}
+                                                                initial={{ opacity: 0, scale: 0.9 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                transition={{ delay: 0.3 + i * 0.1 }}
+                                                                onClick={() => {
+                                                                    setFollowUpQuestions([]);
+                                                                    handleSend(q);
+                                                                }}
+                                                                className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-w-[280px] cursor-pointer"
+                                                            >
+                                                                {q}
+                                                            </motion.button>
+                                                        ))}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+
                                             <div ref={messagesEndRef} className="h-24"></div>
 
                                         </div>
@@ -1571,6 +1606,35 @@ export function ChatPage() {
                                                 </motion.div>
 
                                             )}
+
+                                            {/* Follow-up Question Chips */}
+                                            <AnimatePresence>
+                                                {followUpQuestions.length > 0 && !isLoading && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: 15 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        exit={{ opacity: 0, y: -10 }}
+                                                        transition={{ duration: 0.3, delay: 0.2 }}
+                                                        className="flex flex-wrap gap-2 px-4 pt-2"
+                                                    >
+                                                        {followUpQuestions.map((q, i) => (
+                                                            <motion.button
+                                                                key={i}
+                                                                initial={{ opacity: 0, scale: 0.9 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                transition={{ delay: 0.3 + i * 0.1 }}
+                                                                onClick={() => {
+                                                                    setFollowUpQuestions([]);
+                                                                    handleSend(q);
+                                                                }}
+                                                                className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-w-[280px] cursor-pointer"
+                                                            >
+                                                                {q}
+                                                            </motion.button>
+                                                        ))}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
 
                                             <div ref={messagesEndRef} className="h-24"></div>
 
