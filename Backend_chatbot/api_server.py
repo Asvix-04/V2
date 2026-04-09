@@ -11,7 +11,8 @@ All features from every version are preserved and active.
 from utils import MAX_AUDIO_BYTES, RateLimiter, s2s_limiter
 import base64
 import binascii
-
+import time
+from datetime import datetime
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +33,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
+S2S_TIMING_LOG_FILE = "s2s_timing_log.txt"
 
 # ─────────────────────────────────────────────────────────────
 # App Setup
@@ -197,6 +198,36 @@ def _compact_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         })
     return compact
 
+def _append_s2s_timing_log(metrics: Dict[str, Any]) -> None:
+    """Append one speech-to-speech timing record to a plain text log file."""
+    try:
+        if not os.path.exists(S2S_TIMING_LOG_FILE):
+            with open(S2S_TIMING_LOG_FILE, "w", encoding="utf-8") as f:
+                f.write(
+                    "timestamp | decode_ms | stt_ms | chat_ms | tts_ms | "
+                    "encode_ms | total_ms | transcript_chars | answer_chars | "
+                    "response_language | detected_language | max_output_tokens\n"
+                )
+
+        line = (
+            f"{metrics.get('timestamp', '')} | "
+            f"{metrics.get('decode_ms', '')} | "
+            f"{metrics.get('stt_ms', '')} | "
+            f"{metrics.get('chat_ms', '')} | "
+            f"{metrics.get('tts_ms', '')} | "
+            f"{metrics.get('encode_ms', '')} | "
+            f"{metrics.get('total_ms', '')} | "
+            f"{metrics.get('transcript_chars', '')} | "
+            f"{metrics.get('answer_chars', '')} | "
+            f"{metrics.get('response_language', '')} | "
+            f"{metrics.get('detected_language', '')} | "
+            f"{metrics.get('max_output_tokens', '')}\n"
+        )
+
+        with open(S2S_TIMING_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception as e:
+        print(f"Timing log write failed: {e}")
 
 # ─────────────────────────────────────────────────────────────
 # Routes
@@ -460,6 +491,7 @@ async def get_metrics():
 @app.post("/speech-to-speech", response_model=SpeechToSpeechResponse)
 async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request):
     """Full pipeline: audio → transcript → chat answer → response audio."""
+    request_start = time.perf_counter()
 
     # ── Rate limit check ──
     client_ip = raw_request.client.host
@@ -471,7 +503,9 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
     if sarvam_client is None:
         raise HTTPException(status_code=503, detail="Speech service not initialized")
 
+    decode_start = time.perf_counter()
     audio_bytes = _decode_audio_b64(request.audio_base64)
+    decode_ms = round((time.perf_counter() - decode_start) * 1000, 2)
 
     # ── Audio size check ──
     if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -479,10 +513,12 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
 
     # Step 1: Transcribe
     try:
+        stt_start = time.perf_counter()
         transcript, detected_language = sarvam_client.speech_to_text_bytes(
             audio_bytes=audio_bytes,
             mime_type=request.mime_type or "audio/wav",
         )
+        stt_ms = round((time.perf_counter() - stt_start) * 1000, 2)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
@@ -491,10 +527,12 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
 
     # Step 2: Get chat answer
     try:
+        chat_start = time.perf_counter()
         result = chatbot.ask_question(
             question=transcript.strip(),
             use_history=request.use_history if request.use_history is not None else True,
         )
+        chat_ms = round((time.perf_counter() - chat_start) * 1000, 2)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
 
@@ -506,6 +544,7 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
     response_language = _normalize_lang_for_tts(request.response_language_code or detected_language)
 
     try:
+        tts_start = time.perf_counter()
         if response_language == "en-IN":
             answer_audio = sarvam_client.text_to_speech_bytes(answer, response_language)
         else:
@@ -514,10 +553,29 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
                 target_language_code=response_language,
                 source_language_code="en-IN",
             )
+        tts_ms = round((time.perf_counter() - tts_start) * 1000, 2)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(e)}")
 
+    encode_start = time.perf_counter()
     audio_b64 = _encode_audio_b64(answer_audio)
+    encode_ms = round((time.perf_counter() - encode_start) * 1000, 2)
+    total_ms = round((time.perf_counter() - request_start) * 1000, 2)
+
+    _append_s2s_timing_log({
+        "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "decode_ms": decode_ms,
+        "stt_ms": stt_ms,
+        "chat_ms": chat_ms,
+        "tts_ms": tts_ms,
+        "encode_ms": encode_ms,
+        "total_ms": total_ms,
+        "transcript_chars": len(transcript),
+        "answer_chars": len(answer),
+        "response_language": response_language,
+        "detected_language": detected_language,
+        "max_output_tokens": 1000,
+    })
 
     return {
         "transcript": transcript,
