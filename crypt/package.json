@@ -10,10 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
+    "firebase": "^12.11.0",
     "framer-motion": "^12.24.12",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",

@@ -20,7 +20,7 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
             recognitionRef.current.continuous = true;
             recognitionRef.current.interimResults = true;
 
-            recognitionRef.current.onresult = (event) => { 
+            recognitionRef.current.onresult = (event) => {
                 let finalTranscript = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
@@ -108,11 +108,11 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
         <form
             onSubmit={handleSubmit}
             className={cn(
-                "relative flex items-center w-full p-1 rounded-[50px] transition-all duration-300",
+                "relative flex items-end w-full p-3 rounded-[2.5rem] transition-all duration-500",
                 // Light Mode
-                "bg-white border border-black/10 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] focus-within:shadow-[0_4px_25px_-5px_rgba(94,106,210,0.15)] focus-within:border-accent/40",
+                "bg-white/90 backdrop-blur-xl border border-black/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:shadow-[0_8px_30px_rgba(94,106,210,0.12)] focus-within:border-accent/40",
                 // Dark Mode
-                "dark:bg-[#1a1a1f] dark:border-white/5 dark:shadow-none dark:focus-within:bg-[#202025] dark:focus-within:border-white/10",
+                "dark:bg-[#1b1b22]/80 dark:backdrop-blur-2xl dark:border-white/5 dark:shadow-none dark:focus-within:bg-[#20202a]/90 dark:focus-within:border-white/10",
                 className
             )}
         >

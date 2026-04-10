@@ -64,7 +64,7 @@ export function ProfilePage() {
             activeSessions: activeSessions.map(s => ({ device: s.device, location: s.location }))
         };
 
-        const content = `ASVIX PROFILE DATA EXPORT\nGenerated on: ${new Date().toLocaleString()}\n\n` +
+        const content = `DIGILAB PROFILE DATA EXPORT\nGenerated on: ${new Date().toLocaleString()}\n\n` +
             `Full Name: ${userData.name}\n` +
             `Email: ${userData.email}\n` +
             `Language: ${userData.language}\n` +
@@ -79,7 +79,7 @@ export function ProfilePage() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `asvix_profile_data.${format}`;
+        link.download = `digilab_profile_data.${format}`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -254,7 +254,7 @@ export function ProfilePage() {
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setProfileData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => ({ ...prev, [name]: value }));
     };
 
     if (isFetching && !userData && !formData.email) return <div className="p-8 text-center">Loading...</div>;
@@ -531,8 +531,8 @@ export function ProfilePage() {
                                         onChange={handlePhotoChange}
                                     />
                                     <div className="flex-1">
-                                        <h3 className="text-xl font-medium text-foreground">{profileData.fullName}</h3>
-                                        <p className="text-foreground-muted">Professor of Physics</p>
+                                        <h3 className="text-xl font-medium text-foreground">{formData.name || "Guest User"}</h3>
+                                        <p className="text-foreground-muted">{formData.role || "Member"}</p>
                                         <Button
                                             variant="secondary"
                                             size="sm"
@@ -555,8 +555,8 @@ export function ProfilePage() {
                                         <div className="space-y-2">
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.firstName')}</label>
                                             <Input
-                                                name="fullName"
-                                                value={profileData.fullName}
+                                                name="name"
+                                                value={formData.name}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.firstName')}
                                             />
@@ -565,7 +565,7 @@ export function ProfilePage() {
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.preferredName')}</label>
                                             <Input
                                                 name="preferredName"
-                                                value={profileData.preferredName}
+                                                value={formData.preferredName}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.preferredName')}
                                             />
@@ -578,7 +578,7 @@ export function ProfilePage() {
                                             <Input
                                                 name="age"
                                                 type="number"
-                                                value={profileData.age}
+                                                value={formData.age}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.age')}
                                             />
@@ -587,7 +587,7 @@ export function ProfilePage() {
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.gender')}</label>
                                             <select
                                                 name="gender"
-                                                value={profileData.gender}
+                                                value={formData.gender}
                                                 onChange={handleInputChange}
                                                 className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white border-black/10 text-foreground focus-visible:ring-accent/50 focus-visible:ring-offset-white shadow-sm dark:bg-[#0F0F12] dark:border-white/10 dark:text-foreground dark:focus-visible:ring-accent/50 dark:focus-visible:ring-offset-background-base"
                                             >
@@ -602,7 +602,7 @@ export function ProfilePage() {
                                             <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.location')}</label>
                                             <Input
                                                 name="location"
-                                                value={profileData.location}
+                                                value={formData.location}
                                                 onChange={handleInputChange}
                                                 placeholder={t('profile.location')}
                                             />
@@ -648,8 +648,11 @@ export function ProfilePage() {
                                                 <label className="text-xs font-mono text-foreground-subtle uppercase">{t('profile.tone')}</label>
                                                 <select
                                                     name="tone"
-                                                    value={profileData.tone}
-                                                    onChange={handleInputChange}
+                                                    value={formData.preferences?.tone || "neutral"}
+                                                    onChange={(e) => setFormData(prev => ({ 
+                                                        ...prev, 
+                                                        preferences: { ...prev.preferences, tone: e.target.value } 
+                                                    }))}
                                                     className="flex h-10 w-full rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white border-black/10 text-foreground focus-visible:ring-accent/50 focus-visible:ring-offset-white shadow-sm dark:bg-[#0F0F12] dark:border-white/10 dark:text-foreground dark:focus-visible:ring-accent/50 dark:focus-visible:ring-offset-background-base"
                                                 >
                                                     <option value="professional">Professional</option>
@@ -657,6 +660,7 @@ export function ProfilePage() {
                                                     <option value="friendly">Friendly</option>
                                                     <option value="concise">Concise</option>
                                                     <option value="explanatory">Explanatory</option>
+                                                    <option value="neutral">Neutral</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -671,10 +675,10 @@ export function ProfilePage() {
 
                                 <div className="flex justify-end pt-4">
                                     <Button
-                                        onClick={handleSaveChanges}
-                                        disabled={saveStatus === 'saving'}
+                                        onClick={handleUpdateProfile}
+                                        disabled={loading}
                                     >
-                                        {saveStatus === 'saving' ? 'Saving...' : t('profile.saveChanges')}
+                                        {loading ? 'Saving...' : t('profile.saveChanges')}
                                     </Button>
                                 </div>
                             </Card>

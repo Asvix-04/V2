@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Flag, CheckCircle, ChevronRight, BookOpen, Search, Plus, X, ChevronDown, ChevronUp, Layers, Sparkles, Trash2 } from "lucide-react";
+import { Flag, CheckCircle, ChevronRight, Search, Plus, X, ChevronDown, ChevronUp, Layers, Sparkles, Trash2 } from "lucide-react";
+import { Logo } from "../components/ui/Logo";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";

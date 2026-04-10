@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -5,7 +6,8 @@ import { Input } from "../components/ui/Input";
 import { FileUpload } from "../components/ui/FileUpload";
 import { PageTransition } from "../components/ui/PageTransition";
 import { useDocuments } from "../context/DocumentContext";
-import { BookOpen, FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map } from "lucide-react";
+import { BookOpen, FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map, RotateCcw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import api from "../lib/api";
 
 export function DashboardPage() {
     const [searchParams] = useSearchParams();
@@ -16,6 +18,65 @@ export function DashboardPage() {
 
     // Get 3 most recent documents
     const recentDocs = documents.slice(0, 3);
+
+    const [sessions, setSessions] = useState([]);
+    const [deletedSessions, setDeletedSessions] = useState([]);
+    const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+    const [isLoadingDeleted, setIsLoadingDeleted] = useState(true);
+    const [showDeleted, setShowDeleted] = useState(false);
+
+    const fetchSessions = async () => {
+        if (user && user.id) {
+            try {
+                const res = await api.get('/chat/sessions');
+                if (res.data) {
+                    setSessions(res.data.slice(0, 3)); // Only show top 3
+                }
+            } catch (err) {
+                console.error("Failed to fetch sessions for dashboard:", err);
+            } finally {
+                setIsLoadingSessions(false);
+            }
+        } else {
+            setIsLoadingSessions(false);
+        }
+    };
+
+    const fetchDeletedSessions = async () => {
+        if (user && user.id) {
+            try {
+                const res = await api.get('/chat/sessions-deleted');
+                if (res.data) {
+                    setDeletedSessions(res.data);
+                }
+            } catch (err) {
+                console.error("Failed to fetch deleted sessions:", err);
+            } finally {
+                setIsLoadingDeleted(false);
+            }
+        } else {
+            setIsLoadingDeleted(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchSessions();
+        if (!isTeacher) {
+            fetchDeletedSessions();
+        }
+    }, []);
+
+    const handleRestore = async (sessionId) => {
+        try {
+            await api.post(`/chat/sessions/${sessionId}/restore`);
+            // Refresh counts
+            fetchSessions();
+            fetchDeletedSessions();
+        } catch (err) {
+            console.error("Failed to restore session:", err);
+            alert("Failed to restore chat session.");
+        }
+    };
 
     const handleExport = () => {
         alert("Downloading Report... (Mock Action)");
@@ -72,18 +133,26 @@ export function DashboardPage() {
                     </Card>
 
                     <Card className="p-4 border-border-base dark:border-white/5">
-                        <h4 className="mb-4 text-sm font-medium text-foreground-muted">RECENT ACTIVITY</h4>
+                        <h4 className="mb-4 text-sm font-medium text-foreground-muted">RECENT CHATS</h4>
                         <ul className="space-y-3">
-                            {[1, 2, 3].map((i) => (
-                                <Link to={`/chat?session=${i}`} key={i}>
-                                    <li className="flex items-center space-x-3 text-sm group cursor-pointer hover:bg-accent/10 dark:hover:bg-white/5 p-2 rounded-md transition-colors">
-                                        <div className="h-2 w-2 rounded-full bg-accent/50 group-hover:bg-accent transition-colors" />
-                                        <span className="text-foreground group-hover:text-foreground dark:group-hover:text-white transition-colors">
-                                            {isTeacher ? `Updated syllabus for Week ${i}` : `Completed Module ${i}: Thermodynamics`}
-                                        </span>
-                                    </li>
-                                </Link>
-                            ))}
+                            {isLoadingSessions ? (
+                                <li className="text-sm text-foreground-muted p-2">Loading activity...</li>
+                            ) : sessions.length > 0 ? (
+                                sessions.map((session) => (
+                                    <Link to={`/chat?sessionId=${session.id}`} key={session.id}>
+                                        <li className="flex items-center space-x-3 text-sm group cursor-pointer hover:bg-accent/10 dark:hover:bg-white/5 p-2 rounded-md transition-colors">
+                                            <div className="h-2 w-2 rounded-full bg-accent/50 group-hover:bg-accent transition-colors" />
+                                            <span className="text-foreground group-hover:text-foreground dark:group-hover:text-white transition-colors truncate">
+                                                {session.title || "Chat Session"}
+                                            </span>
+                                        </li>
+                                    </Link>
+                                ))
+                            ) : (
+                                <li className="text-sm text-foreground-muted p-2 italic">
+                                    {isTeacher ? "No recent activity" : "No recent chats"}
+                                </li>
+                            )}
                         </ul>
                     </Card>
                 </div>
@@ -108,13 +177,62 @@ export function DashboardPage() {
                             </Card>
                         </Link>
 
-                        <div onClick={handleExport}>
-                            <Card className="p-6 cursor-pointer hover:bg-accent/5 dark:hover:bg-white/5 transition-colors group h-full border-border-base dark:border-white/5">
-                                <FileText className="h-8 w-8 text-green-400 mb-4 group-hover:scale-110 transition-transform" />
-                                <h3 className="font-semibold text-foreground">{isTeacher ? "Export Reports" : "Review Notes"}</h3>
-                                <p className="text-sm text-foreground-muted mt-2">Access your saved content.</p>
-                            </Card>
-                        </div>
+                        <Card className={`p-6 border-border-base dark:border-white/5 flex flex-col transition-all duration-300 ${!isTeacher && showDeleted ? 'md:col-span-2 md:row-span-2' : ''}`}>
+                            <div
+                                className="flex flex-col h-full cursor-pointer"
+                                onClick={() => !isTeacher && setShowDeleted(!showDeleted)}
+                            >
+                                <div className="flex items-center justify-between mb-4">
+                                    <FileText className={`h-8 w-8 ${isTeacher ? 'text-green-400' : 'text-orange-400'} group-hover:scale-110 transition-transform`} />
+                                    {!isTeacher && (
+                                        <div className="flex items-center space-x-2">
+                                            <span className="text-xs font-medium px-2 py-1 rounded-full bg-orange-400/10 text-orange-400">
+                                                {deletedSessions.length} Deleted
+                                            </span>
+                                            {showDeleted ? <ChevronUp className="h-4 w-4 text-foreground-muted" /> : <ChevronDown className="h-4 w-4 text-foreground-muted" />}
+                                        </div>
+                                    )}
+                                </div>
+                                <h3 className="font-semibold text-foreground">{isTeacher ? "Export Reports" : "Retrieve Chats"}</h3>
+                                <p className="text-sm text-foreground-muted mt-2">
+                                    {isTeacher ? "Access your saved content." : "Retrieve or restore your deleted chats."}
+                                </p>
+
+                                {!isTeacher && showDeleted && (
+                                    <div className="mt-6 space-y-3 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar" onClick={(e) => e.stopPropagation()}>
+                                        <h4 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">Retrieve Chats</h4>
+                                        {isLoadingDeleted ? (
+                                            <p className="text-sm text-foreground-muted py-4">Loading chats...</p>
+                                        ) : deletedSessions.length > 0 ? (
+                                            deletedSessions.map((session) => (
+                                                <div key={session.id} className="flex items-center justify-between p-3 rounded-lg bg-accent/5 border border-white/5 hover:bg-accent/10 transition-colors">
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-sm font-medium text-foreground truncate">{session.title || "Untitled Chat"}</span>
+                                                        <span className="text-[10px] text-foreground-muted">
+                                                            Deleted on {new Date(session.deletedAt).toLocaleDateString()}
+                                                        </span>
+                                                    </div>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 p-0 text-accent hover:text-accent-bright hover:bg-accent/10"
+                                                        onClick={() => handleRestore(session.id)}
+                                                        title="Restore Chat"
+                                                    >
+                                                        <RotateCcw className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center py-8 text-foreground-muted opacity-60">
+                                                <RotateCcw className="h-8 w-8 mb-2" />
+                                                <p className="text-sm">No chats to retrieve</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
                     </div>
 
                     {/* File Upload Section - Available to All */}
@@ -158,35 +276,43 @@ export function DashboardPage() {
                         </Card>
                     </div>
 
-                    {/* Recent Plans / Courses List */}
+                    {/* Students Also Ask Section */}
                     <Card className="p-6 min-h-[400px] border-border-base dark:border-white/5">
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-lg font-semibold text-foreground">
-                                {isTeacher ? "Your Lesson Plans" : "Current Courses"}
+                                Students Also Ask
                             </h3>
-                            <Button variant="ghost" size="sm" onClick={() => alert("Feature coming soon!")}>View All</Button>
+                            <span className="text-xs text-foreground-muted bg-accent/10 px-2 py-1 rounded-full text-accent font-medium">Manually Curated</span>
                         </div>
 
-                        <div className="space-y-4">
-                            {[1, 2, 3, 4].map((i) => (
-                                <div key={i} className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors group">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {[
+                                "What are the 5Ws and 1H in news reporting?",
+                                "Explain the difference between misinformation and disinformation.",
+                                "What is media convergence?",
+                                "How does media literacy relate to information literacy?",
+                                "What is development communication?",
+                                "What are the levels of digital inequality?"
+                            ].map((question, i) => (
+                                <Link
+                                    to={`/chat?prompt=${encodeURIComponent(question)}`}
+                                    key={i}
+                                    className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-accent/20 transition-all group"
+                                >
                                     <div className="flex items-center space-x-4">
-                                        <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center text-accent font-bold">
-                                            {isTeacher ? "Ph" : "CS"}
+                                        <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
+                                            <Lightbulb className="h-5 w-5" />
                                         </div>
                                         <div>
-                                            <h4 className="font-medium text-foreground group-hover:text-accent-bright transition-colors">
-                                                {isTeacher ? "Physics 101: Mechanics" : "Computer Science: Algorithms"}
+                                            <h4 className="font-medium text-sm text-foreground group-hover:text-accent transition-colors line-clamp-2">
+                                                {question}
                                             </h4>
-                                            <p className="text-sm text-foreground-muted">Last edited 2 hours ago</p>
                                         </div>
                                     </div>
-                                    <Link to={`/chat?context=course_${i}`}>
-                                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-all">
-                                            Open
-                                        </Button>
-                                    </Link>
-                                </div>
+                                    <div className="h-8 w-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all bg-accent/10 text-accent shrink-0">
+                                        <ArrowRight className="h-4 w-4" />
+                                    </div>
+                                </Link>
                             ))}
                         </div>
                     </Card>

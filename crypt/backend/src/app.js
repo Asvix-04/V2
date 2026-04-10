@@ -16,19 +16,22 @@ const app = express();
 app.use(express.json());       // Parse JSON body
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded body
 app.use(cors());               // Enable CORS
-app.use(helmet());             // Security headers
+app.use(helmet({
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+}));               // Security headers
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/contact', require('./routes/contactRoutes'));
 
 // Serve Static Uploads
 app.use('/uploads', express.static('uploads'));
 
 // Base Route
 app.get('/', (req, res) => {
-    res.send('Asvix API is running...');
+    res.send('DigiLab API is running...');
 });
 
 // Error Handler

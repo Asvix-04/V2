@@ -1,5 +1,6 @@
 import { motion, useScroll, useTransform } from "framer-motion";
-import { Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -24,22 +25,37 @@ export function HomePage() {
     const opacity = useTransform(scrollY, [0, 300], [1, 0]);
     const { isShootingStarsEnabled, toggleShootingStars, isBubblesEnabled, toggleBubbles } = useUI();
     const { t } = useLanguage();
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.altKey && event.key.toLowerCase() === 'n') {
+                event.preventDefault();
+                navigate('/chat');
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [navigate]);
 
     return (
         <PageTransition className="flex flex-col space-y-32 pb-24">
             {/* Hero Section */}
-            <section className="relative flex min-h-[80vh] flex-col items-center justify-center text-center">
+            <section className="relative flex min-h-[60vh] sm:min-h-[80vh] flex-col items-center justify-center text-center px-4 sm:px-6">
                 <motion.div
                     style={{ y, opacity }}
-                    className="z-10 flex flex-col items-center space-y-8"
+                    className="z-10 flex flex-col items-center space-y-6 sm:space-y-8"
                 >
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.5 }}
-                        className="inline-flex items-center rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-mono text-accent-bright backdrop-blur-md"
+                        className="inline-flex items-center rounded-full border border-accent/30 bg-accent/10 px-2 sm:px-3 py-1 text-xs font-mono text-accent-bright backdrop-blur-md"
                     >
-                        <Sparkles className="mr-2 h-3 w-3" />
+                        <Sparkles className="mr-1 sm:mr-2 h-3 w-3" />
                         {t('home.hero.badge')}
                     </motion.div>
 
@@ -47,7 +63,7 @@ export function HomePage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.1 }}
-                        className="max-w-4xl text-5xl font-semibold tracking-tight sm:text-7xl lg:text-8xl"
+                        className="max-w-4xl text-3xl font-semibold tracking-tight sm:text-5xl lg:text-7xl xl:text-8xl"
                     >
                         <span className="bg-gradient-to-b from-foreground via-foreground/90 to-foreground/70 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
                             {t('home.hero.title1')}
@@ -62,7 +78,7 @@ export function HomePage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.2 }}
-                        className="max-w-2xl text-lg text-foreground-muted sm:text-xl"
+                        className="max-w-2xl text-base text-foreground-muted sm:text-lg lg:text-xl"
                     >
                         {t('home.hero.description')}
                     </motion.p>
@@ -71,60 +87,15 @@ export function HomePage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.3 }}
-                        className="flex flex-col space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0"
+                        className="flex flex-col items-center justify-center space-y-4 w-full"
                     >
-                        <Link to="/signup">
-                            <Button size="lg" className="h-12 w-full px-8 text-base sm:w-auto">
-                                <Sparkles className="mr-2 h-5 w-5" />
+                        <Link to="/signup" className="w-full max-w-xs sm:max-w-md">
+                            <Button size="lg" className="h-12 w-full px-6 sm:px-8 text-base">
+                                <Sparkles className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                                 {t('home.hero.getStarted') || "Get Started"}
                             </Button>
                         </Link>
                     </motion.div>
-
-                    {/* Shooting Star Toggle (Dark Mode) */}
-                    <div className="mt-8 hidden dark:block animate-fade-in relative z-20">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={toggleShootingStars}
-                            className="text-xs text-foreground-muted hover:text-white"
-                        >
-                            {isShootingStarsEnabled ? (
-                                <>
-                                    <StarOff className="mr-2 h-3 w-3" />
-                                    {t('home.hero.starsOff')}
-                                </>
-                            ) : (
-                                <>
-                                    <Star className="mr-2 h-3 w-3" />
-                                    {t('home.hero.starsOn')}
-                                </>
-                            )}
-                        </Button>
-                    </div>
-
-                    {/* 3D Stars Toggle (Light Mode) */}
-                    <div className="mt-8 block dark:hidden animate-fade-in relative z-20">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={toggleBubbles}
-                            className="text-xs text-foreground-muted hover:text-foreground"
-                        >
-                            {isBubblesEnabled ? (
-                                <>
-                                    <StarOff className="mr-2 h-3 w-3" />
-                                    {t('home.hero.3dOff')}
-                                </>
-                            ) : (
-                                <>
-                                    <Star className="mr-2 h-3 w-3" />
-                                    {t('home.hero.3dOn')}
-                                </>
-                            )}
-                        </Button>
-                    </div>
-
                 </motion.div>
             </section>
 

@@ -2,7 +2,8 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { PageTransition } from "../components/ui/PageTransition";
 import { Button } from "../components/ui/Button";
-import { BookOpen, Zap, Target, Users, ArrowRight } from "lucide-react";
+import { Logo } from "../components/ui/Logo";
+import { Zap, Target, Users, ArrowRight, BookOpen } from "lucide-react";
 
 export function About() {
   return (
@@ -11,8 +12,8 @@ export function About() {
       <header className="relative pt-12 pb-16 text-center">
         <div className="mx-auto max-w-4xl px-4 sm:px-6">
           <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-accent/30 bg-accent/10 px-4 py-2 backdrop-blur-sm">
-            <BookOpen className="h-5 w-5 text-accent" />
-            <span className="text-sm font-semibold text-accent">About Asvix</span>
+            <Logo className="h-5 w-5 text-accent" />
+            <span className="text-sm font-semibold text-accent">About DigiLab</span>
           </div>
 
           <h1 className="mb-6 text-5xl sm:text-6xl font-bold tracking-tight">
@@ -46,7 +47,7 @@ export function About() {
                 </div>
               </div>
               <p className="text-lg leading-8 text-foreground-muted">
-                At <span className="font-semibold text-accent">Asvix</span>, our mission is to revolutionize how students and educators learn and teach. We empower learners with <span className="font-semibold text-foreground">accurate explanations</span>, <span className="font-semibold text-foreground">robust learning workflows</span>, and <span className="font-semibold text-foreground">seamless academic guidance</span> using cutting-edge AI technology.
+                At <span className="font-semibold text-accent">DigiLab</span>, our mission is to revolutionize how students and educators learn and teach. We empower learners with <span className="font-semibold text-foreground">accurate explanations</span>, <span className="font-semibold text-foreground">robust learning workflows</span>, and <span className="font-semibold text-foreground">seamless academic guidance</span> using cutting-edge AI technology.
               </p>
             </div>
           </section>
@@ -63,7 +64,7 @@ export function About() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {[
                 {
-                  icon: BookOpen,
+                  icon: Logo,
                   title: "Clear Explanations",
                   desc: "Provide contextual, easy-to-understand answers to academic questions across all subjects."
                 },
@@ -144,7 +145,7 @@ export function About() {
               Ready to Transform Your Learning?
             </h3>
             <p className="text-foreground-muted mb-8 max-w-xl mx-auto">
-              Join thousands of students and educators already using Asvix to enhance their academic experience.
+              Join thousands of students and educators already using DigiLab to enhance their academic experience.
             </p>
             <Link to="/dashboard">
               <Button size="lg" className="h-12 px-8 text-base group">

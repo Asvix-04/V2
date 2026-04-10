@@ -49,4 +49,113 @@ router.post('/upload', protect, upload.single('file'), (req, res) => {
     });
 });
 
+const ChatSession = require('../models/ChatSession');
+
+// @desc    Get all chat sessions for a user
+// @route   GET /api/chat/sessions
+// @access  Private
+router.get('/sessions', protect, async (req, res) => {
+    try {
+        const sessions = await ChatSession.findByUserId(req.user.id);
+        res.json(sessions);
+    } catch (error) {
+        console.error('Fetch sessions error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Save or update a chat session
+// @route   POST /api/chat/sessions
+// @access  Private
+router.post('/sessions', protect, async (req, res) => {
+    try {
+        const { sessionId, messages, title } = req.body;
+
+        let session;
+        if (sessionId) {
+            // Find existing to update title if it's the first real question
+            // For now just trust the client's messages and title
+            session = new ChatSession({
+                id: sessionId,
+                userId: req.user.id,
+                messages,
+                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat")
+            });
+        } else {
+            // Create new
+            session = new ChatSession({
+                userId: req.user.id,
+                messages,
+                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat")
+            });
+        }
+
+        await session.save();
+        res.json(session);
+    } catch (error) {
+        console.error('Save session error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Clear all chat history
+// @route   DELETE /api/chat/sessions
+// @access  Private
+router.delete('/sessions', protect, async (req, res) => {
+    try {
+        await ChatSession.deleteAllByUserId(req.user.id);
+        res.json({ message: 'History cleared' });
+    } catch (error) {
+        console.error('Clear history error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Delete a specific session
+// @route   DELETE /api/chat/sessions/:id
+// @access  Private
+router.delete('/sessions/:id', protect, async (req, res) => {
+    try {
+        const success = await ChatSession.deleteById(req.params.id, req.user.id);
+        if (success) {
+            res.json({ message: 'Session deleted' });
+        } else {
+            res.status(404).json({ message: 'Session not found' });
+        }
+    } catch (error) {
+        console.error('Delete session error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Get all deleted chat sessions for a user
+// @route   GET /api/chat/sessions/deleted
+// @access  Private
+router.get('/sessions-deleted', protect, async (req, res) => {
+    try {
+        const sessions = await ChatSession.findByUserId(req.user.id, { onlyDeleted: true });
+        res.json(sessions);
+    } catch (error) {
+        console.error('Fetch deleted sessions error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Restore a specific session
+// @route   POST /api/chat/sessions/:id/restore
+// @access  Private
+router.post('/sessions/:id/restore', protect, async (req, res) => {
+    try {
+        const success = await ChatSession.restoreById(req.params.id, req.user.id);
+        if (success) {
+            res.json({ message: 'Session restored' });
+        } else {
+            res.status(404).json({ message: 'Session not found' });
+        }
+    } catch (error) {
+        console.error('Restore session error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;

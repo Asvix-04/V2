@@ -24,12 +24,7 @@ export function Background() {
             {/* 2. Grid Overlay */}
             <div className="hidden dark:block absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
 
-            {/* 3. Shooting Stars Integration */}
-            {isShootingStarsEnabled && (
-                <div className="hidden dark:block absolute inset-0">
-                    <ShootingStars />
-                </div>
-            )}
+            {/* 3. Shooting Stars Integration (Disabled) */}
 
             {/* 4. Animated Gradient Blobs */}
             <div className="hidden dark:block">
