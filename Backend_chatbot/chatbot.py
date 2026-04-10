@@ -702,6 +702,5 @@ OBEY THE [LENGTH] TAG in every prompt. Use ONLY the provided material. Do not ad
     
     def get_history(self):
         return self.conversation_history
-
- HybridRetriever = HybridRetriever
- UnifiedLLMClient = UnifiedLLMClient
+HybridRetriever = HybridRetriever
+UnifiedLLMClient = UnifiedLLMClient

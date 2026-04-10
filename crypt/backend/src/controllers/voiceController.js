@@ -12,20 +12,20 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8
 // @route   POST /api/voice/speech-to-speech
 exports.speechToSpeech = async (req, res) => {
     try {
-        const { audio, mime_type, language, use_history } = req.body;
+        const { audio_base64, mime_type, response_language_code, use_history } = req.body;
 
-        if (!audio) {
+        if (!audio_base64) {
             return res.status(400).json({ message: 'No audio data provided' });
         }
 
-        console.log(`Forwarding S2S request to AI backend... (${audio.length} chars)`);
+        console.log(`Forwarding S2S request to AI backend... (${audio_base64.length} chars)`);
 
         // Call specialized Python endpoint
         const response = await axios.post(`${PYTHON_BACKEND_URL}/speech-to-speech`, {
-            audio_base64: audio,
+            audio_base64: audio_base64,
             mime_type: mime_type || 'audio/wav',
             use_history: use_history !== false,
-            response_language_code: language || 'en-IN'
+            response_language_code: response_language_code || 'en-IN'
         });
 
         // Return EXACT fields the frontend VoiceOverlay.jsx expects:

@@ -238,7 +238,12 @@ export function LoginPage() {
                 {step === "password" && (
                     <form onSubmit={handlePasswordLogin} className="space-y-4">
                         <div className="space-y-2">
-                            <label className="text-xs font-medium text-foreground-subtle uppercase">Password</label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-medium text-foreground-subtle uppercase">Password</label>
+                                <Link to="/forgot-password" className="text-xs text-accent hover:text-accent-bright transition-colors">
+                                    Forgot Password?
+                                </Link>
+                            </div>
                             <Input
                                 placeholder="••••••••"
                                 type="password"

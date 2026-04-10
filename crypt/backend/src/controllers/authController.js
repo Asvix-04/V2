@@ -4,7 +4,16 @@ const bcrypt = require('bcrypt');
 const { Resend } = require('resend');
 const { getFirestore, getAuth } = require('../config/db');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend optionally safely
+let resend = null;
+try {
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey && !resendKey.includes('re_123')) {
+        resend = new Resend(resendKey);
+    }
+} catch (e) {
+    console.warn('Resend initialization failed:', e.message);
+}
 
 // Generate JWT Helper
 const generateToken = (id) => {
@@ -324,6 +333,13 @@ exports.sendOTP = async (req, res) => {
             otp,
             expiresAt
         });
+
+        if (!resend) {
+            console.warn('OTP requested but Resend is not configured.');
+            return res.status(503).json({ 
+                message: 'Email service is currently unavailable. Please contact support.' 
+            });
+        }
 
         // Send email via Resend
         const { data, error } = await resend.emails.send({

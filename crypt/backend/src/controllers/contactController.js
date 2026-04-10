@@ -3,7 +3,16 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend optionally safely
+let resend = null;
+try {
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey && !resendKey.includes('re_123')) {
+        resend = new Resend(resendKey);
+    }
+} catch (e) {
+    console.warn('Resend initialization for contact form failed:', e.message);
+}
 
 // @desc    Send contact email
 // @route   POST /api/contact
@@ -20,6 +29,11 @@ exports.sendContactEmail = async (req, res) => {
         const emailFrom = process.env.EMAIL_FROM || 'onboarding@resend.dev';
         const contactEmail = process.env.CONTACT_RECEIVER_EMAIL || 'ksarul@ignou.ac.in';
         const finalSubject = subject || `New Message from ${name}`;
+
+        if (!resend) {
+            console.warn('Contact message submitted but Resend is not configured.');
+            return res.status(503).json({ message: 'Email service is currently unavailable. Please try again later.' });
+        }
 
         const { data, error } = await resend.emails.send({
             from: emailFrom,
