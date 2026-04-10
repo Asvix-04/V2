@@ -4,34 +4,43 @@ from txt_processor import DocumentSection
 
 class TXTNeo4jBuilder:
     def __init__(self, uri, user, password):
+        # FIX for Issue #7: Validate credentials before connecting
+        if not uri:
+            raise ValueError("Neo4j URI is required. Check your NEO4J_URI env var.")
+        if not user or not password:
+            raise ValueError("Neo4j credentials are required. Check NEO4J_USERNAME and NEO4J_PASSWORD env vars.")
+        
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
     
     def close(self):
         self.driver.close()
     
     def build_graph_from_sections(self, sections: List[DocumentSection]):
-        """Build proper hierarchical graph from parsed sections"""
+        """Build proper hierarchical graph from parsed sections.
+        
+        FIX for Issue #1: Scoped deletion — only removes Section nodes
+        created by this pipeline, not the entire database.
+        """
         with self.driver.session() as session:
-            # Clear existing
-            session.run("MATCH (n) DETACH DELETE n")
+            # FIX for Issue #1: Scoped deletion instead of wiping everything
+            # Only delete nodes that belong to this pipeline's schema
+            session.run("MATCH (n:Section) DETACH DELETE n")
             
             print(f"Building graph from {len(sections)} sections...")
             
             # Create all section nodes
             for section in sections:
                 session.run("""
-                MERGE (s:Section {
-                    id: $id,
-                    title: $title,
-                    content: $content,
-                    level: $level,
-                    full_path: $full_path
-                })
-                SET s.type = CASE 
-                    WHEN $level = 1 THEN 'chapter'
-                    WHEN $level <= 3 THEN 'section' 
-                    ELSE 'content'
-                END
+                MERGE (s:Section {id: $id})
+                SET s.title = $title,
+                    s.content = $content,
+                    s.level = $level,
+                    s.full_path = $full_path,
+                    s.type = CASE 
+                        WHEN $level = 1 THEN 'chapter'
+                        WHEN $level <= 3 THEN 'section' 
+                        ELSE 'content'
+                    END
                 """, 
                 id=section.id,
                 title=section.title[:200],

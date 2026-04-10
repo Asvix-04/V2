@@ -7,6 +7,20 @@ const chatbotClient = axios.create({
     },
 });
 
+// Add a request interceptor to inject the token for our Node.js gateway
+chatbotClient.interceptors.request.use(
+    (config) => {
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (user && user.token) {
+            config.headers.Authorization = `Bearer ${user.token}`;
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
 export const chatbotApi = {
     checkHealth: async () => {
         try {

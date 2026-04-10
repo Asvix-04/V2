@@ -3,7 +3,13 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resend;
+if (process.env.RESEND_API_KEY) {
+    resend = new Resend(process.env.RESEND_API_KEY);
+    console.log('✅ Resend initialized successfully');
+} else {
+    console.warn('⚠️ RESEND_API_KEY is missing. Email features will be disabled.');
+}
 
 // @desc    Send contact email
 // @route   POST /api/contact

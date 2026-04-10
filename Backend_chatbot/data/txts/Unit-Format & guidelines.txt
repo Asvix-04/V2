@@ -1,0 +1,65 @@
+Brief Note on the Format of Units
+Dr. Kiron Bansal
+While writing a Unit in Self Learning Material (SLM) format, the Course writers may like to keep the following points in mind:
+Word Limit
+The length of each Unit is 5000 - 6000 words or approximately 25 word-processed A-4 size pages in view of the considerations of pedagogy, uniformity and printing. Style The units have to be written by the course writers in their own words in conversational style in simple English. The use of personal pronouns such as 'you', 'we' builds interactivity in the learning material to give the feel as if the teacher is speaking to the learner through his/her writing.
+Unit Structure
+The unit structure is a detailed itemization of the content broken into sections and subsections. It displays structural relations within the content to help the learners overview the text and locate relevant parts efficiently (Annexure 1). Introduction A brief introduction introduces the subject matter and the scheme of contents. It establishes the connections of the unit with the previous as well as the next unit. Objectives The objectives of each unit have to be stated clearly in behavioural terms so that they are observable and measurable. Some examples of behavioural verbs are: define, describe, explain, list, select, state, compare, differentiate, identify, distinguish, summarise, illustrate, outline etc. (Annexure 2)
+Main Body of the Unit
+The main body of the unit includes the content in the form of sections and subsections with suitable headings and sub-headings. Usually each section relates to a different objective of the unit, presents at least one new point and helps the learner to move from one point to another. These points are followed by self check questions given at the end of each section. The content may be interspersed with examples, illustrations and case studies to explain the concepts/issues discussed in the unit. Case studies can be given separately in appendix.
+Self Check Questions
+Self check questions are related to the objectives of a unit and serve pedagogic functions as they break monotony and motivate the learner to participate in learning. These are, however, not sent to the University for assessment. Possible answers of the questions are given at the end of the unit to provide feedback to the learners and indicate that they are on the right path. Answers are based on what has been discussed and do not fall outside the scope of the unit.
+
+Activities Some activities also need to be given in the unit to involve the learner. These activities may be based on the subject matter of the unit, further readings and sources. The learners can also be asked to read/write or view/listen or analyse a report/news item (Annexure 3). Graphics Graphics such as line drawings, diagrams, charts, graphs, flow charts, cartoons etc. have to be indicated in the text. For any such requirement, appropriate art work can be arranged by the University. Summary In summary, important issues discussed in the unit are recapitulated at the end for reinforcement. Glossary/Key words The keywords, new concepts, difficult terms and technical expressions discussed in the unit which need elaboration may be included in glossary (Annexure 4).
+Citations, References & Further Readings
+Since we do not follow the system of footnotes, a brief list of references may be provided at the end of the unit. Whenever an authority is quoted the source need to be properly cited. The books recommended for Further Readings should be easily available at reasonable prices. The name of the author, year of publication, title of the book, publisher, place of publication and chapter needs to be mentioned. References of the relevant websites may also be given. If the course writer feels that a published article or chapter from existing material should be made available to the learners as additional readings, the same may be indicated with complete references so that we may obtain copyright of the material and send it to our students.
+Copyright Issues
+Care needs to be taken while quoting from published or unpublished material - a maximum of 100 words may be quoted giving complete references and citations of the quoted work. If the quoted text, however, is more than 100 words, the course writer may either take written permission from the author or inform the Programme Coordinator giving complete references of the work so that we may obtain written permission to use the material otherwise it can fall under plagiarism. Similarly, if an already published map/photograph/news clipping/report/writing etc. needs to be included in the course material; a photocopy of the same with complete reference may be sent to us. We shall obtain requisite copyright permissions and get proper art work made for any such requirement.
+Block Introduction
+The Course Writer writing all the units of a block needs to prepare the Block Introduction in which various units of the block have to be briefly introduced and their linkages with each other as well as the next block established (Annexure 5).
+
+Annexure 1
+1.0 DESIGNING AUDIO VIDEO MATERIALS
+Unit Structure
+1.0 Introduction
+1.1 Objectives
+1.2 Instructional Design for Audio and Video
+1.2.1 Needs Assessment
+1.2.2 Selection of Topic
+1.2.3 Defining Learning Objectives and Scope
+1.2.4 Team Work
+1.3 Content Planning for Audio-Video
+1.3.1 Research
+1.3.2 Content Development
+1.4 Design Considerations for Media
+1.4.1 Elements of Audio and Video
+1.4.2 Format Selection
+1.4.3 Writing for Media
+1.4.4 Assessment
+1.5 Designing Interactivity
+1.6 Learning Attributes of Audio and Video
+1.7 Let Us Sum Up
+1.8 Unit End Exercises
+1.9 Check Your Progress: Possible Answers
+1.10 References
+
+Annexure 2
+Objectives in Behavioural Terms
+Objectives in Instructional Terms Objectives in Behavioural Terms
+Knows Defines, describes, identifies, labels, outlines, reproduces, selects, states, lists. Understands Converts, defends, distinguishes, estimates, explains, extends, generalizes, gives examples, infers, paraphrases, predicts, rewrites, summarizes. Learns Changes, computes, demonstrates, discovers, manipulates, modifies, operates, predicts, prepares, produces, relates, shows, solves, uses. Analyses Breaks down, diagrams, differentiates, distinguishes identifies, illustrates, infers, outlines, points out, relates, selects, separates, subdivides, categorizes. Synthesises Combines, compiles, composes, explains, generates, modifies, organizes, rearranges, revises, rewrites, summarizes, writes. Judges Appraises compares, concludes, contrasts, criticizes, describes, discriminates, explains, justifies, interprets, relates, summarizes. Source: IGNOU Handbook 5, Self- Instructional Course Units (1989), Division of Distance Education, Indira Gandhi National Open University, New Delhi.
+
+Annexure 3
+Some Examples of Activities
+Activity 1 We are sure, you must be an avid listener of radio programmes. Think of some of the programmes on radio that you like and try to identify their formats. At this point, do not worry about the accuracy of what you have written as you will be able to review it after reading this section.
+Programme Format
+Activity 2 Organize a mock radio interview or discussion with your friends/acquaintances. Identify the target audience for your programme and the duration. Record it on a cassette recorder and analyze the strengths and weaknesses of the programme. Activity 3 Visit the nearest radio station, which has a News Wing. Observe the various steps involved in compiling a news bulletin. Activity 4 You would have heard the word 'development' so often. In the space provided below, write what you understand by the word 'development'.
+
+In your village/locality/area, what are the main issues and problems which you think need immediate attention so that development may take place. Mention three such problems/issues and give reasons as to why you think they are urgent.
+
+Activity 5 This Indonesian project (discussed in the unit) is very interesting. In India too, we have a large number of rag-pickers. As a member of an NGO if you are asked to plan a communication strategy for the rag-pickers of your city, what steps will you keep in mind while planning the strategy? Activity 6 Identify one topic each for audio and video keeping in view the strengths and limitations of each medium. Give reasons for your selection. Activity 7 Suggest appropriate sound effects and music for the following situations:
+Situations Elements
+Establish a bad character Express anguish Dusk time in village Scene of a railway station Activity 8 You would have read a book recently on print media/radio/television/web media. Give your views on the book in about 150 words highlighting its usefulness for the students of mass communication. Activity 9 Attend a public function organized in your area. Write a report in about 300 words for a local newspaper giving suitable headline. Activity 10 Collect two articles published in a newspaper or magazine on the theme discussed in the unit. Identify the various issues highlighted by the authors for a holistic understanding of the issue.
+
+Annexure 4
+4.8 Key Words
+Behaviourists : A school of thought in psychology that viewed animals and human behaviour in terms of external process only (stimulus-response theory). Language was believed to be a matter of habit formation and imitation and errors were seen as bad habits. Multilingualism : The use of more than two languages by an individual or a community Reinforcement : This is a stimulus which leads to a response either occurring or not occurring again. Structuralists : A school of thought in linguistics which stressed the importance of language as a system where units such as sounds, words, sentences were viewed as structured within the system. L1 : Usually your mother tongue/ first language which you acquire. L2 : Language which is learnt as a second language like English in India.
