@@ -14,6 +14,7 @@ export function LanguageProvider({ children }) {
     }, [language]);
 
     const t = (key) => {
+        if (!translations[language]) return key;
         const translation = translations[language][key];
         return translation || key;
     };

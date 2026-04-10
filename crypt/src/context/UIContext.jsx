@@ -5,7 +5,7 @@ const UIContext = createContext();
 export function UIProvider({ children }) {
     const [isShootingStarsEnabled, setIsShootingStarsEnabled] = useState(() => {
         const saved = localStorage.getItem("shootingStarsEnabled");
-        return saved !== null ? JSON.parse(saved) : true;
+        return saved !== null ? JSON.parse(saved) : false;
     });
 
     const [isBubblesEnabled, setIsBubblesEnabled] = useState(() => {

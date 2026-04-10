@@ -1,11 +1,32 @@
 import axios from 'axios';
 
 const chatbotClient = axios.create({
-    baseURL: import.meta.env.VITE_CHATBOT_API_URL || 'https://asvix-digilab.hf.space',
+    baseURL: import.meta.env.VITE_CHATBOT_API_URL || 'http://localhost:5001/api/voice',
     headers: {
         'Content-Type': 'application/json',
     },
 });
+
+// Add a request interceptor to inject the token for our Node.js gateway
+chatbotClient.interceptors.request.use(
+    (config) => {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                if (user && user.token) {
+                    config.headers.Authorization = `Bearer ${user.token}`;
+                }
+            } catch (e) {
+                console.error("Error parsing user from localStorage", e);
+            }
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
 
 export const chatbotApi = {
     checkHealth: async () => {
@@ -61,6 +82,21 @@ export const chatbotApi = {
             return response.data;
         } catch (error) {
             console.error('Chatbot getHistory failed:', error);
+            throw error;
+        }
+    },
+
+    speechToSpeech: async (audioBase64, mimeType, responseLanguageCode = 'en-IN', useHistory = true) => {
+        try {
+            const response = await chatbotClient.post('/speech-to-speech', {
+                audio_base64: audioBase64,
+                mime_type: mimeType,
+                response_language_code: responseLanguageCode,
+                use_history: useHistory,
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Chatbot speechToSpeech failed:', error);
             throw error;
         }
     },

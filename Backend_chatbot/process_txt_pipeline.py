@@ -28,13 +28,18 @@ def process_txt_file(txt_path: str):
     
     # 2. Build Neo4j graph
     print("Building Neo4j knowledge graph...")
-    neo4j = TXTNeo4jBuilder(
-        uri=os.getenv("NEO4J_URI"),
-        user=os.getenv("NEO4J_USERNAME"),
-        password=os.getenv("NEO4J_PASSWORD")
-    )
-    neo4j.build_graph_from_sections(sections)
-    neo4j.close()
+    try:
+        neo4j = TXTNeo4jBuilder(
+            uri=os.getenv("NEO4J_URI"),
+            user=os.getenv("NEO4J_USERNAME"),
+            password=os.getenv("NEO4J_PASSWORD")
+        )
+        neo4j.build_graph_from_sections(sections)
+        neo4j.close()
+        print("✅ Neo4j graph built successfully")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not connect to Neo4j. Skipping graph builder. Error: {e}")
+        print("   (Vector search in Pinecone will still function normally)")
     
     # 3. Create chunks for Pinecone
     print("Creating vector embeddings...")

@@ -2,11 +2,9 @@
 chatbot.py — Digilab Media Literacy Course Chatbot.
 
 Merged version combining:
-- Downloads chatbot.py  (v6: follow-up continuity guard, smart redirect, follow-up generator)
-- Downloads chatbot (1).py (v6: _is_likely_followup, _record_turn, _get_recent_conversation_context)
-- worker/chatbot.py     (v7: dynamic length detection, auth-error handling, v7 system prompt)
-
-All features from every version are preserved and active.
+- v7: follow-up continuity guard, smart redirect, follow-up generator
+- v7: dynamic length detection, auth-error handling, v7 system prompt
+- S2S/T2T specific grounding and history management
 """
 
 from typing import List, Dict, Any
@@ -36,7 +34,7 @@ Try asking about one of these topics!"""
 RATE_LIMIT_MESSAGE = "I'm currently experiencing high traffic. Please wait a moment and try again."
 
 # ─────────────────────────────────────────────────────────────
-# Module-level helpers  (from Downloads chatbot.py)
+# Module-level helpers
 # ─────────────────────────────────────────────────────────────
 
 _QUESTION_STOPWORDS = {
@@ -126,11 +124,7 @@ def _is_contextual_follow_up(question: str, conversation_history: List[Dict[str,
 
 def _build_smart_redirect(retrieved_context: Any) -> str:
     """
-    FIX 4 — Smart out-of-scope redirect.
-
-    When a question is refused but the retriever DID find related course sections
-    (score 0.020-0.060, topic not main subject), generate a redirect that mentions
-    the closest actual course topic instead of the generic message.
+    Smart out-of-scope redirect.
     """
     if not retrieved_context or not retrieved_context.vector_results:
         return OUT_OF_SCOPE_MESSAGE
@@ -175,20 +169,6 @@ def _build_smart_redirect(retrieved_context: Any) -> str:
 class PDFChatbot:
     """
     IGNOU Media Literacy Course Chatbot — Digilab v7 (merged).
-
-    Features combined from all versions:
-    - v6: Smart out-of-scope redirect using retrieved section names (FIX 4)
-    - v6: Follow-up continuity guard (_is_likely_followup, _record_turn,
-          _build_followup_retrieval_query, _get_recent_conversation_context)
-    - v6: Module-level topic-match helpers (_has_direct_topic_match,
-          _is_contextual_follow_up, _normalize_text, _extract_question_terms)
-    - v6: Follow-up question generation (FollowUpGenerator integration,
-          generate_follow_up_questions, ask_question_with_follow_ups)
-    - v7: Dynamic answer length detection (_detect_length_instruction)
-          — injects [LENGTH] tag into every synthesis prompt
-    - v7: Auth-error detection in ask_question and _validate_content_sufficiency
-    - v7: Stricter validation output format instruction
-    - v7: Updated system prompt with [LENGTH] obedience section
     """
 
     def __init__(self, model_config: ModelConfig = None):
@@ -220,7 +200,7 @@ class PDFChatbot:
         return "1"  # Default to Flash
 
     # ─────────────────────────────────────────────────────────
-    # Follow-up continuity helpers  (from chatbot (1).py / v6)
+    # Follow-up continuity helpers
     # ─────────────────────────────────────────────────────────
 
     def _is_non_context_answer(self, answer: str) -> bool:
@@ -308,29 +288,16 @@ class PDFChatbot:
         )
 
     # ─────────────────────────────────────────────────────────
-    # Dynamic length detection  (from worker/chatbot.py v7)
+    # Dynamic length detection
     # ─────────────────────────────────────────────────────────
 
     def _detect_length_instruction(self, question: str) -> str:
         """
         Scans the FULL question for intent keywords and returns a [LENGTH] tag.
-
-        Design decisions:
-        1. re.search() not re.match() — catches keywords anywhere, handles
-           compound questions: "What is X and explain Y?" → LONG (correct).
-        2. LONG checked first — highest-demand keyword wins. Prevents
-           "Define radio and discuss its characteristics." → SHORT (wrong).
-        3. "briefly" prefix → always MEDIUM regardless of following keyword.
-           "write a short/brief note" → MEDIUM (short answer expected).
-        4. advantages/disadvantages/characteristics/types etc. in "what are"
-           → LONG because these require enumerated structured answers.
-        5. IGNOU exam keywords covered: elaborate, examine, critically,
-           trace, illustrate, justify, assess — all in IGNOU question papers.
-        6. JUDGE is the safe fallback — LLM decides based on context.
         """
         q = question.lower().strip()
 
-        # Special prefixes — override long-pattern detection
+        # Special prefixes
         if re.search(r'\bbriefly\b', q):
             return (
                 "[LENGTH: MEDIUM — Answer in 1 to 2 focused paragraphs. "
@@ -342,7 +309,7 @@ class PDFChatbot:
                 "Cover the key points clearly. No padding.]"
             )
 
-        # LONG — check first, any match means full structured answer needed
+        # LONG
         long_patterns = [
             r'\bexplain\b', r'\bdescribe\b', r'\bdiscuss\b',
             r'\belaborate\b', r'\bexamine\b', r'\banalyse\b',
@@ -359,7 +326,7 @@ class PDFChatbot:
             r'\bwhat impact\b', r'\bwhat challenges\b',
         ]
 
-        # MEDIUM — 1 to 2 focused paragraphs
+        # MEDIUM
         medium_patterns = [
             r'\bwhat is the (role|importance|significance|purpose|function|need)\b',
             r'\bwhat is the (difference|distinction)\b',
@@ -368,7 +335,7 @@ class PDFChatbot:
             r'\bhow is\b', r'\bgive an overview\b',
         ]
 
-        # SHORT — 2 to 4 sentences
+        # SHORT
         short_patterns = [
             r'\bwhat is\b', r'\bwhat are\b', r'\bdefine\b', r'\bname\b',
             r'\bstate\b', r'\blist\b', r'\bwho is\b', r'\bwho was\b',
@@ -413,13 +380,6 @@ class PDFChatbot:
     def ask_question(self, question: str, use_history: bool = True) -> Dict[str, Any]:
         """
         Process question and generate a dynamically-sized exam-ready answer.
-
-        Gating logic (v6/v7):
-          < min_score_gate           → HARD REJECT
-          >= min_score_gate          → validate
-          val_score <= 4             → REFUSE (smart redirect)
-          is_main=False, score < 7  → REFUSE (smart redirect)
-          follow-up override         → allow continuity when follow-up detected
         """
         print("🔍 Analyzing question and retrieving context...")
         try:
@@ -459,26 +419,18 @@ class PDFChatbot:
                         'graph_context': retrieved_context.graph_context,
                         'expanded_queries': retrieved_context.expanded_queries}
 
-            if top_score >= 0.06:
-                print(f"📊 High retrieval score ({top_score:.4f}) — validating topic relevance...")
-            elif top_score >= 0.030:
-                print(f"🔬 Medium score ({top_score:.4f}) — validating content sufficiency...")
-            else:
-                print(f"🔬 Borderline score ({top_score:.4f}) — validating content sufficiency...")
-
             validation_result = self._validate_content_sufficiency(
                 question, retrieved_context, conversation_context=recent_context
             )
 
             if validation_result.get('_validation_error', False):
-                print("⚠️ Validation error — using score-based fallback")
-                # v7: auth errors get a specific message immediately
                 if validation_result.get('_auth_error', False):
                     return {'answer': RATE_LIMIT_MESSAGE,
                             'sources': [],
                             'vector_results': retrieved_context.vector_results,
                             'graph_context': retrieved_context.graph_context,
                             'expanded_queries': retrieved_context.expanded_queries}
+                
                 min_validation_gate = 0.025 if likely_followup else 0.040
                 if top_score < min_validation_gate:
                     self._record_turn(question, OUT_OF_SCOPE_MESSAGE, use_history=use_history,
@@ -496,15 +448,10 @@ class PDFChatbot:
             else:
                 val_score = validation_result.get('completeness_score', 5)
                 is_main = validation_result.get('is_main_subject', True)
-                print(f"📊 Validation — score: {val_score}/10 | main_subject: {is_main}")
                 allow_followup_override = likely_followup and top_score >= 0.025 and val_score >= 2
-
-                if allow_followup_override:
-                    print("↪️ Follow-up detected with relevant retrieval score — allowing continuity")
 
                 if val_score <= 4:
                     if not allow_followup_override:
-                        print(f"🚫 Validator: score={val_score} <= 4 — refusing")
                         redirect = _build_smart_redirect(retrieved_context) if top_score >= 0.025 else OUT_OF_SCOPE_MESSAGE
                         self._record_turn(question, redirect, use_history=use_history,
                                           sources=source_meta,
@@ -517,7 +464,6 @@ class PDFChatbot:
 
                 if not is_main and val_score < 7:
                     if not allow_followup_override:
-                        print(f"🚫 Validator: is_main_subject=False, score={val_score} < 7 — only incidental mention")
                         redirect = _build_smart_redirect(retrieved_context) if top_score >= 0.025 else OUT_OF_SCOPE_MESSAGE
                         self._record_turn(question, redirect, use_history=use_history,
                                           sources=source_meta,
@@ -529,7 +475,6 @@ class PDFChatbot:
                                 'expanded_queries': retrieved_context.expanded_queries}
 
             prompt = self._build_synthesis_prompt(question, retrieved_context, validation_result)
-            print("🤖 Generating answer...")
             answer = self._call_llm(prompt=prompt, system_instruction=self._system_prompt,
                                     temperature=0.3, max_output_tokens=self.model_config.default_max_tokens)
 
@@ -559,9 +504,6 @@ class PDFChatbot:
 
         except Exception as e:
             print(f"Error: {e}")
-            import traceback
-            traceback.print_exc()
-            # v7: give a specific message for API key / auth errors
             err = str(e).lower()
             if any(x in err for x in ['api_key', 'api key', '401', 'unauthorized',
                                        'authentication', 'invalid key', 'api_key_invalid']):
@@ -572,10 +514,6 @@ class PDFChatbot:
                               sources=[], expanded_queries=[], validation={})
             return {'answer': error_answer, 'sources': [],
                     'vector_results': [], 'graph_context': {}, 'expanded_queries': []}
-
-    # ─────────────────────────────────────────────────────────
-    # explain_selection
-    # ─────────────────────────────────────────────────────────
 
     def explain_selection(self, selected_text: str, full_bot_message: str) -> Dict[str, str]:
         prompt = (
@@ -594,28 +532,12 @@ class PDFChatbot:
         )
         return {"explanation": explanation or RATE_LIMIT_MESSAGE}
 
-    # ─────────────────────────────────────────────────────────
-    # Follow-up generation  (from Downloads chatbot.py)
-    # ─────────────────────────────────────────────────────────
-
     def generate_follow_up_questions(
         self,
         assistant_response: str,
         user_question: str,
         include_follow_up: bool = True
     ) -> Dict[str, Any]:
-        """
-        Generate intelligent follow-up questions for a chatbot response.
-
-        Returns:
-            {
-                "type_1_general": [],
-                "type_2_context_aware": ["question1", "question2"],
-                "follow_up_items": [...],
-                "follow_up_markdown_links": [...],
-                "status": "success" | "fallback" | "skipped" | "error"
-            }
-        """
         if not include_follow_up:
             return {
                 "type_1_general": [],
@@ -632,7 +554,6 @@ class PDFChatbot:
             )
             return result
         except Exception as e:
-            print(f"⚠️ Error generating follow-up questions: {e}")
             return {
                 "type_1_general": [],
                 "type_2_context_aware": [],
@@ -651,8 +572,6 @@ class PDFChatbot:
     ) -> Dict[str, Any]:
         """
         Ask a question and optionally generate follow-up questions.
-
-        Returns ask_question() result plus 'follow_up_questions' key.
         """
         # Switch model if requested
         if model:
@@ -700,323 +619,89 @@ class PDFChatbot:
 
         return response
 
-    # ─────────────────────────────────────────────────────────
-    # Validation
-    # ─────────────────────────────────────────────────────────
-
     def _validate_content_sufficiency(self, question: str, retrieved_context: Any,
                                       conversation_context: str = "") -> Dict[str, Any]:
-        """Confidence signal — always runs, never skipped by score alone."""
-        # v6: follow-up context injection
         followup_block = ""
         if conversation_context:
             followup_block = (
                 f"\nRECENT CONVERSATION CONTEXT:\n{conversation_context[:1200]}\n\n"
-                "If the student's question appears to be a follow-up or comparison, "
-                "evaluate it relative to the ongoing topic above (not as a disconnected standalone topic). "
-                "Do not mark it out-of-scope when it clearly continues the same course topic.\n"
+                "If the student's question appears to be a follow-up, "
+                "evaluate it relative to the ongoing topic above.\n"
             )
 
-        # v6: structured per-section context
         validation_context = self._build_validation_context(retrieved_context)
 
-        validation_prompt = f"""You are evaluating whether a student's question is genuinely covered by the course material provided.
+        validation_prompt = f"""You are evaluating whether a student's question is covered by the course material.
 
 STUDENT QUESTION: {question}
 
 {followup_block}
-COURSE MATERIAL EXCERPT (first 3000 chars):
+COURSE MATERIAL EXCERPT:
     {validation_context}
 
-    RULE: If the student's question is an exact or near-exact match for a section title or repeatedly discussed unit topic in the retrieved material, treat it as the main subject.
-
-Answer TWO things carefully:
-
-QUESTION 1 — COMPLETENESS SCORE (1-10):
-1-3: Topic absent, or appears only as a passing word/example within a different concept
-4-5: Topic is mentioned tangentially or used only as an illustrative example
-6-7: Topic is a genuine subject with partial coverage
-8-10: Topic is a main subject comprehensively covered
-
-QUESTION 2 — IS MAIN SUBJECT (true/false):
-Return FALSE if the topic only appears as: a real-world example, a passing mention, or background context.
-Return TRUE only if the material directly TEACHES or EXPLAINS the topic itself.
-
-CRITICAL EXAMPLES:
-  Q: "what is cricket?" — Material has cricket as example of sports commentary.
-     → completeness_score: 2, is_main_subject: false
-  Q: "what is radio journalism?" — Material has full units on radio journalism.
-     → completeness_score: 9, is_main_subject: true
-  Q: "history of photography" — MNM-003 has a dedicated Unit 1 on this.
-     → completeness_score: 9, is_main_subject: true
-  Q: "photo editing ethics" — MNM-003 Unit 8 covers ethical aspects of photo editing.
-     → completeness_score: 7, is_main_subject: true
-
-CRITICAL OUTPUT FORMAT — VIOLATIONS CAUSE SYSTEM FAILURE:
-- Start your response with {{ and end with }}
-- Do NOT write "Score:", "Answer:", or any label before the JSON
-- Do NOT write any text after the closing }}
-- Do NOT use markdown, code fences, or asterisks
-- Return ONLY this exact structure:
-{{"completeness_score": <integer 1-10>, "can_fully_answer": <true or false>, "is_main_subject": <true or false>, "topic_directly_discussed": <true or false>, "reasoning": "<one sentence>"}}"""
+Return structure:
+{{"completeness_score": <1-10>, "can_fully_answer": <bool>, "is_main_subject": <bool>, "topic_directly_discussed": <bool>, "reasoning": "<string>"}}"""
 
         try:
             validation_text = self._call_llm(
                 prompt=validation_prompt,
-                system_instruction="Respond with ONLY a JSON object. No markdown, no explanation, no code fences.",
+                system_instruction="Respond with ONLY JSON.",
                 temperature=0.1,
                 max_output_tokens=300,
-                max_retries=2,
             )
-            if validation_text is None:
-                return {"completeness_score": 2, "can_fully_answer": False, "is_main_subject": False,
-                        "topic_directly_discussed": False, "reasoning": "Rate limit",
-                        "_validation_error": True, "_auth_error": False}
-
+            if validation_text is None: return {"_validation_error": True}
             result = self._parse_validation_json(validation_text)
-            if result is None:
-                print(f"⚠️ Validation parse failed: {validation_text[:200]}")
-                return {"completeness_score": 2, "can_fully_answer": False, "is_main_subject": False,
-                        "topic_directly_discussed": False, "reasoning": "Parse failed",
-                        "_validation_error": True, "_auth_error": False}
+            return result or {"_validation_error": True}
+        except Exception:
+            return {"_validation_error": True}
 
-            if 'is_main_subject' not in result:
-                result['is_main_subject'] = result.get('topic_directly_discussed', True)
-            result['_validation_error'] = False
-            result['_auth_error'] = False
-            return result
-
-        except Exception as e:
-            print(f"⚠️ Validation error: {e}")
-            # v7: detect auth errors specifically
-            err = str(e).lower()
-            is_auth = any(x in err for x in ['api_key', 'api key', '401', 'unauthorized',
-                                              'authentication', 'invalid key', 'api_key_invalid'])
-            return {"completeness_score": 2, "can_fully_answer": False, "is_main_subject": False,
-                    "topic_directly_discussed": False, "reasoning": "Exception",
-                    "_validation_error": True, "_auth_error": is_auth}
-
-    def _build_validation_context(self, retrieved_context: Any,
-                                  max_sections: int = 5,
-                                  max_chars_per_section: int = 450) -> str:
+    def _build_validation_context(self, retrieved_context: Any, max_sections: int = 5) -> str:
         if not retrieved_context or not getattr(retrieved_context, 'vector_results', None):
             return ''
         sections = []
-        seen_sections = set()
+        seen = set()
         for result in retrieved_context.vector_results:
-            metadata = result.metadata if hasattr(result, 'metadata') else {}
-            section_name = metadata.get('full_section', 'Unknown')
-            if section_name in seen_sections:
-                continue
-            seen_sections.add(section_name)
-            snippet = metadata.get('text', '')
-            if hasattr(result, 'text') and result.text:
-                snippet = result.text
-            sections.append(
-                f"[FROM: {section_name}]\n"
-                f"{(snippet or '').strip()[:max_chars_per_section]}"
-            )
-            if len(sections) >= max_sections:
-                break
+            meta = result.metadata if hasattr(result, 'metadata') else {}
+            sec = meta.get('full_section', 'Unknown')
+            if sec not in seen:
+                seen.add(sec)
+                snippet = result.text if hasattr(result, 'text') else meta.get('text', '')
+                sections.append(f"[FROM: {sec}]\n{snippet[:400]}")
+            if len(sections) >= max_sections: break
         return "\n\n".join(sections)
 
     def _parse_validation_json(self, text: str) -> dict:
-        """5-step robust JSON parser for LLM validation responses."""
-        if not text:
-            return None
-        text = text.strip()
-        text = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.MULTILINE)
-        text = re.sub(r'\n?\s*```\s*$', '', text, flags=re.MULTILINE)
-        text = text.strip()
         try:
-            result = json.loads(text)
-            if 'completeness_score' in result:
-                return result
-        except json.JSONDecodeError:
-            pass
-        json_match = re.search(r'\{[^{}]*\}', text)
-        if json_match:
-            try:
-                result = json.loads(json_match.group(0))
-                if 'completeness_score' in result:
-                    return result
-            except json.JSONDecodeError:
-                raw = json_match.group(0)
-                fixed = raw
-                if fixed.count('"') % 2 != 0:
-                    fixed += '"'
-                if not fixed.endswith('}'):
-                    fixed += '}'
-                try:
-                    result = json.loads(fixed)
-                    if 'completeness_score' in result:
-                        return result
-                except json.JSONDecodeError:
-                    pass
-        score_match = re.search(r'completeness_score["\s:]+(\d+)', text)
-        if score_match:
-            score = int(score_match.group(1))
-            topic_match = re.search(r'topic_directly_discussed["\s:]+(\w+)', text)
-            main_match = re.search(r'is_main_subject["\s:]+(\w+)', text)
-            topic = topic_match.group(1).lower() == 'true' if topic_match else True
-            is_main = main_match.group(1).lower() == 'true' if main_match else topic
-            return {"completeness_score": score, "can_fully_answer": score >= 7,
-                    "is_main_subject": is_main, "topic_directly_discussed": topic,
-                    "reasoning": "Parsed via regex fallback"}
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+        except: pass
         return None
 
-    # ─────────────────────────────────────────────────────────
-    # System prompt  (v7 — with [LENGTH] obedience section)
-    # ─────────────────────────────────────────────────────────
+    def _build_synthesis_prompt(self, question: str, retrieved_context: Any, validation_result: dict) -> str:
+        length_instr = self._detect_length_instruction(question)
+        context = retrieved_context.combined_context
+        val_score = validation_result.get('completeness_score', 5)
+
+        return f"""STUDENT QUESTION: {question}
+
+{length_instr}
+
+[CONFIDENCE: {val_score}/10]
+
+{context}
+
+Answer the student's question using ONLY the course material provided above."""
 
     def _get_system_prompt(self) -> str:
-        return """You are Digilab, an expert academic assistant for IGNOU's Mass Communication and Journalism programme. You help students write exam-ready answers.
-
-═══════════════════════════════════════
-ANSWER LENGTH — OBEY THE [LENGTH] TAG
-═══════════════════════════════════════
-
-Every prompt includes a [LENGTH: ...] tag. Follow it strictly.
-
-[LENGTH: SHORT]
-→ 2 to 4 sentences only.
-→ Give a direct, precise answer. No introduction, no conclusion, no bullet points.
-→ Example: "What is FM radio?" → One definition sentence + one key fact. Done.
-
-[LENGTH: MEDIUM]
-→ 1 to 2 focused paragraphs.
-→ Cover the key points clearly. No padding.
-→ No need for full intro/conclusion structure.
-
-[LENGTH: LONG]
-→ Full structured answer: introduction, detailed body, conclusion.
-→ Use bullet points only when listing distinct items.
-→ Include all relevant points from the course material.
-
-[LENGTH: JUDGE]
-→ No strong signal detected. Answer as long as genuinely required.
-→ Stop when the question is fully answered. Do not pad.
-
-CRITICAL: NEVER pad an answer to meet a word count.
-A complete 3-sentence answer is better than a padded 10-sentence answer that repeats itself.
-
-═══════════════════════════════════════
-ANSWER STRUCTURE (for LONG answers only)
-═══════════════════════════════════════
-
-For DESCRIPTIVE / EXPLAIN questions:
-• 1-2 sentence introduction
-• Detailed explanation (2-3 paragraphs)
-• 5-7 substantive points where relevant
-• Brief conclusion
-
-For COMPARISON questions:
-• Brief intro defining both concepts
-• Key features of each (4-5 points each)
-• Clear differences → Brief conclusion
-
-For LIST / ENUMERATE questions:
-• Brief intro, then items with explanation for each
-
-═══════════════════════════════════════
-FORMATTING RULES
-═══════════════════════════════════════
-
-1. PARAGRAPH BREAKS: Only between major sections. NOT between every sentence.
-2. BOLD KEY TERMS: Bold important concepts on first mention using **keyword** format.
-3. BULLET POINTS: Only when listing distinct items. Each bullet 1-2 sentences minimum.
-4. SHORT answers: plain prose only — no headers, no bullets unless listing is the task.
-
-═══════════════════════════════════════
-GROUNDING RULES — READ CAREFULLY
-═══════════════════════════════════════
-
-The course material provided in the prompt is YOUR ONLY SOURCE OF FACTS.
-
-1. PRESERVE SOURCE LANGUAGE: When the material states a definition, key phrase, or technical term, use the SAME wording. Do not paraphrase factual claims into different words.
-
-2. STRICT FACT SOURCING: Every person's name, date, year, statistic, researcher, theory name, and specific detail in your answer MUST appear word-for-word (or near word-for-word) in the retrieved course material. If a fact is not in the material, do not write it.
-
-3. PARTIAL ANSWERS ARE FINE: If the material only partially covers the question, answer what you CAN from the material. End with one sentence like "The course material covers [aspect X]; other aspects are not addressed in the available sections."
-
-4. EXAMPLE VS SUBJECT — CRITICAL RULE:
-   If the confidence level says LOW or MEDIUM:
-   ❌ DO NOT define or explain the topic using your world knowledge
-   ❌ DO NOT cherry-pick course mentions to construct an answer about a different topic
-   ✅ DO answer only if the material explicitly TEACHES that topic as its subject
-
-═══════════════════════════════════════
-HARD PROHIBITIONS
-═══════════════════════════════════════
-
-❌ NEVER add people, researchers, or scholars not named in the material
-❌ NEVER add dates, years, or statistics not present in the material
-❌ NEVER add book titles, publication names, or citations not in the material
-❌ NEVER introduce theories or frameworks not referenced in the material
-❌ NEVER invent examples — use only examples explicitly from the material
-❌ NEVER say "The materials do not elaborate..." or "The provided material..."
-❌ NEVER write meta-commentary about what the sources do or don't contain
-❌ NEVER pad an answer with external knowledge to fill length
-❌ NEVER use world knowledge to define a topic that only appears as a passing example
-
-SELF-CHECK: Before finishing, scan your answer. For every name, date, and specific fact — is it in the material above? If not, delete it."""
-
-    # ─────────────────────────────────────────────────────────
-    # Synthesis prompt builder  (v7 — injects [LENGTH] tag)
-    # ─────────────────────────────────────────────────────────
-
-    def _build_synthesis_prompt(self, question: str, retrieved_context: Any,
-                                validation: Dict) -> str:
-        """
-        v7: Calls _detect_length_instruction() and injects the [LENGTH] tag
-        into the prompt above the course material, giving the LLM a specific
-        per-question length instruction alongside the confidence signal.
-        """
-        history = ""
-        if self.conversation_history:
-            history = "Previous conversation:\n"
-            for conv in self.conversation_history[-2:]:
-                history += f"Q: {conv['question']}\nA: {conv['answer'][:200]}...\n\n"
-
-        val_score = validation.get('completeness_score', 7)
-        is_main = validation.get('is_main_subject', True)
-        has_error = validation.get('_validation_error', False)
-
-        if has_error:
-            confidence_note = "\n[CONFIDENCE: MEDIUM — Answer strictly from the material below. Do NOT use world knowledge.]\n"
-        elif val_score >= 8 and is_main:
-            confidence_note = "\n[CONFIDENCE: HIGH — Material comprehensively covers this topic. Give a thorough, detailed answer using source language.]\n"
-        elif val_score >= 7 and is_main:
-            confidence_note = "\n[CONFIDENCE: HIGH — Material directly covers this. Give a thorough answer using source language.]\n"
-        elif val_score >= 5 and is_main:
-            confidence_note = "\n[CONFIDENCE: MEDIUM — Material partially covers this. Answer only what the material supports. Do NOT fill gaps with outside knowledge.]\n"
-        else:
-            confidence_note = (
-                "\n[CONFIDENCE: LOW — WARNING: The retrieved material may only MENTION this topic as a passing example. "
-                "DO NOT define or explain this topic using your world knowledge. "
-                "Answer ONLY if the material explicitly teaches this topic.]\n"
-            )
-
-        # v7: dynamic length instruction per question
-        length_instruction = self._detect_length_instruction(question)
-
-        return (
-            f"{history}"
-            f"Student's Question:\n{question}\n\n"
-            f"{length_instruction}\n"
-            f"{confidence_note}\n"
-            f"Course Material (YOUR ONLY SOURCE — use the exact terms and facts written here):\n"
-            f"{retrieved_context.combined_context}\n\n"
-            f"INSTRUCTION: Identify the most relevant sentences from the material above. "
-            f"Build your answer from those sentences only. "
-            f"Strictly follow the [LENGTH] instruction — do not exceed it or pad to fill it.\n\n"
-            f"Write your answer:"
-        )
-
-    # ─────────────────────────────────────────────────────────
-    # Utilities
-    # ─────────────────────────────────────────────────────────
+        return """You are Digilab, an expert academic assistant for IGNOU's Mass Communication programme. 
+OBEY THE [LENGTH] TAG in every prompt. Use ONLY the provided material. Do not add outside facts."""
 
     def clear_history(self):
-        """Clear conversation history."""
         self.conversation_history = []
+    
+    def get_history(self):
+        return self.conversation_history
+
+ HybridRetriever = HybridRetriever
+ UnifiedLLMClient = UnifiedLLMClient

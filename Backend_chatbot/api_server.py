@@ -2,11 +2,10 @@
 api_server.py — FastAPI server for Media Literacy Chatbot.
 
 Merged version combining:
-- Downloads api_server.py  (speech-to-speech, text-to-text, Sarvam, rate limiting, S2S timing log)
-- worker/api_server.py     (MySQL reference links, DB health check)
-- worker 1/api_server.py   (explain-selection endpoint)
-
-All features from every version are preserved and active.
+- Optimized Speech-to-Speech (Sarvam, Parallel TTS, Rate limiting)
+- MySQL Reference Links (Grounded context)
+- Explain-Selection logic
+- Follow-up Questions generation
 """
 
 from utils import MAX_AUDIO_BYTES, RateLimiter, s2s_limiter
@@ -83,7 +82,7 @@ class ChatResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     reference_links: List[ReferenceLink] = []
-    follow_up_questions: Optional[Dict[str, Any]] = None
+    follow_up_questions: Optional[List[str]] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -134,9 +133,9 @@ async def startup_event():
     global chatbot, sarvam_client
     try:
         chatbot = PDFChatbot()
-        print("✅ Chatbot initialized successfully")
+        print("Chatbot initialized successfully")
     except Exception as e:
-        print(f"❌ Error initializing chatbot: {e}")
+        print(f" Error initializing chatbot: {e}")
         raise
 
     try:
@@ -270,12 +269,20 @@ async def chat(request: QuestionRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
-        # ── 1. Get chatbot answer + follow-up questions ──
-        result = chatbot.ask_question_with_follow_ups(
-            question=request.question.strip(),
-            model=request.model,
-            use_history=request.use_history if request.use_history is not None else True,
-        )
+        # ── 1. Get chatbot answer ──
+        # Check if the chatbot object has ask_question_with_follow_ups, 
+        # otherwise fallback to ask_question
+        if hasattr(chatbot, 'ask_question_with_follow_ups'):
+            result = chatbot.ask_question_with_follow_ups(
+                question=request.question.strip(),
+                model=request.model,
+                use_history=request.use_history if request.use_history is not None else True,
+            )
+        else:
+            result = chatbot.ask_question(
+                question=request.question.strip(),
+                use_history=request.use_history if request.use_history is not None else True,
+            )
 
         # ── 2. Fetch matching reference links from MySQL ──
         ref_links = []
@@ -288,9 +295,9 @@ async def chat(request: QuestionRequest):
             )
             ref_links = [
                 ReferenceLink(
-                    title=link["title"],
-                    url=link["url"],
-                    relevance_score=link["relevance_score"],
+                    title=link.get("title", ""),
+                    url=link.get("url", ""),
+                    relevance_score=link.get("relevance_score", 0.0),
                 )
                 for link in raw_links
             ]
@@ -349,12 +356,6 @@ async def chat_simple(request: QuestionRequest):
 async def explain_selection(request: SelectionRequest):
     """
     Explain a specific part of a bot answer that the user highlighted.
-
-    The frontend sends:
-      - selected_text:    the exact highlighted snippet
-      - full_bot_message: the full bot answer it came from
-
-    Returns a focused explanation of the selected snippet.
     """
     if chatbot is None:
         raise HTTPException(status_code=503, detail="Chatbot not initialized")
@@ -368,7 +369,7 @@ async def explain_selection(request: SelectionRequest):
             selected_text=request.selected_text.strip(),
             full_bot_message=request.full_bot_message.strip(),
         )
-        return result  # {"explanation": "..."}
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating explanation: {str(e)}")
 
@@ -392,8 +393,8 @@ async def get_history():
         raise HTTPException(status_code=503, detail="Chatbot not initialized")
     try:
         return {
-            "history": chatbot.conversation_history,
-            "count": len(chatbot.conversation_history),
+            "history": chatbot.get_history() if hasattr(chatbot, 'get_history') else [],
+            "count": len(chatbot.get_history()) if hasattr(chatbot, 'get_history') else 0,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving history: {str(e)}")
@@ -461,7 +462,6 @@ async def text_to_text(request: TextToTextRequest):
         "detected_language_name": LANGUAGE_DISPLAY.get(language_code, "Unknown"),
         "english_question": english_question,
         "answer": translated_answer,
-        #"english_answer": english_answer,
         "sources": _compact_sources(result.get("sources", [])),
         "expanded_queries": result.get("expanded_queries", []),
         "validation": result.get("validation"),
@@ -518,7 +518,7 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
 
     answer = result.get("answer", "")
     if not answer.strip():
-        raise HTTPException(status_code=500, detail="Generated answer is empty")
+        raise HTTPException(status_code=503, detail="Question is outside course material")
 
     # Step 3: Generate response audio
     response_language = _normalize_lang_for_tts(request.response_language_code or detected_language)
@@ -567,7 +567,6 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
         "validation": result.get("validation"),
         "audio_base64": audio_b64,
     }
-
 
 # ─────────────────────────────────────────────────────────────
 # Run

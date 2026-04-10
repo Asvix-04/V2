@@ -1,114 +1,204 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { MeshDistortMaterial, Sphere, Environment, Float } from '@react-three/drei';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mic, MicOff } from 'lucide-react';
-import { Button } from './Button';
+import { X, Mic, MicOff, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import * as THREE from 'three';
+import chatbotApi from '../../lib/chatbotApi';
 
-// 3D Bubble Component
-const AnimatedBubble = ({ analyzer }) => {
-    const meshRef = useRef();
-    const materialRef = useRef();
 
-    useFrame((state) => {
-        if (!meshRef.current || !analyzer) return;
 
-        // Get audio data
-        const dataArray = new Uint8Array(analyzer.frequencyBinCount);
-        analyzer.getByteFrequencyData(dataArray);
-
-        // Calculate average volume
-        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        const normalizedVolume = average / 255;
-
-        // Animate distortion based on volume
-        // Base distortion 0.15 (calm), max ~2.5 (crazy)
-        // Speed base 1 (slow), max ~10 (fast)
-        const targetDistort = 0.15 + (normalizedVolume * 2.5);
-        const targetSpeed = 1 + (normalizedVolume * 10); // Much faster wobble when loud
-
-        // Smoothly interpolate current values to target
-        materialRef.current.distort = THREE.MathUtils.lerp(materialRef.current.distort, targetDistort, 0.05);
-        materialRef.current.speed = THREE.MathUtils.lerp(materialRef.current.speed, targetSpeed, 0.05);
-
-        // Scale pulse
-        const targetScale = 1.0 + (normalizedVolume * 0.4);
-        meshRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.05);
-
-        // Gentle rotation
-        meshRef.current.rotation.x = state.clock.getElapsedTime() * 0.2;
-        meshRef.current.rotation.y = state.clock.getElapsedTime() * 0.3;
-    });
-
-    return (
-        <Float speed={2} rotationIntensity={0.5} floatIntensity={1}>
-            <Sphere args={[1.5, 64, 64]} ref={meshRef}>
-                <MeshDistortMaterial
-                    ref={materialRef}
-                    color="#000000" // Black
-                    attach="material"
-                    distort={0.15}
-                    speed={1}
-                    roughness={0.1} // Very shiny
-                    metalness={1.0} // Fully metallic
-                    reflectivity={1}
-                    clearcoat={1}
-                    clearcoatRoughness={0.1}
-                />
-            </Sphere>
-        </Float>
-    );
+// ─── Status label map ────────────────────────────────────────────────────────
+const STATUS_LABELS = {
+    idle: { text: 'Tap the mic to start', color: 'text-white/50' },
+    listening: { text: "I'm listening…", color: 'text-red-400' },
+    processing: { text: 'Processing…', color: 'text-blue-400' },
+    speaking: { text: 'AI is speaking…', color: 'text-green-400' },
+    error: { text: '', color: 'text-red-400' },
 };
 
-export function VoiceOverlay({ isOpen, onClose }) {
-    const [stream, setStream] = useState(null);
-    const [analyzer, setAnalyzer] = useState(null);
-    const [audioContext, setAudioContext] = useState(null);
+// ─── Main Component ──────────────────────────────────────────────────────────
+export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage = 'en-IN', isIncognito = false }) {
+    // State
+    const [voiceStatus, setVoiceStatus] = useState('idle'); // idle | listening | processing | speaking
     const [error, setError] = useState(null);
+    const [micStream, setMicStream] = useState(null);
+    const [analyzer, setAnalyzer] = useState(null);
 
+    // Refs
+    const audioCtxRef = useRef(null);
+    const mediaRecorderRef = useRef(null);
+    const chunksRef = useRef([]);
+    const audioPlayerRef = useRef(null);
+
+    // ── Cleanup on close ──────────────────────────────────────────────────
     useEffect(() => {
-        if (isOpen) {
-            startAudio();
-        } else {
-            stopAudio();
+        if (!isOpen) {
+            stopEverything();
+            setVoiceStatus('idle');
+            setError(null);
         }
-        return () => stopAudio();
+        return () => stopEverything();
     }, [isOpen]);
 
-    const startAudio = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setStream(stream);
-
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const analyser = audioCtx.createAnalyser();
-            const source = audioCtx.createMediaStreamSource(stream);
-
-            source.connect(analyser);
-            analyser.fftSize = 256;
-
-            setAudioContext(audioCtx);
-            setAnalyzer(analyser);
-            setError(null);
-        } catch (err) {
-            console.error("Microphone access denied:", err);
-            setError("Microphone access denied. Please verify permissions.");
+    const stopEverything = () => {
+        // Stop mic
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            setMicStream(null);
         }
-    };
-
-    const stopAudio = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
+        // Stop recorder
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
         }
-        if (audioContext) {
-            audioContext.close();
-            setAudioContext(null);
+        // Stop audio playback
+        if (audioPlayerRef.current) {
+            audioPlayerRef.current.pause();
+            audioPlayerRef.current = null;
+        }
+        // Close audio context
+        if (audioCtxRef.current) {
+            audioCtxRef.current.close();
+            audioCtxRef.current = null;
         }
         setAnalyzer(null);
     };
+
+    // ── Start recording ───────────────────────────────────────────────────
+    const startListening = async () => {
+        setError(null);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            setMicStream(stream);
+
+            // Set up analyser for 3D visualisation
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtxRef.current = audioCtx;
+            const analyser = audioCtx.createAnalyser();
+            const source = audioCtx.createMediaStreamSource(stream);
+            source.connect(analyser);
+            analyser.fftSize = 256;
+            setAnalyzer(analyser);
+
+            // Set up MediaRecorder
+            const recorder = new MediaRecorder(stream, { mimeType: getSupportedMimeType() });
+            mediaRecorderRef.current = recorder;
+            chunksRef.current = [];
+
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunksRef.current.push(e.data);
+            };
+
+            recorder.onstop = handleRecordingStop;
+            recorder.start();
+            setVoiceStatus('listening');
+        } catch (err) {
+            console.error('Mic error:', err);
+            setError('Microphone access denied. Please check permissions.');
+            setVoiceStatus('error');
+        }
+    };
+
+    // ── Stop recording + send to API ──────────────────────────────────────
+    const stopListening = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+        }
+        // Stop mic tracks
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            setMicStream(null);
+        }
+        if (audioCtxRef.current) {
+            audioCtxRef.current.close();
+            audioCtxRef.current = null;
+        }
+        setAnalyzer(null);
+        setVoiceStatus('processing');
+    };
+
+    // ── Handle blob → base64 → API → playback ─────────────────────────────
+    const handleRecordingStop = useCallback(async () => {
+        const mimeType = getSupportedMimeType();
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+
+        // Strip codec part (e.g., ";codecs=opus") because some backends reject it
+        const cleanMimeType = mimeType.split(';')[0];
+
+        try {
+            setVoiceStatus('processing');
+            const base64Audio = await blobToBase64(blob);
+
+            // Call speech-to-speech endpoint
+            const result = await chatbotApi.speechToSpeech(
+                base64Audio,
+                cleanMimeType,
+                responseLanguage,
+                !isIncognito
+            );
+
+            // Notify parent to add to chat history
+            if (onVoiceMessage && result) {
+                onVoiceMessage({
+                    transcription: result.transcript || '', 
+                    answer: result.answer || '',
+                    audioBase64: result.audio_base64 || null,
+                });
+            }
+
+            // Play back the AI audio response if provided
+            if (result?.audio_base64) {
+                const audioData = result.audio_base64;
+                const audioMime = result.mime_type || 'audio/wav';
+                setVoiceStatus('speaking');
+                await playBase64Audio(audioData, audioMime);
+            }
+
+            setVoiceStatus('idle');
+        } catch (err) {
+            console.error('Speech-to-speech error:', err);
+            setError('Failed to process voice. Please try again.');
+            setVoiceStatus('error');
+        }
+    }, [responseLanguage, onVoiceMessage]);
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+
+    const playBase64Audio = (base64, mimeType = 'audio/wav') => new Promise((resolve) => {
+        const byteString = atob(base64);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        const audioBlob = new Blob([ab], { type: mimeType });
+        const url = URL.createObjectURL(audioBlob);
+        const audio = new Audio(url);
+        audioPlayerRef.current = audio;
+        audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.play().catch(resolve);
+    });
+
+    const getSupportedMimeType = () => {
+        const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/wav'];
+        return types.find(t => MediaRecorder.isTypeSupported(t)) || 'audio/webm';
+    };
+
+    const handleMicToggle = () => {
+        if (voiceStatus === 'listening') {
+            stopListening();
+        } else if (voiceStatus === 'idle' || voiceStatus === 'error') {
+            startListening();
+        }
+    };
+
+    const isListening = voiceStatus === 'listening';
+    const isProcessing = voiceStatus === 'processing';
+    const isSpeaking = voiceStatus === 'speaking';
+    const statusInfo = STATUS_LABELS[voiceStatus] || STATUS_LABELS.idle;
 
     return (
         <AnimatePresence>
@@ -117,9 +207,9 @@ export function VoiceOverlay({ isOpen, onClose }) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md"
+                    className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/70 backdrop-blur-md"
                 >
-                    {/* Close Button */}
+                    {/* Close */}
                     <button
                         onClick={onClose}
                         className="absolute top-8 right-8 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
@@ -127,37 +217,54 @@ export function VoiceOverlay({ isOpen, onClose }) {
                         <X size={24} />
                     </button>
 
-                    {/* 3D Scene */}
-                    <div className="w-full h-2/3 relative">
-                        <Canvas camera={{ position: [0, 0, 5], fov: 45 }}>
-                            <ambientLight intensity={0.5} />
-                            <pointLight position={[10, 10, 10]} intensity={1} />
-                            <pointLight position={[-10, -10, -10]} intensity={0.5} color="purple" />
-
-                            {/* Glass-like environment reflections */}
-                            <Environment preset="city" />
-
-                            <AnimatedBubble analyzer={analyzer} />
-                        </Canvas>
+                    {/* Visualizer Area (Space for the mic feel) */}
+                    <div className="w-full h-1/3 relative flex items-center justify-center">
+                        <div className={cn(
+                            "w-32 h-32 rounded-full border-2 border-white/10 flex items-center justify-center transition-all duration-500",
+                            isListening ? "border-red-500/50 bg-red-500/5" : "bg-white/5"
+                        )}>
+                            <Mic className={cn("w-12 h-12", isListening ? "text-red-500" : "text-white/20")} />
+                        </div>
                     </div>
 
-                    {/* Status Text / Instructions */}
-                    <div className="mt-8 text-center space-y-4">
-                        <h2 className="text-2xl font-bold text-white tracking-tight">Voice Mode Active</h2>
+                    {/* Controls */}
+                    <div className="mt-4 text-center space-y-4">
+                        <h2 className="text-2xl font-bold text-white tracking-tight">
+                            {isSpeaking ? 'AI is Responding' : 'Voice Mode'}
+                        </h2>
+
                         {error ? (
-                            <p className="text-red-400">{error}</p>
+                            <p className="text-red-400 text-sm max-w-xs">{error}</p>
                         ) : (
-                            <p className="text-white/60">I'm listening... Say something!</p>
+                            <p className={cn('text-sm transition-colors', statusInfo.color)}>
+                                {statusInfo.text}
+                            </p>
                         )}
 
-                        <div className="flex items-center justify-center gap-4 mt-6">
-                            <div className={cn(
-                                "flex items-center justify-center w-16 h-16 rounded-full transition-all duration-300",
-                                stream ? "bg-red-500/20 text-red-500 animate-pulse" : "bg-white/10 text-white/40"
-                            )}>
-                                {stream ? <Mic size={32} /> : <MicOff size={32} />}
-                            </div>
+                        <div className="flex items-center justify-center gap-4 mt-4">
+                            <button
+                                onClick={handleMicToggle}
+                                disabled={isProcessing || isSpeaking}
+                                className={cn(
+                                    'flex items-center justify-center w-16 h-16 rounded-full transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed',
+                                    isListening
+                                        ? 'bg-red-500 text-white shadow-lg shadow-red-500/40'
+                                        : 'bg-white/10 text-white hover:bg-white/20'
+                                )}
+                            >
+                                {isProcessing ? (
+                                    <Loader2 size={28} className="animate-spin" />
+                                ) : isListening ? (
+                                    <MicOff size={28} />
+                                ) : (
+                                    <Mic size={28} />
+                                )}
+                            </button>
                         </div>
+
+                        <p className="text-white/30 text-xs mt-2">
+                            {isListening ? 'Tap to stop recording' : 'Tap mic to speak'}
+                        </p>
                     </div>
                 </motion.div>
             )}

@@ -15,8 +15,8 @@ load_dotenv()
 try:
     import mysql.connector
     from mysql.connector import Error
-    # Temporarily disabled to avoid hanging
-    MYSQL_AVAILABLE = False
+    # Enable MySQL connection
+    MYSQL_AVAILABLE = True
 except ImportError:
     MYSQL_AVAILABLE = False
     print("⚠️  mysql-connector-python not installed. Run: pip install mysql-connector-python")
@@ -105,7 +105,7 @@ def _score_match(title_keywords: set, query_keywords: set) -> float:
     if not title_keywords or not query_keywords:
         return 0.0
     overlap = title_keywords & query_keywords
-    return len(overlap) / len(title_keywords)
+    return len(overlap) / len(title_keywords) if title_keywords else 0.0
 
 
 # ─────────────────────────────────────────────────────────────
@@ -171,18 +171,15 @@ def find_reference_links(
 
         if score >= min_score:
             scored.append({
+                "title": title or url,
                 "url": url,
-                "clickable": f'<a href="{url}" target="_blank">{url}</a>',
-                "_score": round(score, 3),
+                "relevance_score": round(score, 3),
             })
             seen_urls.add(url)
 
     # ── Sort by score descending, return top N ──
-    scored.sort(key=lambda x: x["_score"], reverse=True)
-    top = scored[:max_links]
-    for item in top:
-        item.pop("_score", None)
-    return top
+    scored.sort(key=lambda x: x["relevance_score"], reverse=True)
+    return scored[:max_links]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -191,6 +188,8 @@ def find_reference_links(
 
 def check_db_connection() -> bool:
     """Returns True if DB connection is healthy."""
+    if not MYSQL_AVAILABLE:
+        return False
     try:
         conn = get_connection()
         conn.close()
@@ -200,28 +199,11 @@ def check_db_connection() -> bool:
         return False
 
 
-# ─────────────────────────────────────────────────────────────
-# Quick test (run: python db.py)
-# ─────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     print("Testing DB connection...")
     if check_db_connection():
         print("✅ Connected!")
         refs = get_all_references()
         print(f"📚 Total references in DB: {len(refs)}")
-        if refs:
-            print("\nSample entries:")
-            for r in refs[:3]:
-                print(f"  - {r['title']}")
-                print(f"    {r['url']}")
-
-        # Test matching
-        test_sources = [{"full_section": "Media Literacy Skills and Social Media"}]
-        links = find_reference_links(test_sources)
-        print(f"\n🔗 Test match results ({len(links)} links):")
-        for link in links:
-            print(f"  [{link['relevance_score']}] {link['title']}")
-            print(f"    {link['url']}")
     else:
-        print("❌ Could not connect to DB. Check your .env settings.")
+        print("❌ Could not connect to DB.")

@@ -1,0 +1,803 @@
+INFO:     Will watch for changes in these directories: ['/Users/sagarhedav/Desktop/V2/Backend_chatbot']
+INFO:     Uvicorn running on http://localhost:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [50845] using WatchFiles
+
+============================================================
+🚀 Starting Media Literacy Chatbot API Server
+============================================================
+📡 API:  http://localhost:8000
+📚 Docs: http://localhost:8000/docs
+============================================================
+
+INFO:     Started server process [50852]
+INFO:     Waiting for application startup.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+🤖 LLM client ready: ⚡ Gemini Flash — Default (Fast, cost-efficient)
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 8285.80it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+INFO:     Application startup complete.
+⚠️ BM25 cache not found at data/bm25_corpus.json
+   Run: python build_bm25_cache.py
+Chatbot initialized successfully
+Sarvam speech client initialized successfully
+❌ DB connection failed: 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306' (61)
+⚠️  MySQL DB connection failed — reference links will be unavailable
+❌ DB connection failed: 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306' (61)
+INFO:     127.0.0.1:64226 - "GET /health HTTP/1.1" 200 OK
+Unable to retrieve routing information
+🔍 Analyzing question and retrieving context...
+🔍 Original query: What is digital photography?
+🔧 Corrected: What is digital photography?
+📝 Search queries (2): ['What is digital photography?', 'digital photography?']
+
+📊 Retrieved 9 unique chunks:
+   Vector+BM25: 0 | Vector only: 9 | BM25 only: 0
+  1. Introduction > TYPES OF PHOTOGRAPHY > INTRODUCTION... (rrf: 0.0383)
+  2. Introduction > PHOTO EDITING > INTRODUCTION... (rrf: 0.0377)
+  3. Introduction > PHOTO EDITING > INTRODUCTION... (rrf: 0.0371)
+⚠️ Neo4j: Unable to retrieve routing information
+🔬 Medium score (0.0383) — validating content sufficiency...
+📊 Validation — score: 5/10 | main_subject: True
+🤖 Generating answer...
+❌ DB error fetching references: 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306' (61)
+INFO:     127.0.0.1:64230 - "POST /chat/simple HTTP/1.1" 200 OK
+Unable to retrieve routing information
+🔍 Analyzing question and retrieving context...
+🔍 Original query: What is media?
+🔧 Corrected: What is media?
+📝 Search queries (2): ['What is media?', 'media?']
+
+📊 Retrieved 11 unique chunks:
+   Vector+BM25: 0 | Vector only: 11 | BM25 only: 0
+  1. Introduction > Alternative Media explains how the concept of... (rrf: 0.0368)
+  2. Introduction > Representation and Music Videos > PLATFORMS O... (rrf: 0.0250)
+  3. Introduction > Representation and Music Videos > PLATFORMS O... (rrf: 0.0246)
+⚠️ Neo4j: Unable to retrieve routing information
+🔬 Medium score (0.0368) — validating content sufficiency...
+📊 Validation — score: 10/10 | main_subject: True
+🤖 Generating answer...
+INFO:     127.0.0.1:64330 - "POST /speech-to-speech HTTP/1.1" 200 OK
+Unable to retrieve routing information
+🔍 Analyzing question and retrieving context...
+🔍 Original query: What is a Polaroid camera?
+🔧 Corrected: What is a Polaroid camera?
+📝 Search queries (2): ['What is a Polaroid camera?', 'polaroid camera?']
+
+📊 Retrieved 8 unique chunks:
+   Vector+BM25: 0 | Vector only: 8 | BM25 only: 0
+  1. Introduction > MJM-027 > DIFFERENT TYPES OF CAMERAS > Polaro... (rrf: 0.0383)
+  2. Introduction > HISTORY OF PHOTOGRAPHY > DIFFERENT TYPES OF C... (rrf: 0.0377)
+  3. Introduction > BENEFITS OF MOBILE > PLATFORM SPECIFIC BENEFI... (rrf: 0.0360)
+⚠️ Neo4j: Unable to retrieve routing information
+🔬 Medium score (0.0383) — validating content sufficiency...
+⚠️ Validation parse failed: ```json
+{"completeness_score
+⚠️ Validation error — using score-based fallback
+INFO:     127.0.0.1:64351 - "POST /speech-to-speech HTTP/1.1" 200 OK
+Unable to retrieve routing information
+🔍 Analyzing question and retrieving context...
+🔍 Original query: What is photography in two dimensions?
+🔧 Corrected: What is photography in two dimensions?
+📝 Search queries (2): ['What is photography in two dimensions?', 'photography dimensions?']
+
+📊 Retrieved 9 unique chunks:
+   Vector+BM25: 0 | Vector only: 9 | BM25 only: 0
+  1. Introduction > TYPES OF PHOTOGRAPHY > INTRODUCTION... (rrf: 0.0379)
+  2. Introduction > PHOTO EDITING > INTRODUCTION... (rrf: 0.0377)
+  3. Introduction > PHOTO EDITING > INTRODUCTION... (rrf: 0.0375)
+⚠️ Neo4j: Unable to retrieve routing information
+🔬 Medium score (0.0379) — validating content sufficiency...
+📊 Validation — score: 2/10 | main_subject: True
+🚫 Validator: score=2 <= 4 — refusing
+INFO:     127.0.0.1:64368 - "POST /speech-to-speech HTTP/1.1" 200 OK
+Unable to retrieve routing information
+🔍 Analyzing question and retrieving context...
+🔍 Original query: what is photography
+📝 Search queries (2): ['what is photography', 'photography']
+
+📊 Retrieved 9 unique chunks:
+   Vector+BM25: 0 | Vector only: 9 | BM25 only: 0
+  1. Introduction > PHOTO EDITING > INTRODUCTION... (rrf: 0.0383)
+  2. Introduction > PHOTO EDITING > INTRODUCTION... (rrf: 0.0377)
+  3. Introduction > TYPES OF PHOTOGRAPHY > INTRODUCTION... (rrf: 0.0371)
+⚠️ Neo4j: Unable to retrieve routing information
+🔬 Medium score (0.0383) — validating content sufficiency...
+📊 Validation — score: 10/10 | main_subject: True
+🤖 Generating answer...
+❌ DB error fetching references: 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306' (61)
+INFO:     127.0.0.1:64384 - "POST /chat HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'follow_up_generator.py', 'utils.py', 'Db.py', 'llm_client.py', 'build_bm25_cache.py', 'validate_preprocessing.py', 'sarvam_client.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [50852]
+WARNING:  WatchFiles detected changes in 'process_txt_pipeline.py', 'pdf_preprocessor.py', 'pinecone_client.py', 'academic_context.py', 'main.py', 'Db.py', 'neo4j_txt_builder.py', 'chatbot.py', 'api_server.py', 'build_bm25_cache.py', 'txt_processor.py', 'query_expander.py', 'test.py', 'hybrid_retriever.py', 'neo4j_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from fastapi.middleware.cors import CORSMiddleware
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 17, in <module>
+    from llm_client import UnifiedLLMClient, AVAILABLE_MODELS, ModelConfig
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/llm_client.py", line 48
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'process_txt_pipeline.py', 'follow_up_generator.py', 'utils.py', 'pdf_preprocessor.py', 'pinecone_client.py', 'main.py', 'Db.py', 'neo4j_txt_builder.py', 'chatbot.py', 'api_server.py', 'build_bm25_cache.py', 'llm_client.py', 'txt_processor.py', 'validate_preprocessing.py', 'hybrid_retriever.py', 'sarvam_client.py', 'neo4j_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'api_server.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'main.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'academic_context.py', 'txt_processor.py', 'pinecone_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'process_txt_pipeline.py', 'hybrid_retriever.py', 'pdf_preprocessor.py', 'chatbot.py', 'neo4j_txt_builder.py', 'neo4j_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'validate_preprocessing.py', 'sarvam_client.py', 'Db.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'build_bm25_cache.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'follow_up_generator.py', 'utils.py', 'llm_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 92
+    >>>>>>> 1fd556f6eef1b457d028226bfb36cfcec31b0e17
+            ^
+SyntaxError: invalid decimal literal
+WARNING:  WatchFiles detected changes in 'academic_context.py', 'api_server.py', 'build_bm25_cache.py', 'Db.py', 'chatbot.py'. Reloading...
+WARNING:  WatchFiles detected changes in 'process_txt_pipeline.py', 'follow_up_generator.py', 'utils.py', 'pdf_preprocessor.py', 'pinecone_client.py', 'main.py', 'neo4j_txt_builder.py', 'llm_client.py', 'txt_processor.py', 'validate_preprocessing.py', 'hybrid_retriever.py', 'sarvam_client.py', 'neo4j_client.py'. Reloading...
+WARNING:  WatchFiles detected changes in 'process_txt_pipeline.py', 'follow_up_generator.py', 'pdf_preprocessor.py', 'main.py', 'Db.py', 'chatbot.py', 'api_server.py', 'llm_client.py', 'hybrid_retriever.py'. Reloading...
+INFO:     Started server process [53730]
+INFO:     Waiting for application startup.
+WARNING:  WatchFiles detected changes in 'api_server.py'. Reloading...
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+🤖 LLM client ready: ⚡ Gemini 2.5 Flash — Default (Fast, cost-efficient)
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 7134.47it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [53730]
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'process_txt_pipeline.py', 'follow_up_generator.py', 'pdf_preprocessor.py', 'main.py', 'Db.py', 'chatbot.py', 'api_server.py', 'build_bm25_cache.py', 'llm_client.py', 'hybrid_retriever.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'academic_context.py', 'sarvam_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'neo4j_txt_builder.py', 'txt_processor.py', 'utils.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'validate_preprocessing.py', 'neo4j_client.py', 'pinecone_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'Db.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'api_server.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'chatbot.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'main.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'process_txt_pipeline.py', 'follow_up_generator.py', 'pdf_preprocessor.py', 'llm_client.py', 'hybrid_retriever.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'Db.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'Db.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 286, in run_path
+  File "<frozen runpy>", line 259, in _get_code_from_file
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 89
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'api_server.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from chatbot import PDFChatbot
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 210
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'api_server.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from chatbot import PDFChatbot
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 210
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'main.py', 'hybrid_retriever.py', 'follow_up_generator.py', 'pdf_preprocessor.py', 'llm_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from chatbot import PDFChatbot
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 210
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'main.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from chatbot import PDFChatbot
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 210
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'hybrid_retriever.py', 'follow_up_generator.py', 'pdf_preprocessor.py', 'llm_client.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from chatbot import PDFChatbot
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 210
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
+WARNING:  WatchFiles detected changes in 'chatbot.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from chatbot import PDFChatbot
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 706
+    HybridRetriever = HybridRetriever
+                                     ^
+IndentationError: unindent does not match any outer indentation level
+WARNING:  WatchFiles detected changes in 'chatbot.py'. Reloading...
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=8, pipe_handle=10)
+                                                  ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 122, in spawn_main
+    exitcode = _main(fd, parent_sentinel)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 131, in _main
+    prepare(preparation_data)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 246, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/spawn.py", line 297, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+                                  run_name="__mp_main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/api_server.py", line 22, in <module>
+    from chatbot import PDFChatbot
+  File "/Users/sagarhedav/Desktop/V2/Backend_chatbot/chatbot.py", line 706
+    HybridRetriever = HybridRetriever
+                                     ^
+IndentationError: unindent does not match any outer indentation level
