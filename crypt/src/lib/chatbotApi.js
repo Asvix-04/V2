@@ -18,10 +18,11 @@ export const chatbotApi = {
         }
     },
 
-    sendMessage: async (question, useHistory = true) => {
+    sendMessage: async (question, model = null, useHistory = true) => {
         try {
             const response = await chatbotClient.post('/chat', {
                 question,
+                model,
                 use_history: useHistory,
             });
             return response.data;

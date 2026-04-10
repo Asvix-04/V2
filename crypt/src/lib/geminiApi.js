@@ -18,7 +18,7 @@ const getGenAI = () => {
 // Map user-friendly model names to the exact Gemini model IDs found in your account
 const MODEL_MAPPING = {
   "Gemini 2.5 Flash": "gemini-2.5-flash",
-  "Gemini 3.1 Flash": "gemini-2.5-pro",
+  "Gemini 2.5 Pro": "gemini-2.5-pro",
 };
 
 export const geminiApi = {

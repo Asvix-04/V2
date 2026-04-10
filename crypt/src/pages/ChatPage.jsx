@@ -637,7 +637,7 @@ export function ChatPage() {
 
         try {
 
-            const response = await chatbotApi.sendMessage(apiPayload);
+            const response = await chatbotApi.sendMessage(apiPayload, selectedModel.id);
 
             const assistantMsg = {
                 role: "assistant",
@@ -647,7 +647,7 @@ export function ChatPage() {
             };
 
             // Extract follow-up questions from backend response
-            const followUps = response.type_2_context_aware || response.follow_ups || [];
+            const followUps = response?.follow_up_questions?.type_2_context_aware || response?.type_2_context_aware || response?.follow_ups || [];
             setFollowUpQuestions(followUps.slice(0, 3));
 
 

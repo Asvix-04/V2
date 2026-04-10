@@ -64,6 +64,7 @@ sarvam_client = None
 
 class QuestionRequest(BaseModel):
     question: str
+    model: Optional[str] = None
     use_history: Optional[bool] = True
 
 class SelectionRequest(BaseModel):
@@ -272,6 +273,7 @@ async def chat(request: QuestionRequest):
         # ── 1. Get chatbot answer + follow-up questions ──
         result = chatbot.ask_question_with_follow_ups(
             question=request.question.strip(),
+            model=request.model,
             use_history=request.use_history if request.use_history is not None else True,
         )
 

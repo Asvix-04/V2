@@ -21,17 +21,17 @@ class ModelConfig:
 
 AVAILABLE_MODELS = {
     "1": ModelConfig(
-        id="gemini-3-flash-preview",
-        display_name="Gemini Flash",
+        id="gemini-2.5-flash",
+        display_name="Gemini 2.5 Flash",
         api="gemini",
-        description="⚡ Gemini Flash — Default (Fast, cost-efficient)",
+        description="⚡ Gemini 2.5 Flash — Default (Fast, cost-efficient)",
         default_max_tokens=2500,
     ),
     "2": ModelConfig(
-        id="gemini-3.1-pro-preview",
-        display_name="Gemini Pro",
+        id="gemini-2.5-pro",
+        display_name="Gemini 2.5 Pro",
         api="gemini",
-        description="🔬 Gemini Pro — Research (High context, deep reasoning)",
+        description="🔬 Gemini 2.5 Pro — Research (High context, deep reasoning)",
         default_max_tokens=4096,
     ),
     "3": ModelConfig(

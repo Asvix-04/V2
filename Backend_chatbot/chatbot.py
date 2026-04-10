@@ -207,6 +207,18 @@ class PDFChatbot:
         self.model_config = model_config
         self.follow_up_generator = FollowUpGenerator(self.llm_client)
 
+    def _map_model_name(self, model_name: str) -> str:
+        """Map frontend model names to internal LLM IDs."""
+        if not model_name:
+            return "1"  # Default to Flash
+        
+        name = model_name.lower()
+        if "pro" in name:
+            return "2"
+        if "haiku" in name or "claude" in name:
+            return "3"
+        return "1"  # Default to Flash
+
     # ─────────────────────────────────────────────────────────
     # Follow-up continuity helpers  (from chatbot (1).py / v6)
     # ─────────────────────────────────────────────────────────
@@ -633,6 +645,7 @@ class PDFChatbot:
     def ask_question_with_follow_ups(
         self,
         question: str,
+        model: str = None,
         use_history: bool = True,
         include_follow_ups: bool = True
     ) -> Dict[str, Any]:
@@ -641,6 +654,13 @@ class PDFChatbot:
 
         Returns ask_question() result plus 'follow_up_questions' key.
         """
+        # Switch model if requested
+        if model:
+            target_id = self._map_model_name(model)
+            if target_id != self.model_config.id and target_id in AVAILABLE_MODELS:
+                print(f"🔄 Switching model to: {AVAILABLE_MODELS[target_id].display_name}")
+                self.switch_model(AVAILABLE_MODELS[target_id])
+
         response = self.ask_question(question, use_history=use_history)
         answer_text = (response.get('answer') or '').strip()
         answer_text_lower = answer_text.lower()

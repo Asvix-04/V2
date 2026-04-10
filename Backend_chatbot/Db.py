@@ -15,7 +15,8 @@ load_dotenv()
 try:
     import mysql.connector
     from mysql.connector import Error
-    MYSQL_AVAILABLE = True
+    # Temporarily disabled to avoid hanging
+    MYSQL_AVAILABLE = False
 except ImportError:
     MYSQL_AVAILABLE = False
     print("⚠️  mysql-connector-python not installed. Run: pip install mysql-connector-python")
