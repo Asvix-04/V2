@@ -1,0 +1,21 @@
+[dotenv@17.2.4] injecting env (8) from crypt/backend/.env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+[dotenv@17.2.4] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+Server running on port 5001
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+Firestore unavailable, using JWT payload for auth: Failed to find user by ID: Cannot read properties of undefined (reading 'collection')
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+Firestore unavailable, using JWT payload for auth: Failed to find user by ID: Cannot read properties of undefined (reading 'collection')
+Chat Proxy Error: 
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+Firestore unavailable, using JWT payload for auth: Failed to find user by ID: Cannot read properties of undefined (reading 'collection')
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+Firestore unavailable, using JWT payload for auth: Failed to find user by ID: Cannot read properties of undefined (reading 'collection')
+Chat Proxy Error: 
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+Firestore unavailable, using JWT payload for auth: Failed to find user by ID: Cannot read properties of undefined (reading 'collection')
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+Firestore unavailable, using JWT payload for auth: Failed to find user by ID: Cannot read properties of undefined (reading 'collection')
+Chat Proxy Error: 
+Firebase initialization error: Failed to parse private key: Error: Invalid PEM formatted message.
+Firestore unavailable, using JWT payload for auth: Failed to find user by ID: Cannot read properties of undefined (reading 'collection')

@@ -1,9 +1,8 @@
 """
 Follow-up Question Generator for Chatbot Responses.
 
-Generates Type 2 (Context-Aware) follow-up questions only.
-Questions are filtered to stay grounded in the user's question,
-assistant response, and recent conversation context.
+Generates context-aware follow-up questions grounded in the user's
+question, the assistant response, and recent conversation history.
 """
 
 import json
@@ -37,19 +36,18 @@ class FollowUpGenerator:
     ) -> Dict[str, List[str]]:
         """
         Generate follow-up questions based on the assistant's response.
-        
+
         Args:
             assistant_response: The chatbot's response to analyze
             user_question: The original user question that prompted the response
             conversation_history: Optional list of previous messages with 'role' and 'content'
             max_retries: Number of retry attempts if LLM parsing fails
-            
+
         Returns:
             Dictionary with keys:
             {
-                "type_1_general": [],
                 "type_2_context_aware": ["question1", "question2"],
-                "status": "success" or "fallback"
+                "status": "success" | "fallback"
             }
         """
         # Try LLM-based generation first
@@ -110,19 +108,18 @@ class FollowUpGenerator:
     ) -> Dict[str, List[str]]:
         """
         Generate follow-up questions using LLM.
-        
+
         Args:
             assistant_response: The chatbot's response
             user_question: The original user question
             conversation_history: Optional conversation context
-            
+
         Returns:
             Dictionary with type_2_context_aware questions
         """
         # Build context from conversation history
         conversation_context = ""
         if conversation_history:
-            # Show last 2-3 exchanges for context
             recent_messages = conversation_history[-4:] if len(conversation_history) > 4 else conversation_history
             conversation_context = "Recent conversation:\n"
             for msg in recent_messages:
@@ -131,21 +128,15 @@ class FollowUpGenerator:
                 conversation_context += f"{role}: {content}\n"
             conversation_context += "\n---\n\n"
 
-        # Construct the prompt
         prompt = f"""You are a helpful educational chatbot assistant. Based on the conversation and response below, generate follow-up questions for the user.
 
 {conversation_context}Original User Question: {user_question}
 
 Assistant Response: {assistant_response}
 
-Generate BOTH Type 1 and Type 2 follow-up questions in JSON format.
+Generate 2-3 context-aware follow-up questions in JSON format.
 
-Type 1 - General Questions (2-3 questions):
-- Broader conceptual questions about related topics from the answer
-- Help the student explore the subject further
-- Format examples: "What is X?", "What are the types of X?", "How does X work?"
-
-Type 2 - Context-Aware Questions (2-3 questions):
+Context-Aware Questions:
 - Questions that reference and build on what was already discussed
 - Must explicitly include one or more concrete terms from the assistant response
 - Must remain answerable by the same course context (no out-of-scope jumps)
@@ -153,7 +144,6 @@ Type 2 - Context-Aware Questions (2-3 questions):
 
 Return ONLY valid JSON (no markdown, no extras):
 {{
-    "type_1_general": ["question1", "question2"],
     "type_2_context_aware": ["question1", "question2", "question3"]
 }}
 
@@ -163,10 +153,7 @@ Requirements:
 - Avoid questions already answered in the response
 - Generate in English only"""
 
-        # Call LLM
         response_text = self.llm_client.generate(prompt)
-
-        # Parse JSON from response
         result = self._parse_json_response(response_text)
         return result
 
@@ -178,25 +165,17 @@ Requirements:
     ) -> Dict[str, List[str]]:
         """
         Fallback pattern-based question generation when LLM fails.
-        
-        Extracts key nouns, concepts, and builds questions from them.
+
+        Extracts key nouns/concepts and builds context-aware questions from them.
         """
-        # Extract key concepts from response
         concepts = self._extract_key_concepts(assistant_response)
-        
-        # Build Type 1 questions (general) from concepts
-        type_1 = self._build_general_questions(concepts, assistant_response)
-        
-        # Build Type 2 questions (context-aware) 
         type_2 = self._build_context_questions(
             concepts,
             assistant_response,
             user_question,
             conversation_history
         )
-
         return {
-            "type_1_general": type_1[:3],
             "type_2_context_aware": type_2[:3],
             "status": "fallback"
         }
@@ -254,28 +233,6 @@ Requirements:
                 unique_concepts.append(token)
         
         return unique_concepts[:5]  # Return top 5 concepts
-
-    def _build_general_questions(self, concepts: List[str], text: str) -> List[str]:
-        """Build Type 1 (general) questions from extracted concepts."""
-        questions = []
-        
-        for concept in concepts[:3]:
-            # Pattern 1: "What is X?"
-            q1 = f"What is {concept}?"
-            questions.append(q1)
-            
-            # Pattern 2: "How does X relate to Y?" (pick another concept if available)
-            if len(concepts) > 1:
-                other = next((c for c in concepts if c != concept), None)
-                if other:
-                    q2 = f"How does {concept} relate to {other}?"
-                    questions.append(q2)
-            
-            # Pattern 3: "What are examples of X?"
-            q3 = f"What are practical examples of {concept}?"
-            questions.append(q3)
-        
-        return list(dict.fromkeys(questions))[:3]  # Deduplicate and limit to 3
 
     def _build_context_questions(
         self,
@@ -403,19 +360,18 @@ Requirements:
     def _parse_json_response(self, response_text: str) -> Dict[str, List[str]]:
         """
         Extract and parse JSON from LLM response.
-        
-        Handles cases where LLM might wrap JSON in markdown code blocks.
+
+        Handles cases where the LLM wraps JSON in markdown code blocks.
         """
-        # Try to find JSON in code blocks (markdown)
+        # Strip markdown code fences if present
         json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
         match = re.search(json_pattern, response_text, re.DOTALL)
         if match:
             response_text = match.group(1)
-        
-        # Try to find plain JSON object
+
+        # Locate the outermost JSON object
         json_start = response_text.find('{')
         if json_start != -1:
-            # Find matching closing brace
             brace_count = 0
             json_end = -1
             for i in range(json_start, len(response_text)):
@@ -426,49 +382,27 @@ Requirements:
                     if brace_count == 0:
                         json_end = i + 1
                         break
-            
+
             if json_end != -1:
-                json_str = response_text[json_start:json_end]
-                parsed = json.loads(json_str)
-                
-                # Accept both old and new formats; normalize to current output schema.
-                if "type_2_context_aware" in parsed and isinstance(parsed.get("type_2_context_aware"), list):
-                    return {
-                        "type_1_general": parsed.get("type_1_general", []),
-                        "type_2_context_aware": parsed.get("type_2_context_aware", [])
-                    }
-                if "type_1_general" in parsed and "type_2_context_aware" in parsed:
-                    return {
-                        "type_1_general": parsed.get("type_1_general", []),
-                        "type_2_context_aware": parsed.get("type_2_context_aware", [])
-                    }
-        
-        # If parsing fails, raise exception to trigger fallback
+                parsed = json.loads(response_text[json_start:json_end])
+                if "type_2_context_aware" in parsed and isinstance(parsed["type_2_context_aware"], list):
+                    return {"type_2_context_aware": parsed["type_2_context_aware"]}
+
         raise ValueError("Could not parse JSON from LLM response")
 
     def _validate_output(self, output: Dict[str, Any]) -> bool:
         """Validate that output has the required structure and content."""
         if not isinstance(output, dict):
             return False
-        
-        # Check required keys
         if "type_2_context_aware" not in output:
             return False
-        
-        # Check that list is present
-        if not isinstance(output.get("type_2_context_aware"), list):
+        if not isinstance(output["type_2_context_aware"], list):
             return False
-        
-        # Check minimum content
         if len(output["type_2_context_aware"]) < 1:
             return False
-
-        # Check that items are non-empty strings
-        all_questions = output.get("type_2_context_aware", []) + output.get("type_1_general", [])
-        for q in all_questions:
+        for q in output["type_2_context_aware"]:
             if not isinstance(q, str) or len(q.strip()) < 5:
                 return False
-        
         return True
 
 
@@ -479,24 +413,24 @@ def generate_follow_up_questions(
     llm_client: Optional[UnifiedLLMClient] = None
 ) -> Dict[str, List[str]]:
     """
-    Convenience function to generate follow-up questions.
-    
+    Convenience function to generate context-aware follow-up questions.
+
     Args:
         assistant_response: The chatbot's response
         user_question: The original user's question
         conversation_history: Optional previous conversation messages
         llm_client: Optional LLM client to reuse
-        
+
     Returns:
-        Dictionary with type_2_context_aware questions (type_1_general kept empty for compatibility)
-        
-    Example:
+        Dictionary with ``type_2_context_aware`` (list of questions) and ``status``.
+
+    Example::
+
         result = generate_follow_up_questions(
             assistant_response="Radio broadcasting emerged in the 1920s...",
             user_question="When did radio broadcasting start?",
             conversation_history=[...]
         )
-        
         print(result["type_2_context_aware"])  # List of context-aware questions
     """
     generator = FollowUpGenerator(llm_client)

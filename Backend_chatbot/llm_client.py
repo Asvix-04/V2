@@ -1,9 +1,10 @@
 """
-Unified LLM Client — Routes to Gemini or Anthropic Claude.
+Unified LLM Client — Routes to Gemini, Anthropic Claude, or DeepSeek.
 
 Supports model switching at runtime without restarting the bot.
 """
 
+from __future__ import annotations
 from dataclasses import dataclass
 import os
 import time
@@ -14,7 +15,7 @@ import concurrent.futures
 class ModelConfig:
     id: str
     display_name: str
-    api: str            # "gemini" | "claude"
+    api: str            # "gemini" | "claude" | "deepseek"
     description: str
     default_max_tokens: int = 2500  # Per-model token limit
 
@@ -35,10 +36,10 @@ AVAILABLE_MODELS = {
         default_max_tokens=4096,
     ),
     "3": ModelConfig(
-        id="claude-haiku-4-5-20251001",
-        display_name="Claude Haiku",
-        api="claude",
-        description="🎯 Claude Haiku — Fast & accurate (Anthropic)",
+        id="deepseek-chat",
+        display_name="DeepSeek V3.2",
+        api="deepseek",
+        description="🌊 DeepSeek V3.2 — Fast & accurate (DeepSeek)",
         default_max_tokens=3000,
     ),
 }
@@ -69,6 +70,13 @@ class UnifiedLLMClient:
                 raise ValueError("ANTHROPIC_API_KEY not found in .env")
             self.client = anthropic.Anthropic(api_key=api_key)
 
+        elif model_config.api == "deepseek":
+            from openai import OpenAI
+            api_key = os.getenv("DEEPSEEK_API_KEY")
+            if not api_key:
+                raise ValueError("DEEPSEEK_API_KEY not found in .env")
+            self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+
         else:
             raise ValueError(f"Unknown API: {model_config.api}")
 
@@ -89,6 +97,11 @@ class UnifiedLLMClient:
         """Generate a response. Returns None on exhausted retries."""
         if self.config.api == "gemini":
             return self._call_gemini(
+                prompt, system_instruction, temperature,
+                max_output_tokens, top_p, max_retries, timeout,
+            )
+        elif self.config.api == "deepseek":
+            return self._call_deepseek(
                 prompt, system_instruction, temperature,
                 max_output_tokens, top_p, max_retries, timeout,
             )
@@ -172,6 +185,51 @@ class UnifiedLLMClient:
             except Exception as e:
                 error_str = str(e).lower()
                 if "overloaded" in error_str or "rate_limit" in error_str or "529" in error_str:
+                    if attempt < max_retries:
+                        wait = 5 * (2 ** attempt)
+                        print(f"⏳ Rate limited — waiting {wait}s ({attempt + 1}/{max_retries})...")
+                        time.sleep(wait)
+                        continue
+                    print(f"❌ Rate limit persisted after {max_retries} retries")
+                    return None
+                raise
+        return None
+
+    # ── DeepSeek ─────────────────────────────────────────
+
+    def _call_deepseek(
+        self, prompt, system_instruction, temperature,
+        max_output_tokens, top_p, max_retries, timeout,
+    ) -> str | None:
+
+        messages = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
+
+        for attempt in range(max_retries + 1):
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(
+                        self.client.chat.completions.create,
+                        model=self.config.id,
+                        messages=messages,
+                        max_tokens=max_output_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                    )
+                    try:
+                        response = future.result(timeout=timeout)
+                    except concurrent.futures.TimeoutError:
+                        print(f"⏱️  Timed out after {timeout}s (attempt {attempt + 1}/{max_retries + 1})")
+                        if attempt < max_retries:
+                            continue
+                        return None
+                return response.choices[0].message.content
+
+            except Exception as e:
+                error_str = str(e).lower()
+                if "rate_limit" in error_str or "429" in error_str or "overloaded" in error_str:
                     if attempt < max_retries:
                         wait = 5 * (2 ** attempt)
                         print(f"⏳ Rate limited — waiting {wait}s ({attempt + 1}/{max_retries})...")

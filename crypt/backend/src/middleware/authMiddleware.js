@@ -15,18 +15,25 @@ const protect = async (req, res, next) => {
             // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            // Get user from Firestore
-            const user = await User.findById(decoded.id);
-            
-            if (!user) {
-                return res.status(401).json({ message: 'User not found' });
+            // Try to get user from Firestore, fall back to JWT payload if unavailable
+            try {
+                const user = await User.findById(decoded.id);
+                if (user) {
+                    req.user = user.toJSON();
+                } else {
+                    // Firestore is up but user not found
+                    return res.status(401).json({ message: 'User not found' });
+                }
+            } catch (dbErr) {
+                // Firestore is unavailable — use the JWT payload directly
+                console.warn('Firestore unavailable, using JWT payload for auth:', dbErr.message);
+                req.user = { id: decoded.id, role: decoded.role || 'student' };
             }
 
-            req.user = user.toJSON();
             next();
         } catch (error) {
-            console.error(error);
-            res.status(401).json({ message: 'Not authorized' });
+            console.error('Auth error:', error.message);
+            res.status(401).json({ message: 'Not authorized, token invalid' });
         }
     } else if (!token) {
         res.status(401).json({ message: 'Not authorized, no token' });

@@ -62,7 +62,7 @@ class BM25Index:
 class LLMReformulator:
     def __init__(self):
         self.client = None; self.types = None; self.ready = False
-        self.model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        self.model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
         try:
             from google import genai; from google.genai import types
             api_key = os.getenv("GEMINI_API_KEY")
@@ -72,16 +72,29 @@ class LLMReformulator:
     def reformulate(self, query: str) -> List[str]:
         if not self.ready: return self._basic_fallback(query)
         try:
-            prompt = (f"Rewrite this student question as 3 short search queries "
-                      f"(3-8 words each) optimized for finding textbook content. "
-                      f"Use key academic terms.\n\nQuestion: {query}\n\n"
-                      f"Output ONLY 3 lines, one query per line. No numbering.")
-            config = self.types.GenerateContentConfig(temperature=0.1, max_output_tokens=100)
-            config.system_instruction = "Output exactly 3 search queries, one per line. Nothing else."
+            prompt = (f"Generate 3 DIFFERENT search queries for finding textbook content about this question. "
+                      f"Each query must use DIFFERENT vocabulary and approach:\n"
+                      f"  Line 1: Use the core concept with academic synonyms (e.g. 'gatekeeping' for 'agenda setting')\n"
+                      f"  Line 2: Describe the effect or mechanism (e.g. 'how media influences public opinion')\n"
+                      f"  Line 3: Use related theory names or scholars if applicable\n\n"
+                      f"Question: {query}\n\n"
+                      f"Output ONLY 3 lines, one query per line, 3-8 words each. No numbering, no labels.")
+            config = self.types.GenerateContentConfig(temperature=0.3, max_output_tokens=120)
+            config.system_instruction = "Output exactly 3 search queries, one per line. Each must use different words. Nothing else."
             response = self.client.models.generate_content(model=self.model, contents=prompt, config=config)
             lines = [re.sub(r'^[\d\.\-\*\)\]]+\s*', '', l).strip().lower()
                      for l in response.text.strip().split('\n') if l.strip() and len(l.strip()) > 5]
-            return lines[:3] if lines else self._basic_fallback(query)
+            # Deduplicate lines that are too similar to the original query
+            orig_words = set(query.lower().split())
+            diverse = []
+            for line in lines[:3]:
+                line_words = set(line.split())
+                overlap = len(line_words & orig_words) / max(len(line_words), 1)
+                if overlap < 0.85:  # Only keep if meaningfully different
+                    diverse.append(line)
+                elif not diverse:   # Always keep at least one
+                    diverse.append(line)
+            return diverse if diverse else self._basic_fallback(query)
         except Exception: return self._basic_fallback(query)
 
     def _basic_fallback(self, query: str) -> List[str]:

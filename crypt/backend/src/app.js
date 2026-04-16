@@ -1,11 +1,12 @@
 const express = require('express');
+const path = require('path');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const { initializeFirebase } = require('./config/db');
 
-// Load env vars
-dotenv.config();
+// Load env vars — always resolve relative to this file so it works from any cwd
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // Initialize Firebase
 initializeFirebase();
@@ -16,7 +17,10 @@ const app = express();
 app.use(express.json());       // Parse JSON body
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded body
 app.use(cors());               // Enable CORS
-app.use(helmet());             // Security headers
+app.use(helmet({
+    crossOriginOpenerPolicy: false
+}));             // Security headers
+
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));

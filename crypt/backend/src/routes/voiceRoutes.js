@@ -24,22 +24,22 @@ if (!fs.existsSync('uploads/audio/')) {
 
 // @route   POST /api/voice/speech-to-speech
 // @desc    Process audio, get RAG answer, and return text/speech
-// @access  Private
-router.post('/speech-to-speech', protect, voiceController.speechToSpeech);
+// @access  Public (Guest support)
+router.post('/speech-to-speech', voiceController.speechToSpeech);
 
 // @route   POST /api/voice/text-to-text
 // @desc    Process multi-language text chat
-// @access  Private
-router.post('/text-to-text', protect, voiceController.textToText);
+// @access  Public (Guest support)
+router.post('/text-to-text', voiceController.textToText);
 
 // @route   POST /api/voice/chat
-router.post('/chat', protect, voiceController.chat);
+router.post('/chat', voiceController.chat);
 
 // @route   POST /api/voice/chat/simple
-router.post('/chat/simple', protect, voiceController.chatSimple);
+router.post('/chat/simple', voiceController.chatSimple);
 
 // @route   POST /api/voice/clear-history
-router.post('/clear-history', protect, voiceController.clearHistory);
+router.post('/clear-history', voiceController.clearHistory);
 
 // @route   GET /api/voice/health
 // @desc    Check voice service health

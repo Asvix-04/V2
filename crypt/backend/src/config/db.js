@@ -10,20 +10,34 @@ const initializeFirebase = () => {
             return db;
         }
 
-        const privateKey = (process.env.FIREBASE_PRIVATE_KEY || process.env.PRIVATE_KEY || '').trim().replace(/^["']|["']$/g, '');
-        const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim().replace(/^["']|["']$/g, '');
-        const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim().replace(/^["']|["']$/g, '');
+        const privateKey = (process.env.FIREBASE_PRIVATE_KEY || process.env.PRIVATE_KEY || '').replace(/^["']|["']$/g, '');
+        const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').replace(/^["']|["']$/g, '');
+        const projectId = (process.env.FIREBASE_PROJECT_ID || '').replace(/^["']|["']$/g, '');
 
         if (!projectId || !clientEmail || !privateKey) {
             console.warn('Firebase environment variables missing. Persistence will be disabled.');
             return null;
         }
 
+        const rawKey = (process.env.FIREBASE_PRIVATE_KEY || process.env.PRIVATE_KEY || '').replace(/^["']|["']$/g, '');
+        
+        // 1. Convert literal \n sequences to actual newlines
+        let formattedKey = rawKey.replace(/\\n/g, '\n');
+        
+        // 2. Strip any remaining stray backslashes (common in mangled .env files)
+        // PEM keys should not contain backslashes unless they are for newline escaping
+        formattedKey = formattedKey.replace(/\\/g, '');
+        
+        // 3. Ensure the private key ends with a newline which is required for valid PEM
+        if (formattedKey && !formattedKey.endsWith('\n')) {
+            formattedKey += '\n';
+        }
+
         admin.initializeApp({
             credential: admin.credential.cert({
                 projectId: projectId,
                 clientEmail: clientEmail,
-                privateKey: privateKey.replace(/\\n/g, '\n')
+                privateKey: formattedKey
             }),
             databaseURL: `https://${projectId}.firebaseio.com`
         });
