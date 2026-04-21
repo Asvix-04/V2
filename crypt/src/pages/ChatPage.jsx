@@ -259,6 +259,23 @@ export function ChatPage() {
         return MODELS.find(m => m.id === saved) || MODELS[0];
     });
     const [isModelDropdownOpen, setIsModelDropdownOpen] = React.useState(false);
+    const [selectedLanguage, setSelectedLanguage] = React.useState(null); // null = English (default)
+    const [isTranslating, setIsTranslating] = React.useState(false);
+    const [isLangDropdownOpen, setIsLangDropdownOpen] = React.useState(false);
+
+    const TRANSLATE_LANGUAGES = [
+        { code: null,    label: "English",    flag: "🇬🇧" },
+        { code: "hi-IN", label: "Hindi",      flag: "🇮🇳" },
+        { code: "bn-IN", label: "Bengali",    flag: "🇧🇩" },
+        { code: "gu-IN", label: "Gujarati",   flag: "🇮🇳" },
+        { code: "kn-IN", label: "Kannada",    flag: "🇮🇳" },
+        { code: "ml-IN", label: "Malayalam",  flag: "🇮🇳" },
+        { code: "mr-IN", label: "Marathi",    flag: "🇮🇳" },
+        { code: "od-IN", label: "Odia",       flag: "🇮🇳" },
+        { code: "pa-IN", label: "Punjabi",    flag: "🇮🇳" },
+        { code: "ta-IN", label: "Tamil",      flag: "🇮🇳" },
+        { code: "te-IN", label: "Telugu",     flag: "🇮🇳" },
+    ];
 
     React.useEffect(() => {
         localStorage.setItem("selectedModelId", selectedModel.id);
@@ -682,7 +699,8 @@ export function ChatPage() {
                 role: "assistant",
                 content: response.answer,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                modelName: selectedModel.name
+                modelName: selectedModel.name,
+                referenceLinks: response.reference_links
             };
 
             // Extract follow-up questions from backend response
@@ -794,6 +812,95 @@ export function ChatPage() {
     };
 
 
+
+    const handleVoiceMessage = async ({ transcription, answer, audioBase64, reference_links }) => {
+        if (!transcription && !answer) return;
+
+        const userMsg = {
+            role: "user",
+            content: transcription || "(Voice message)",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+
+        const assistantMsg = {
+            role: "assistant",
+            content: answer,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            modelName: selectedModel.name,
+            audioBase64: audioBase64
+        };
+
+        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+
+        if (!isGuest && !isIncognito) {
+            try {
+                const sessionTitle = currentSessionId
+                    ? sessions.find(s => s.id === currentSessionId)?.title
+                    : (transcription || "Voice Chat").substring(0, 30) + "...";
+
+                const res = await api.post('/chat/sessions', {
+                    sessionId: currentSessionId,
+                    messages: [...messages, userMsg, assistantMsg],
+                    title: sessionTitle
+                });
+
+                if (res.data) {
+                    setSessions(prev => {
+                        const filtered = prev.filter(s => s.id !== res.data.id);
+                        return [res.data, ...filtered];
+                    });
+                    if (!currentSessionId) setCurrentSessionId(res.data.id);
+                }
+            } catch (dbErr) {
+                console.error("Failed to save voice chat to DB:", dbErr);
+            }
+        }
+    };
+
+    // ── Text-to-Text (Multilingual) handler ──
+    const handleTranslate = async (text) => {
+        if (!text || !text.trim()) return;
+        if (isGuest && messages.length >= 10) { setShowLimitModal(true); return; }
+        setError(null);
+        setFollowUpQuestions([]);
+        const userMsg = {
+            role: "user",
+            content: text,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages(prev => [...prev, userMsg]);
+        setIsLoading(true);
+        try {
+            const response = await chatbotApi.textToText(text, selectedLanguage);
+            const assistantMsg = {
+                role: "assistant",
+                content: response.answer,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                modelName: selectedModel.name,
+            };
+            const updatedMessages = [...messages, userMsg, assistantMsg];
+            setMessages(updatedMessages);
+            if (!isGuest && !isIncognito) {
+                try {
+                    const sessionTitle = currentSessionId
+                        ? sessions.find(s => s.id === currentSessionId)?.title
+                        : text.substring(0, 30) + "...";
+                    const res = await api.post('/chat/sessions', { sessionId: currentSessionId, messages: updatedMessages, title: sessionTitle });
+                    if (res.data) {
+                        setSessions(prev => { const filtered = prev.filter(s => s.id !== res.data.id); return [res.data, ...filtered]; });
+                        if (!currentSessionId) setCurrentSessionId(res.data.id);
+                    }
+                } catch (dbErr) { console.error("Failed to save translated chat to DB:", dbErr); }
+            }
+        } catch (err) {
+            console.error("Text-to-Text API Error:", err);
+            const errorMessage = err.response?.data?.detail || err.message || "Translation failed";
+            setError(errorMessage);
+            setMessages(prev => [...prev, { role: "assistant", content: `Sorry, translation failed: ${errorMessage}. Please try again.`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isError: true }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleMarkComplete = async () => {
 
@@ -1319,9 +1426,9 @@ export function ChatPage() {
 
                                         <ChatInput
 
-                                            onSend={handleSend}
+                                            onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                            placeholder={isConnected ? t('chat.inputPlaceholder') || "How can I help?" : "Backend not connected..."}
+                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
 
                                             disabled={isLoading || !isConnected}
 
@@ -1410,9 +1517,9 @@ export function ChatPage() {
 
                                             <ChatInput
 
-                                                onSend={handleSend}
+                                                onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                                placeholder={isConnected ? t('chat.inputPlaceholder') || "How can I help?" : "Backend not connected..."}
+                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
 
                                                 disabled={isLoading || !isConnected}
 
@@ -1601,15 +1708,49 @@ export function ChatPage() {
 
                                         <ChatInput
 
-                                            onSend={handleSend}
+                                            onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                            placeholder={isConnected ? t('chat.inputPlaceholder') || "How can I help?" : "Backend not connected..."}
+                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
 
                                             disabled={isLoading || !isConnected}
 
                                             onVoiceToggle={() => setIsVoiceMode(true)}
 
                                         />
+
+                                        {/* Compact Language Dropdown */}
+                                        <div className="mt-3 flex items-center gap-2 relative" style={{zIndex:50}}>
+                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 shrink-0">Respond in:</span>
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => setIsLangDropdownOpen(o => !o)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:border-accent/50 hover:text-white transition-all"
+                                                >
+                                                    <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.flag}</span>
+                                                    <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'English'}</span>
+                                                    <ChevronDown className={cn("h-3 w-3 transition-transform", isLangDropdownOpen && "rotate-180")} />
+                                                </button>
+                                                {isLangDropdownOpen && (
+                                                    <div className="absolute left-0 top-full mt-1 w-40 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-xl shadow-xl p-1 z-50">
+                                                        {TRANSLATE_LANGUAGES.map(lang => (
+                                                            <button
+                                                                key={lang.code || 'en'}
+                                                                onClick={() => { setSelectedLanguage(lang.code); setIsLangDropdownOpen(false); }}
+                                                                className={cn(
+                                                                    "flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                                                                    selectedLanguage === lang.code
+                                                                        ? "bg-accent text-white"
+                                                                        : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                                                                )}
+                                                            >
+                                                                <span>{lang.flag}</span>
+                                                                <span>{lang.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
 
                                     </div>
 
@@ -1870,15 +2011,49 @@ export function ChatPage() {
 
                                             <ChatInput
 
-                                                onSend={handleSend}
+                                                onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                                placeholder={isConnected ? t('chat.inputPlaceholder') || "How can I help?" : "Backend not connected..."}
+                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
 
                                                 disabled={isLoading || !isConnected}
 
                                                 onVoiceToggle={() => setIsVoiceMode(true)}
 
                                             />
+
+                                            {/* Compact Language Dropdown */}
+                                            <div className="mt-2 flex items-center gap-2 relative" style={{zIndex:50}}>
+                                                <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground-muted/60 shrink-0">Respond in:</span>
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={() => setIsLangDropdownOpen(o => !o)}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:border-accent/50 hover:text-white transition-all"
+                                                    >
+                                                        <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.flag}</span>
+                                                        <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'English'}</span>
+                                                        <ChevronDown className={cn("h-3 w-3 transition-transform", isLangDropdownOpen && "rotate-180")} />
+                                                    </button>
+                                                    {isLangDropdownOpen && (
+                                                        <div className="absolute left-0 bottom-full mb-1 w-40 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-xl shadow-xl p-1 z-50">
+                                                            {TRANSLATE_LANGUAGES.map(lang => (
+                                                                <button
+                                                                    key={lang.code || 'en'}
+                                                                    onClick={() => { setSelectedLanguage(lang.code); setIsLangDropdownOpen(false); }}
+                                                                    className={cn(
+                                                                        "flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                                                                        selectedLanguage === lang.code
+                                                                            ? "bg-accent text-white"
+                                                                            : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                                                                    )}
+                                                                >
+                                                                    <span>{lang.flag}</span>
+                                                                    <span>{lang.label}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
 
                                             <p className="mt-2 text-center text-[10px] text-zinc-400 dark:text-zinc-500">
 
@@ -1981,6 +2156,10 @@ export function ChatPage() {
                     isOpen={isVoiceMode}
 
                     onClose={() => setIsVoiceMode(false)}
+
+                    onVoiceMessage={handleVoiceMessage}
+
+                    isIncognito={isIncognito}
 
                 />
 

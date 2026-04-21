@@ -46,7 +46,7 @@ export function SignupPage() {
 
             // Register with backend
             await api.post('/auth/google', { idToken, mode: 'signup' });
-            
+
             // Redirect to login with success message
             navigate('/login', { state: { message: "Account created successfully! Please sign in with Google." } });
         } catch (err) {

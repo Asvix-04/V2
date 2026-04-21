@@ -13,14 +13,14 @@ import api from "../../lib/api";
 export function LoginPage() {
     const navigate = useNavigate();
     const location = useLocation();
-    
+
     // Auth Steps: identification -> choice -> password OR otp
     const [step, setStep] = useState("identification");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [otpCode, setOtpCode] = useState("");
     const [userData, setUserData] = useState(null); // stores name, profilePhoto
-    
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(location.state?.message || "");
@@ -99,7 +99,7 @@ export function LoginPage() {
 
             // Verify with backend
             const { data } = await api.post('/auth/google', { idToken, mode: 'login' });
-            
+
             localStorage.setItem("user", JSON.stringify(data));
             navigate('/dashboard');
         } catch (err) {
@@ -173,7 +173,7 @@ export function LoginPage() {
                         <Button className="w-full" size="lg" disabled={loading} isLoading={loading}>
                             Continue
                         </Button>
-                        
+
                         <div className="my-6 flex items-center gap-3">
                             <div className="h-px flex-1 bg-white/10" />
                             <span className="text-[10px] uppercase tracking-widest text-foreground-muted">Or</span>
@@ -194,8 +194,8 @@ export function LoginPage() {
                 {/* STEP 2: Choice */}
                 {step === "choice" && (
                     <div className="space-y-3">
-                        <Button 
-                            variant="secondary" 
+                        <Button
+                            variant="secondary"
                             className="w-full h-16 justify-between px-6 border-white/5 bg-white/[0.02] hover:bg-white/[0.05]"
                             onClick={() => setStep("password")}
                         >
@@ -208,8 +208,8 @@ export function LoginPage() {
                             </div>
                         </Button>
 
-                        <Button 
-                            variant="secondary" 
+                        <Button
+                            variant="secondary"
                             className="w-full h-16 justify-between px-6 border-white/5 bg-white/[0.02] hover:bg-white/[0.05]"
                             onClick={handleSelectOtp}
                             isLoading={loading}

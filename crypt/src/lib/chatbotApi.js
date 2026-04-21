@@ -100,6 +100,18 @@ export const chatbotApi = {
             throw error;
         }
     },
+
+    textToText: async (question, languageCode = null, useHistory = true) => {
+        try {
+            const payload = { question, use_history: useHistory };
+            if (languageCode) payload.language_code = languageCode;
+            const response = await chatbotClient.post('/text-to-text', payload);
+            return response.data;
+        } catch (error) {
+            console.error('Chatbot textToText failed:', error);
+            throw error;
+        }
+    },
 };
 
 export default chatbotApi;

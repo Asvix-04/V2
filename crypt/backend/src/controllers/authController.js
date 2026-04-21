@@ -336,8 +336,8 @@ exports.sendOTP = async (req, res) => {
 
         if (!resend) {
             console.warn('OTP requested but Resend is not configured.');
-            return res.status(503).json({ 
-                message: 'Email service is currently unavailable. Please contact support.' 
+            return res.status(503).json({
+                message: 'Email service is currently unavailable. Please contact support.'
             });
         }
 
@@ -359,9 +359,9 @@ exports.sendOTP = async (req, res) => {
 
         if (error) {
             console.error('Resend full error:', JSON.stringify(error, null, 2));
-            return res.status(500).json({ 
-                message: 'Failed to send OTP email', 
-                detail: error.message || 'Unknown Resend error' 
+            return res.status(500).json({
+                message: 'Failed to send OTP email',
+                detail: error.message || 'Unknown Resend error'
             });
         }
 
@@ -443,21 +443,20 @@ exports.checkUser = async (req, res) => {
         if (!email) {
             return res.status(400).json({ message: 'Email is required' });
         }
-        
+
         const user = await User.findOne({ email });
-        
+
         if (!user) {
             return res.status(404).json({ message: 'Account not found. Please sign up first.' });
         }
 
-        res.json({ 
-            exists: true, 
+        res.json({
+            exists: true,
             name: user.name,
-            profilePhoto: user.profilePhoto 
+            profilePhoto: user.profilePhoto
         });
     } catch (error) {
         console.error('Check user error:', error);
         res.status(500).json({ message: error.message });
     }
 };
-
