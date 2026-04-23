@@ -108,7 +108,7 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
         <form
             onSubmit={handleSubmit}
             className={cn(
-                "relative flex items-end w-full p-3 rounded-[2.5rem] transition-all duration-500",
+                "relative flex items-end w-full py-2 px-3 sm:py-1.5 sm:px-2.5 rounded-full sm:rounded-[2.5rem] transition-all duration-500",
                 // Light Mode
                 "bg-white/90 backdrop-blur-xl border border-black/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:shadow-[0_8px_30px_rgba(94,106,210,0.12)] focus-within:border-accent/40",
                 // Dark Mode
@@ -128,9 +128,9 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className={cn("h-10 w-10 mr-1 text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 shrink-0 !rounded-full transition-all", isUploading && "animate-pulse")}
+                className={cn("h-12 w-12 mr-1 text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 shrink-0 !rounded-full transition-all flex items-center justify-center", isUploading && "animate-pulse")}
             >
-                <MdAttachFile className="!text-[25px] sm:!text-[30px] rotate-45" />
+                <MdAttachFile className="!text-[28px] sm:!text-[32px] rotate-45" />
             </Button>
 
             <textarea
@@ -140,22 +140,22 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
                 rows={1}
-                className="flex-1 w-full bg-transparent border-0 px-2 py-2 text-sm text-foreground focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none resize-none max-h-32 placeholder:text-gray-400 dark:placeholder:text-foreground-subtle"
+                className="flex-1 w-full bg-transparent border-0 px-2 py-2.5 text-sm sm:text-[15px] text-foreground focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none resize-none max-h-32 placeholder:text-gray-400 dark:placeholder:text-foreground-subtle"
                 style={{ minHeight: "20px" }}
                 disabled={disabled}
                 {...props}
             />
 
-            <div className="flex items-center space-x-1 ml-1 shrink-0">
+            <div className="flex items-center space-x-1 ml-1 shrink-0 pb-0.5">
                 <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={props.onVoiceToggle}
                     title="Voice Mode"
-                    className="h-10 w-10 text-foreground-muted hover:text-accent hover:bg-accent/10 shrink-0 !rounded-full transition-all"
+                    className="h-12 w-12 text-foreground-muted hover:text-accent hover:bg-accent/10 shrink-0 !rounded-full transition-all flex items-center justify-center"
                 >
-                    <MdGraphicEq className="!text-[25px] sm:!text-[30px]" />
+                    <MdGraphicEq className="!text-[30px] sm:!text-[34px]" />
                 </Button>
 
                 <Button
@@ -164,13 +164,13 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
                     size="icon"
                     onClick={toggleListening}
                     className={cn(
-                        "h-10 w-10 !rounded-full transition-all",
+                        "h-12 w-12 !rounded-full transition-all flex items-center justify-center",
                         isListening
                             ? "bg-red-500/10 text-red-500 animate-pulse hover:bg-red-500/20"
                             : "text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
                     )}
                 >
-                    {isListening ? <MdMicOff className="!text-[25px] sm:!text-[30px]" /> : <MdMic className="!text-[25px] sm:!text-[30px]" />}
+                    {isListening ? <MdMicOff className="!text-[30px] sm:!text-[34px]" /> : <MdMic className="!text-[30px] sm:!text-[34px]" />}
                 </Button>
 
                 <Button
@@ -178,13 +178,13 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
                     disabled={!value.trim() || disabled}
                     size="icon"
                     className={cn(
-                        "h-10 w-10 !rounded-full transition-all duration-200",
+                        "h-12 w-12 !rounded-full transition-all duration-200 flex items-center justify-center",
                         value.trim()
                             ? "bg-accent hover:bg-accent-bright text-white shadow-lg shadow-accent/30 hover:shadow-accent/40 hover:scale-105"
                             : "bg-gray-100 text-gray-400 dark:bg-white/5 dark:text-foreground-muted"
                     )}
                 >
-                    <MdSend className="text-[22px] sm:text-[28px] ml-0.5" />
+                    <MdSend className="text-[26px] sm:text-[32px] ml-0.5" />
                 </Button>
             </div>
         </form>

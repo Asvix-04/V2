@@ -1,21 +1,8 @@
 import { motion } from "framer-motion";
-import { BubblesBackground } from "./BubblesBackground";
-import { ShootingStars } from "./ShootingStars";
-import { useUI } from "../../context/UIContext";
 
 export function Background() {
-    const { isShootingStarsEnabled, isBubblesEnabled } = useUI();
-
     return (
         <div className="fixed inset-0 -z-50 h-full w-full overflow-hidden bg-background-base transition-colors duration-300">
-
-            {/* --- LIGHT MODE BACKGROUND (3D Bubbles) --- */}
-            {isBubblesEnabled && (
-                <div className="block dark:hidden absolute inset-0">
-                    <BubblesBackground />
-                </div>
-            )}
-
             {/* --- DARK MODE BACKGROUND (Linear Space / Glass) --- */}
 
             {/* 1. Base Gradient */}
@@ -24,9 +11,7 @@ export function Background() {
             {/* 2. Grid Overlay */}
             <div className="hidden dark:block absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
 
-            {/* 3. Shooting Stars Integration (Disabled) */}
-
-            {/* 4. Animated Gradient Blobs */}
+            {/* 3. Animated Gradient Blobs */}
             <div className="hidden dark:block">
                 <motion.div
                     animate={{

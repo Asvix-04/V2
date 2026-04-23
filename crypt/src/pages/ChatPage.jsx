@@ -1457,8 +1457,7 @@ export function ChatPage() {
                                 <div className="flex-1 flex flex-col overflow-hidden">
 
                                     <div className="flex-1 overflow-y-auto p-4 sm:p-8">
-
-                                        <div className="mx-auto max-w-4xl space-y-6">
+                                        <div className="mx-auto w-[95%] sm:w-[85%] lg:w-[80%] max-w-none space-y-6">
 
                                             {messages.map((msg, idx) => (
 
@@ -1762,7 +1761,7 @@ export function ChatPage() {
 
                                     <div className="flex-1 overflow-y-auto p-4 sm:p-8">
 
-                                        <div className="mx-auto max-w-4xl space-y-6">
+                                        <div className="mx-auto w-[95%] sm:w-[85%] lg:w-[80%] max-w-none space-y-6">
 
                                             {messages.map((msg, idx) => (
 

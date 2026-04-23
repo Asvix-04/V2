@@ -7,7 +7,6 @@ import { Card } from "../components/ui/Card";
 import { PageTransition } from "../components/ui/PageTransition";
 import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star, StarOff } from "lucide-react";
 import { Logo } from "../components/ui/Logo";
-import { useUI } from "../context/UIContext";
 import { PerformanceStats } from "../components/PerformanceStats";
 
 function PricingFeature({ children, highlighted = false }) {
@@ -25,7 +24,6 @@ export function HomePage() {
     const { scrollY } = useScroll();
     const y = useTransform(scrollY, [0, 500], [0, 200]);
     const opacity = useTransform(scrollY, [0, 300], [1, 0]);
-    const { isShootingStarsEnabled, toggleShootingStars, isBubblesEnabled, toggleBubbles } = useUI();
     const { t } = useLanguage();
     const navigate = useNavigate();
 
