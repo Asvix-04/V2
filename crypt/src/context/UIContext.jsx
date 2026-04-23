@@ -3,32 +3,6 @@ import { createContext, useContext, useState, useEffect } from "react";
 const UIContext = createContext();
 
 export function UIProvider({ children }) {
-    const [isShootingStarsEnabled, setIsShootingStarsEnabled] = useState(() => {
-        const saved = localStorage.getItem("shootingStarsEnabled");
-        return saved !== null ? JSON.parse(saved) : false;
-    });
-
-    const [isBubblesEnabled, setIsBubblesEnabled] = useState(() => {
-        const saved = localStorage.getItem("bubblesEnabled");
-        return saved !== null ? JSON.parse(saved) : false;
-    });
-
-    const toggleShootingStars = () => {
-        setIsShootingStarsEnabled(prev => {
-            const newValue = !prev;
-            localStorage.setItem("shootingStarsEnabled", JSON.stringify(newValue));
-            return newValue;
-        });
-    };
-
-    const toggleBubbles = () => {
-        setIsBubblesEnabled(prev => {
-            const newValue = !prev;
-            localStorage.setItem("bubblesEnabled", JSON.stringify(newValue));
-            return newValue;
-        });
-    };
-
     const [theme, setThemeState] = useState(() => {
         const saved = localStorage.getItem("theme");
         return saved || "dark";
@@ -50,10 +24,6 @@ export function UIProvider({ children }) {
 
     return (
         <UIContext.Provider value={{
-            isShootingStarsEnabled,
-            toggleShootingStars,
-            isBubblesEnabled,
-            toggleBubbles,
             theme,
             setTheme
         }}>
