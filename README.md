@@ -84,26 +84,6 @@ Both datasets are unified into a RAG-ready searchable format.
 
 ---
 
-## Premium Features (Planned)
-
-### Preparation Mode (Exam-Focused)
-
-* Study plans
-* Topic progression
-* Dynamic quiz generation
-* Expanded academic dataset ingestion
-
-### Image-Based Questions
-
-* Support for diagrams, charts, textbook screenshots
-* Visual question understanding
-
-### Speech-to-Speech (Multilingual)
-
-* Audio-based interaction
-* ASR → RAG → TTS pipeline
-
----
 
 ## Project Roadmap
 
