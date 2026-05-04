@@ -86,7 +86,7 @@ export const chatbotApi = {
         }
     },
 
-    speechToSpeech: async (audioBase64, mimeType, responseLanguageCode = 'en-IN', useHistory = true) => {
+    speechToSpeech: async (audioBase64, mimeType, responseLanguageCode = null, useHistory = true) => {
         try {
             const response = await chatbotClient.post('/speech-to-speech', {
                 audio_base64: audioBase64,

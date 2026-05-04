@@ -20,12 +20,15 @@ exports.speechToSpeech = async (req, res) => {
 
         console.log(`Forwarding S2S request to AI backend... (${audio_base64.length} chars)`);
 
-        // Call specialized Python endpoint
+        // Call specialized Python endpoint.
+        // response_language_code is intentionally NOT defaulted to 'en-IN' here.
+        // When null/undefined, the Python backend uses the STT-detected language,
+        // so the AI responds in whatever language the user spoke.
         const response = await axios.post(`${PYTHON_BACKEND_URL}/speech-to-speech`, {
             audio_base64: audio_base64,
             mime_type: mime_type || 'audio/wav',
             use_history: use_history !== false,
-            response_language_code: response_language_code || 'en-IN'
+            response_language_code: response_language_code || null
         });
 
         // Return EXACT fields the frontend VoiceOverlay.jsx expects:

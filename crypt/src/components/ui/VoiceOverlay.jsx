@@ -16,7 +16,7 @@ const STATUS_LABELS = {
 };
 
 // ─── Main Component ──────────────────────────────────────────────────────────
-export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage = 'en-IN', isIncognito = false }) {
+export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage = null, isIncognito = false }) {
     // State
     const [voiceStatus, setVoiceStatus] = useState('idle'); // idle | listening | processing | speaking
     const [error, setError] = useState(null);
