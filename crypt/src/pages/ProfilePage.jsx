@@ -179,33 +179,15 @@ export function ProfilePage() {
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[300px] overflow-y-auto pr-2">
                                 {Object.keys(translations).map((langCode) => (
                                     <Button
+                                        key={langCode}
                                         variant="outline"
                                         className="gap-2"
-                                        onClick={() => setIsDownloadDropdownOpen(!isDownloadDropdownOpen)}
+                                        onClick={() => setLanguage(langCode)}
                                     >
                                         {/* Display the language name using the translation key */}
                                         {t(`${getLangKey(langCode)}`)}
                                     </Button>
-
-                                    {isDownloadDropdownOpen && (
-                                        <div className="absolute left-0 z-50 mt-1 w-48 rounded-md border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-[#0F0F12]">
-                                            <div className="p-1">
-                                                <button
-                                                    onClick={() => handleDownloadData('txt')}
-                                                    className="flex w-full items-center gap-2 rounded-sm py-2 px-3 text-sm text-foreground hover:bg-accent/10 hover:text-accent transition-colors"
-                                                >
-                                                    <FileText className="h-4 w-4" /> Download as TXT
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDownloadData('pdf')}
-                                                    className="flex w-full items-center gap-2 rounded-sm py-2 px-3 text-sm text-foreground hover:bg-accent/10 hover:text-accent transition-colors"
-                                                >
-                                                    <FileJson className="h-4 w-4" /> Download as PDF
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+                                ))}
                             </div>
 
                             {/* Danger Zone */}

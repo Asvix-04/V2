@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const { protect } = require('../middleware/authMiddleware');
+const { listDrafts, getDraftById, appendDraftMessage } = require('../controllers/chatController');
 
 // Configure Multer Storage
 const storage = multer.diskStorage({
@@ -25,6 +26,11 @@ const upload = multer({
     storage: storage,
     limits: { fileSize: 10 * 1024 * 1024 } // 10 MB limit similar to frontend text
 });
+
+// Draft routes
+router.get('/drafts', protect, listDrafts);
+router.get('/drafts/:id', protect, getDraftById);
+router.post('/drafts/message', protect, appendDraftMessage);
 
 // @desc    Upload a file
 // @route   POST /api/chat/upload

@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 export function MessageBubble({ message }) {
     const isUser = message.role === "user";
     const [feedback, setFeedback] = useState(null);
+    const [isHovered, setIsHovered] = useState(false);
 
     const handleSpeak = () => {
         if ("speechSynthesis" in window) {
@@ -28,7 +29,7 @@ export function MessageBubble({ message }) {
             {/* Message container with hover area */}
             <div
                 className={cn(
-                    "max-w-[75%] md:max-w-[60%]",
+                    "group max-w-[75%] md:max-w-[60%]",
                     isUser ? "text-right" : "text-left"
                 )}
                 onMouseEnter={() => setIsHovered(true)}

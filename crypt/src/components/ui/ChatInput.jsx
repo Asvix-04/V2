@@ -5,7 +5,7 @@ import { MdSend, MdAttachFile, MdMic, MdMicOff, MdGraphicEq } from "react-icons/
 
 import api from "../../lib/api";
 
-export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...props }, ref) => {
+export const ChatInput = React.forwardRef(({ className, onSend, disabled, onVoiceToggle, ...props }, ref) => {
     const [value, setValue] = React.useState("");
     const [isListening, setIsListening] = React.useState(false);
     const [isUploading, setIsUploading] = React.useState(false);
@@ -151,7 +151,7 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...pro
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={props.onVoiceToggle}
+                    onClick={onVoiceToggle}
                     title="Voice Mode"
                     className="h-12 w-12 text-foreground-muted hover:text-accent shrink-0 rounded-full"
                 >

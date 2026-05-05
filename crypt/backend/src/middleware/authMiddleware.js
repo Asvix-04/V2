@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_change_in_production';
+
 const protect = async (req, res, next) => {
     let token;
 
@@ -13,7 +15,7 @@ const protect = async (req, res, next) => {
             token = req.headers.authorization.split(' ')[1];
 
             // Verify token
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, JWT_SECRET);
 
             // Get user from Firestore
             const user = await User.findById(decoded.id);

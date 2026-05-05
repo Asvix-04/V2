@@ -23,6 +23,7 @@ export function LoginPage() {
         try {
             const { data } = await api.post('/auth/login', formData);
             localStorage.setItem("user", JSON.stringify(data));
+            localStorage.setItem("token", data.token);
             navigate(data.role === 'teacher' ? '/dashboard?mode=teacher' : '/dashboard?mode=student');
         } catch (err) {
             setError(err.response?.data?.message || "Invalid email or password");

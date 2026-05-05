@@ -31,6 +31,7 @@ export function SignupPage() {
             };
             const { data } = await api.post('/auth/register', dataToSend);
             localStorage.setItem("user", JSON.stringify(data));
+            localStorage.setItem("token", data.token);
             navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.message || "Registration failed");

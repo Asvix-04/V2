@@ -1,17 +1,17 @@
 import * as React from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
 import { useRoadmaps } from "../context/RoadmapContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/Button";
-import { Card } from "../components/ui/Card";
 import { ChatInput } from "../components/ui/ChatInput";
 import { MessageBubble } from "../components/ui/MessageBubble";
 import { PageTransition } from "../components/ui/PageTransition";
 import { VoiceOverlay } from "../components/ui/VoiceOverlay";
-import { ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, MessageSquare, MoreHorizontal, Settings, Share } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle, ChevronRight, FileText, Map, MessageSquare, Share } from "lucide-react";
 import { MdSearch } from "react-icons/md";
+import api from "../lib/api";
 
 const MOCK_MESSAGES = [
     {
@@ -21,11 +21,29 @@ const MOCK_MESSAGES = [
     },
 ];
 
+const normalizeMessages = (messages) => {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return MOCK_MESSAGES;
+    }
+
+    return messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp || new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }));
+};
+
+const getDraftPreview = (draft) => {
+    const content = draft?.lastMessage?.content || "No messages yet";
+    if (content.length <= 58) return content;
+    return `${content.slice(0, 58)}...`;
+};
+
 export function ChatPage() {
     const { t } = useLanguage();
-    const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const urlMode = searchParams.get("mode");
+    const draftIdFromUrl = searchParams.get("draftId");
 
     // Roadmap context
     const roadmapId = searchParams.get("roadmapId");
@@ -45,6 +63,10 @@ export function ChatPage() {
     const isGuest = !user;
 
     const [messages, setMessages] = React.useState(MOCK_MESSAGES);
+    const [drafts, setDrafts] = React.useState([]);
+    const [draftsLoading, setDraftsLoading] = React.useState(false);
+    const [activeDraftId, setActiveDraftId] = React.useState(draftIdFromUrl || null);
+    const [isDraftSyncing, setIsDraftSyncing] = React.useState(false);
     // Initialize view based on URL param or default
     const [teacherView, setTeacherView] = React.useState(
         urlMode === "classroom-plan" ? "classroom_plan" :
@@ -56,7 +78,108 @@ export function ChatPage() {
     const [showLimitModal, setShowLimitModal] = React.useState(false);
     const [isVoiceMode, setIsVoiceMode] = React.useState(false);
 
-    const handleSend = (text) => {
+    const upsertDraftSummary = React.useCallback((summary) => {
+        if (!summary?.id) return;
+        setDrafts((prev) => {
+            const existingIndex = prev.findIndex((draft) => draft.id === summary.id);
+            if (existingIndex === -1) {
+                return [summary, ...prev];
+            }
+            const next = [...prev];
+            next[existingIndex] = summary;
+            next.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+            return next;
+        });
+    }, []);
+
+    const syncDraftInQuery = React.useCallback((draftId) => {
+        const nextParams = new URLSearchParams(searchParams);
+        if (draftId) {
+            nextParams.set("draftId", draftId);
+        } else {
+            nextParams.delete("draftId");
+        }
+        setSearchParams(nextParams, { replace: true });
+    }, [searchParams, setSearchParams]);
+
+    const fetchDrafts = React.useCallback(async () => {
+        if (isGuest) {
+            setDrafts([]);
+            return;
+        }
+
+        setDraftsLoading(true);
+        try {
+            const { data } = await api.get('/chat/drafts');
+            setDrafts(data?.drafts || []);
+        } catch (error) {
+            console.error("Failed to fetch drafts:", error);
+        } finally {
+            setDraftsLoading(false);
+        }
+    }, [isGuest]);
+
+    const loadDraftConversation = React.useCallback(async (draftId) => {
+        if (!draftId || isGuest) return;
+
+        try {
+            const { data } = await api.get(`/chat/drafts/${draftId}`);
+            const draftMessages = normalizeMessages(data?.draft?.messages || []);
+            setMessages(draftMessages);
+            setActiveDraftId(draftId);
+            syncDraftInQuery(draftId);
+        } catch (error) {
+            console.error("Failed to load draft:", error);
+            if (activeDraftId === draftId) {
+                setActiveDraftId(null);
+                setMessages(MOCK_MESSAGES);
+            }
+            fetchDrafts();
+        }
+    }, [activeDraftId, fetchDrafts, isGuest, syncDraftInQuery]);
+
+    const persistDraftMessage = React.useCallback(async (message, draftIdOverride) => {
+        if (isGuest) return;
+
+        setIsDraftSyncing(true);
+        try {
+            const { data } = await api.post('/chat/drafts/message', {
+                draftId: draftIdOverride || activeDraftId,
+                message,
+            });
+
+            const nextDraftId = data?.draft?.id || activeDraftId;
+            const nextMessages = normalizeMessages(data?.draft?.messages || []);
+
+            setMessages(nextMessages);
+            setActiveDraftId(nextDraftId);
+            syncDraftInQuery(nextDraftId);
+
+            if (data?.summary) {
+                upsertDraftSummary(data.summary);
+            } else {
+                fetchDrafts();
+            }
+
+            return data?.draft;
+        } catch (error) {
+            console.error("Failed to persist draft message:", error);
+            return null;
+        } finally {
+            setIsDraftSyncing(false);
+        }
+    }, [activeDraftId, fetchDrafts, isGuest, syncDraftInQuery, upsertDraftSummary]);
+
+    React.useEffect(() => {
+        fetchDrafts();
+    }, [fetchDrafts]);
+
+    React.useEffect(() => {
+        if (!draftIdFromUrl || isGuest) return;
+        loadDraftConversation(draftIdFromUrl);
+    }, [draftIdFromUrl, isGuest, loadDraftConversation]);
+
+    const handleSend = async (text) => {
         // GUEST LIMIT CHECK
         if (isGuest && messages.length >= 10) {
             setShowLimitModal(true);
@@ -69,16 +192,30 @@ export function ChatPage() {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
         setMessages((prev) => [...prev, newMsg]);
+        let currentDraftId = activeDraftId;
+
+        if (!isGuest) {
+            const savedDraft = await persistDraftMessage(newMsg, currentDraftId);
+            if (savedDraft?.id) {
+                currentDraftId = savedDraft.id;
+            }
+        }
 
         // Simulate AI response
-        setTimeout(() => {
-            setMessages((prev) => [...prev, {
+        setTimeout(async () => {
+            const assistantMsg = {
                 role: "assistant",
                 content: isTeacher
                     ? "I have analyzed the topic. Here is a suggested lesson plan structure including prerequisites and assessment strategies."
                     : "Here is the explanation for your question, essentially breaking down the core concepts.",
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            }]);
+            };
+
+            setMessages((prev) => [...prev, assistantMsg]);
+
+            if (!isGuest) {
+                await persistDraftMessage(assistantMsg, currentDraftId);
+            }
         }, 1000);
     };
 
@@ -134,6 +271,46 @@ export function ChatPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {!isGuest && (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between px-2">
+                                <h3 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">Drafts</h3>
+                                <button
+                                    onClick={() => {
+                                        setActiveDraftId(null);
+                                        setMessages(MOCK_MESSAGES);
+                                        syncDraftInQuery(null);
+                                    }}
+                                    className="text-[11px] text-accent hover:text-accent-bright"
+                                >
+                                    New chat
+                                </button>
+                            </div>
+
+                            {draftsLoading ? (
+                                <p className="px-2 text-xs text-foreground-muted">Loading drafts...</p>
+                            ) : drafts.length === 0 ? (
+                                <p className="px-2 text-xs text-foreground-muted">No drafts yet</p>
+                            ) : (
+                                drafts.map((draft) => (
+                                    <button
+                                        key={draft.id}
+                                        onClick={() => loadDraftConversation(draft.id)}
+                                        className={cn(
+                                            "w-full rounded-lg border px-3 py-2 text-left transition-colors",
+                                            activeDraftId === draft.id
+                                                ? "border-accent/40 bg-accent/10"
+                                                : "border-transparent hover:bg-accent/5"
+                                        )}
+                                    >
+                                        <p className="truncate text-sm font-medium text-foreground">{draft.title || 'Draft'}</p>
+                                        <p className="mt-0.5 truncate text-xs text-foreground-muted">{getDraftPreview(draft)}</p>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <h3 className="px-2 text-xs font-semibold text-foreground-muted uppercase tracking-wider">{t('chat.today')}</h3>
                         {[1, 2].map((i) => (
@@ -186,6 +363,48 @@ export function ChatPage() {
                                 <FileText className="h-4 w-4 mr-2" /> {t('chat.savePlan')}
                             </Button>
                         </div>
+                    </div>
+                )}
+
+                {!isGuest && (
+                    <div className="border-b border-border-base/70 px-4 py-3 lg:hidden">
+                        <div className="mb-2 flex items-center justify-between">
+                            <h3 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">Drafts</h3>
+                            <button
+                                onClick={() => {
+                                    setActiveDraftId(null);
+                                    setMessages(MOCK_MESSAGES);
+                                    syncDraftInQuery(null);
+                                }}
+                                className="text-[11px] text-accent hover:text-accent-bright"
+                            >
+                                New chat
+                            </button>
+                        </div>
+
+                        {draftsLoading ? (
+                            <p className="text-xs text-foreground-muted">Loading drafts...</p>
+                        ) : drafts.length === 0 ? (
+                            <p className="text-xs text-foreground-muted">No drafts yet</p>
+                        ) : (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                                {drafts.map((draft) => (
+                                    <button
+                                        key={draft.id}
+                                        onClick={() => loadDraftConversation(draft.id)}
+                                        className={cn(
+                                            "min-w-[220px] rounded-lg border px-3 py-2 text-left transition-colors",
+                                            activeDraftId === draft.id
+                                                ? "border-accent/40 bg-accent/10"
+                                                : "border-border-base/70 hover:bg-accent/5"
+                                        )}
+                                    >
+                                        <p className="truncate text-sm font-medium text-foreground">{draft.title || 'Draft'}</p>
+                                        <p className="mt-0.5 truncate text-xs text-foreground-muted">{getDraftPreview(draft)}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -336,6 +555,9 @@ export function ChatPage() {
                             <p className="mt-2 text-center text-[10px] text-foreground-subtle">
                                 {t('chat.disclaimer')}
                             </p>
+                            {!isGuest && isDraftSyncing && (
+                                <p className="mt-1 text-center text-[10px] text-foreground-muted">Updating draft...</p>
+                            )}
                         </div>
                     </div>
                 </div>
