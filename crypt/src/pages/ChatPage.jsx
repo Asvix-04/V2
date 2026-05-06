@@ -39,6 +39,10 @@ const getDraftPreview = (draft) => {
     return `${content.slice(0, 58)}...`;
 };
 
+const sortByUpdatedAt = (items) => [...items].sort(
+    (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+);
+
 export function ChatPage() {
     const { t } = useLanguage();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -65,7 +69,10 @@ export function ChatPage() {
     const [messages, setMessages] = React.useState(MOCK_MESSAGES);
     const [drafts, setDrafts] = React.useState([]);
     const [draftsLoading, setDraftsLoading] = React.useState(false);
-    const [activeDraftId, setActiveDraftId] = React.useState(draftIdFromUrl || null);
+    const [todayConversations, setTodayConversations] = React.useState([]);
+    const [todayLoading, setTodayLoading] = React.useState(false);
+    const [activeConversationId, setActiveConversationId] = React.useState(draftIdFromUrl || null);
+    const [activeConversationSource, setActiveConversationSource] = React.useState(draftIdFromUrl ? "draft" : null);
     const [isDraftSyncing, setIsDraftSyncing] = React.useState(false);
     // Initialize view based on URL param or default
     const [teacherView, setTeacherView] = React.useState(
@@ -77,19 +84,42 @@ export function ChatPage() {
 
     const [showLimitModal, setShowLimitModal] = React.useState(false);
     const [isVoiceMode, setIsVoiceMode] = React.useState(false);
+    const conversationLoadToken = React.useRef(0);
 
     const upsertDraftSummary = React.useCallback((summary) => {
         if (!summary?.id) return;
         setDrafts((prev) => {
             const existingIndex = prev.findIndex((draft) => draft.id === summary.id);
             if (existingIndex === -1) {
-                return [summary, ...prev];
+                return sortByUpdatedAt([summary, ...prev]);
             }
             const next = [...prev];
             next[existingIndex] = summary;
-            next.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
-            return next;
+            return sortByUpdatedAt(next);
         });
+    }, []);
+
+    const removeDraftSummary = React.useCallback((conversationId) => {
+        setDrafts((prev) => prev.filter((draft) => draft.id !== conversationId));
+    }, []);
+
+    const upsertTodayConversation = React.useCallback((summary) => {
+        if (!summary?.id || summary.isDraftActive) return;
+
+        setTodayConversations((prev) => {
+            const existingIndex = prev.findIndex((conversation) => conversation.id === summary.id);
+            if (existingIndex === -1) {
+                return sortByUpdatedAt([summary, ...prev]);
+            }
+
+            const next = [...prev];
+            next[existingIndex] = summary;
+            return sortByUpdatedAt(next);
+        });
+    }, []);
+
+    const removeTodayConversation = React.useCallback((conversationId) => {
+        setTodayConversations((prev) => prev.filter((conversation) => conversation.id !== conversationId));
     }, []);
 
     const syncDraftInQuery = React.useCallback((draftId) => {
@@ -119,46 +149,84 @@ export function ChatPage() {
         }
     }, [isGuest]);
 
-    const loadDraftConversation = React.useCallback(async (draftId) => {
-        if (!draftId || isGuest) return;
+    const fetchTodayConversations = React.useCallback(async () => {
+        if (isGuest) {
+            setTodayConversations([]);
+            return;
+        }
+
+        setTodayLoading(true);
+        try {
+            const { data } = await api.get('/chat/conversations/today');
+            setTodayConversations(data?.conversations || []);
+        } catch (error) {
+            console.error("Failed to fetch today's conversations:", error);
+        } finally {
+            setTodayLoading(false);
+        }
+    }, [isGuest]);
+
+    const loadConversation = React.useCallback(async (conversationId, sourceHint = null) => {
+        if (!conversationId || isGuest) return;
+
+        const requestToken = conversationLoadToken.current + 1;
+        conversationLoadToken.current = requestToken;
 
         try {
-            const { data } = await api.get(`/chat/drafts/${draftId}`);
-            const draftMessages = normalizeMessages(data?.draft?.messages || []);
-            setMessages(draftMessages);
-            setActiveDraftId(draftId);
-            syncDraftInQuery(draftId);
+            const { data } = await api.get(`/chat/conversations/${conversationId}`);
+            const conversation = data?.conversation;
+            const nextSource = conversation?.isDraftActive ? "draft" : (sourceHint || "today");
+
+            if (requestToken !== conversationLoadToken.current) {
+                return;
+            }
+
+            setMessages(normalizeMessages(conversation?.messages || []));
+            setActiveConversationId(conversationId);
+            setActiveConversationSource(nextSource);
+            syncDraftInQuery(nextSource === "draft" ? conversationId : null);
         } catch (error) {
-            console.error("Failed to load draft:", error);
-            if (activeDraftId === draftId) {
-                setActiveDraftId(null);
+            console.error("Failed to load conversation:", error);
+
+            if (requestToken !== conversationLoadToken.current) {
+                return;
+            }
+
+            if (activeConversationId === conversationId) {
+                setActiveConversationId(null);
+                setActiveConversationSource(null);
                 setMessages(MOCK_MESSAGES);
+                syncDraftInQuery(null);
             }
             fetchDrafts();
+            fetchTodayConversations();
         }
-    }, [activeDraftId, fetchDrafts, isGuest, syncDraftInQuery]);
+    }, [activeConversationId, fetchDrafts, fetchTodayConversations, isGuest, syncDraftInQuery]);
 
-    const persistDraftMessage = React.useCallback(async (message, draftIdOverride) => {
+    const persistDraftMessage = React.useCallback(async (message, conversationIdOverride) => {
         if (isGuest) return;
 
         setIsDraftSyncing(true);
         try {
             const { data } = await api.post('/chat/drafts/message', {
-                draftId: draftIdOverride || activeDraftId,
+                draftId: conversationIdOverride || activeConversationId,
                 message,
             });
 
-            const nextDraftId = data?.draft?.id || activeDraftId;
+            const nextDraftId = data?.draft?.id || activeConversationId;
             const nextMessages = normalizeMessages(data?.draft?.messages || []);
 
             setMessages(nextMessages);
-            setActiveDraftId(nextDraftId);
+            setActiveConversationId(nextDraftId);
+            setActiveConversationSource("draft");
             syncDraftInQuery(nextDraftId);
 
             if (data?.summary) {
                 upsertDraftSummary(data.summary);
+                removeTodayConversation(nextDraftId);
             } else {
                 fetchDrafts();
+                fetchTodayConversations();
             }
 
             return data?.draft;
@@ -168,16 +236,73 @@ export function ChatPage() {
         } finally {
             setIsDraftSyncing(false);
         }
-    }, [activeDraftId, fetchDrafts, isGuest, syncDraftInQuery, upsertDraftSummary]);
+    }, [activeConversationId, fetchDrafts, fetchTodayConversations, isGuest, removeTodayConversation, syncDraftInQuery, upsertDraftSummary]);
+
+    const handleNewChat = React.useCallback(async () => {
+        conversationLoadToken.current += 1;
+
+        if (!isGuest && activeConversationId && activeConversationSource === "draft") {
+            try {
+                const { data } = await api.post(`/chat/drafts/${activeConversationId}/archive`);
+                removeDraftSummary(activeConversationId);
+                if (data?.summary) {
+                    upsertTodayConversation(data.summary);
+                } else {
+                    fetchTodayConversations();
+                }
+            } catch (error) {
+                console.error("Failed to archive draft:", error);
+            }
+        }
+
+        setActiveConversationId(null);
+        setActiveConversationSource(null);
+        setMessages(MOCK_MESSAGES);
+        syncDraftInQuery(null);
+
+        if (!isGuest) {
+            fetchDrafts();
+            fetchTodayConversations();
+        }
+    }, [activeConversationId, activeConversationSource, fetchDrafts, fetchTodayConversations, isGuest, removeDraftSummary, syncDraftInQuery, upsertTodayConversation]);
 
     React.useEffect(() => {
         fetchDrafts();
-    }, [fetchDrafts]);
+        fetchTodayConversations();
+
+        if (isGuest) {
+            return undefined;
+        }
+
+        const intervalId = window.setInterval(() => {
+            fetchDrafts();
+            fetchTodayConversations();
+        }, 60 * 1000);
+
+        return () => window.clearInterval(intervalId);
+    }, [fetchDrafts, fetchTodayConversations, isGuest]);
 
     React.useEffect(() => {
         if (!draftIdFromUrl || isGuest) return;
-        loadDraftConversation(draftIdFromUrl);
-    }, [draftIdFromUrl, isGuest, loadDraftConversation]);
+        loadConversation(draftIdFromUrl, "draft");
+    }, [draftIdFromUrl, isGuest, loadConversation]);
+
+    React.useEffect(() => {
+        if (!activeConversationId) return;
+
+        if (drafts.some((draft) => draft.id === activeConversationId)) {
+            if (activeConversationSource !== "draft") {
+                setActiveConversationSource("draft");
+                syncDraftInQuery(activeConversationId);
+            }
+            return;
+        }
+
+        if (todayConversations.some((conversation) => conversation.id === activeConversationId) && activeConversationSource !== "today") {
+            setActiveConversationSource("today");
+            syncDraftInQuery(null);
+        }
+    }, [activeConversationId, activeConversationSource, drafts, todayConversations, syncDraftInQuery]);
 
     const handleSend = async (text) => {
         // GUEST LIMIT CHECK
@@ -192,12 +317,12 @@ export function ChatPage() {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
         setMessages((prev) => [...prev, newMsg]);
-        let currentDraftId = activeDraftId;
+        let currentConversationId = activeConversationId;
 
         if (!isGuest) {
-            const savedDraft = await persistDraftMessage(newMsg, currentDraftId);
+            const savedDraft = await persistDraftMessage(newMsg, currentConversationId);
             if (savedDraft?.id) {
-                currentDraftId = savedDraft.id;
+                currentConversationId = savedDraft.id;
             }
         }
 
@@ -214,7 +339,7 @@ export function ChatPage() {
             setMessages((prev) => [...prev, assistantMsg]);
 
             if (!isGuest) {
-                await persistDraftMessage(assistantMsg, currentDraftId);
+                await persistDraftMessage(assistantMsg, currentConversationId);
             }
         }, 1000);
     };
@@ -276,11 +401,7 @@ export function ChatPage() {
                             <div className="flex items-center justify-between px-2">
                                 <h3 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">Drafts</h3>
                                 <button
-                                    onClick={() => {
-                                        setActiveDraftId(null);
-                                        setMessages(MOCK_MESSAGES);
-                                        syncDraftInQuery(null);
-                                    }}
+                                    onClick={handleNewChat}
                                     className="text-[11px] text-accent hover:text-accent-bright"
                                 >
                                     New chat
@@ -295,10 +416,10 @@ export function ChatPage() {
                                 drafts.map((draft) => (
                                     <button
                                         key={draft.id}
-                                        onClick={() => loadDraftConversation(draft.id)}
+                                        onClick={() => loadConversation(draft.id, "draft")}
                                         className={cn(
                                             "w-full rounded-lg border px-3 py-2 text-left transition-colors",
-                                            activeDraftId === draft.id
+                                            activeConversationSource === "draft" && activeConversationId === draft.id
                                                 ? "border-accent/40 bg-accent/10"
                                                 : "border-transparent hover:bg-accent/5"
                                         )}
@@ -313,12 +434,27 @@ export function ChatPage() {
 
                     <div className="space-y-2">
                         <h3 className="px-2 text-xs font-semibold text-foreground-muted uppercase tracking-wider">{t('chat.today')}</h3>
-                        {[1, 2].map((i) => (
-                            <button key={i} className="flex w-full items-center space-x-3 rounded-lg px-2 py-2 text-sm text-foreground hover:bg-accent/5 dark:hover:bg-white/5">
-                                <MessageSquare className="h-4 w-4" />
-                                <span className="truncate">Quantum Physics Basics</span>
-                            </button>
-                        ))}
+                        {isGuest ? (
+                            <p className="px-2 text-xs text-foreground-muted">Sign in to keep today&apos;s chats.</p>
+                        ) : todayLoading ? (
+                            <p className="px-2 text-xs text-foreground-muted">Loading today&apos;s chats...</p>
+                        ) : todayConversations.length === 0 ? (
+                            <p className="px-2 text-xs text-foreground-muted">No chats from today</p>
+                        ) : (
+                            todayConversations.map((conversation) => (
+                                <button
+                                    key={conversation.id}
+                                    onClick={() => loadConversation(conversation.id, "today")}
+                                    className={cn(
+                                        "flex w-full items-center space-x-3 rounded-lg px-2 py-2 text-sm text-foreground transition-colors hover:bg-accent/5 dark:hover:bg-white/5",
+                                        activeConversationSource === "today" && activeConversationId === conversation.id && "bg-accent/10"
+                                    )}
+                                >
+                                    <MessageSquare className="h-4 w-4" />
+                                    <span className="truncate">{conversation.title || 'Conversation'}</span>
+                                </button>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>
@@ -371,11 +507,7 @@ export function ChatPage() {
                         <div className="mb-2 flex items-center justify-between">
                             <h3 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">Drafts</h3>
                             <button
-                                onClick={() => {
-                                    setActiveDraftId(null);
-                                    setMessages(MOCK_MESSAGES);
-                                    syncDraftInQuery(null);
-                                }}
+                                onClick={handleNewChat}
                                 className="text-[11px] text-accent hover:text-accent-bright"
                             >
                                 New chat
@@ -391,16 +523,44 @@ export function ChatPage() {
                                 {drafts.map((draft) => (
                                     <button
                                         key={draft.id}
-                                        onClick={() => loadDraftConversation(draft.id)}
+                                        onClick={() => loadConversation(draft.id, "draft")}
                                         className={cn(
                                             "min-w-[220px] rounded-lg border px-3 py-2 text-left transition-colors",
-                                            activeDraftId === draft.id
+                                            activeConversationSource === "draft" && activeConversationId === draft.id
                                                 ? "border-accent/40 bg-accent/10"
                                                 : "border-border-base/70 hover:bg-accent/5"
                                         )}
                                     >
                                         <p className="truncate text-sm font-medium text-foreground">{draft.title || 'Draft'}</p>
                                         <p className="mt-0.5 truncate text-xs text-foreground-muted">{getDraftPreview(draft)}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-4 mb-2">
+                            <h3 className="text-xs font-semibold text-foreground-muted uppercase tracking-wider">{t('chat.today')}</h3>
+                        </div>
+
+                        {todayLoading ? (
+                            <p className="text-xs text-foreground-muted">Loading today&apos;s chats...</p>
+                        ) : todayConversations.length === 0 ? (
+                            <p className="text-xs text-foreground-muted">No chats from today</p>
+                        ) : (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                                {todayConversations.map((conversation) => (
+                                    <button
+                                        key={conversation.id}
+                                        onClick={() => loadConversation(conversation.id, "today")}
+                                        className={cn(
+                                            "min-w-[220px] rounded-lg border px-3 py-2 text-left transition-colors",
+                                            activeConversationSource === "today" && activeConversationId === conversation.id
+                                                ? "border-accent/40 bg-accent/10"
+                                                : "border-border-base/70 hover:bg-accent/5"
+                                        )}
+                                    >
+                                        <p className="truncate text-sm font-medium text-foreground">{conversation.title || 'Conversation'}</p>
+                                        <p className="mt-0.5 truncate text-xs text-foreground-muted">{getDraftPreview(conversation)}</p>
                                     </button>
                                 ))}
                             </div>

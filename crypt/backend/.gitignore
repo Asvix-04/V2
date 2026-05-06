@@ -1,6 +1,7 @@
 node_modules/
 .env
 firebase-key.json
+.local-firestore.json
 crypt-*.json
 .DS_Store
 *.log

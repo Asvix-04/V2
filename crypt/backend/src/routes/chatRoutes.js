@@ -3,7 +3,14 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const { protect } = require('../middleware/authMiddleware');
-const { listDrafts, getDraftById, appendDraftMessage } = require('../controllers/chatController');
+const {
+    listDrafts,
+    listTodayConversations,
+    getConversationById,
+    getDraftById,
+    appendDraftMessage,
+    archiveDraft
+} = require('../controllers/chatController');
 
 // Configure Multer Storage
 const storage = multer.diskStorage({
@@ -31,6 +38,11 @@ const upload = multer({
 router.get('/drafts', protect, listDrafts);
 router.get('/drafts/:id', protect, getDraftById);
 router.post('/drafts/message', protect, appendDraftMessage);
+router.post('/drafts/:id/archive', protect, archiveDraft);
+
+// Conversation history routes
+router.get('/conversations/today', protect, listTodayConversations);
+router.get('/conversations/:id', protect, getConversationById);
 
 // @desc    Upload a file
 // @route   POST /api/chat/upload

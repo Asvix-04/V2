@@ -2,13 +2,22 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
+const fs = require('fs');
+const path = require('path');
 const { initializeFirebase } = require('./config/db');
+const { startDraftPurgeWorker } = require('./controllers/chatController');
 
 // Load env vars
-dotenv.config();
+const envPath = [
+    path.resolve(__dirname, '../.env'),
+    path.resolve(__dirname, '.env')
+].find((candidate) => fs.existsSync(candidate));
+
+dotenv.config(envPath ? { path: envPath } : undefined);
 
 // Initialize Firebase
 initializeFirebase();
+startDraftPurgeWorker();
 
 const app = express();
 
