@@ -1001,3 +1001,8 @@ SELF-CHECK: Before finishing, scan your answer. For every name, date, and specif
     def clear_history(self):
         """Clear conversation history."""
         self.conversation_history = []
+    def get_history(self):
+        return self.conversation_history
+
+HybridRetriever = HybridRetriever
+UnifiedLLMClient = UnifiedLLMClient
