@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const chatbotClient = axios.create({
     baseURL: import.meta.env.VITE_CHATBOT_API_URL || 'http://localhost:5001/api/voice',
+    timeout: 120000,
     headers: {
         'Content-Type': 'application/json',
     },

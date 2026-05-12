@@ -7,8 +7,14 @@ Supports model switching at runtime without restarting the bot.
 from __future__ import annotations
 from dataclasses import dataclass
 import os
+import sys
 import time
 import concurrent.futures
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 
 @dataclass

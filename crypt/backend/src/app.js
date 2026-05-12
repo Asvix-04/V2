@@ -5,8 +5,19 @@ const cors = require('cors');
 const helmet = require('helmet');
 const { initializeFirebase } = require('./config/db');
 
-// Load env vars — always resolve relative to this file so it works from any cwd
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Load env vars relative to this file so startup works whether env lives in
+// crypt/backend/.env or the existing crypt/backend/src/.env.
+const envCandidates = [
+    path.resolve(__dirname, '../.env'),
+    path.resolve(__dirname, '.env')
+];
+
+for (const envPath of envCandidates) {
+    const result = dotenv.config({ path: envPath, override: false });
+    if (!result.error) {
+        break;
+    }
+}
 
 // Initialize Firebase
 initializeFirebase();

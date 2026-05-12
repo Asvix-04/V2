@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
 from chatbot import PDFChatbot
+from llm_client import AVAILABLE_MODELS
 from sarvam_client import SarvamClient, LANGUAGE_DISPLAY
 try:
     from Db import find_reference_links, check_db_connection
@@ -82,7 +83,7 @@ class ChatResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     reference_links: List[ReferenceLink] = []
-    follow_up_questions: Optional[List[str]] = None
+    follow_up_questions: Optional[Any] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -172,6 +173,29 @@ def build_metadata(result: dict, ref_links: list) -> dict:
             for s in result["sources"][:3]
         ],
     }
+
+def _switch_model_if_requested(model: Optional[str]) -> None:
+    if not model or chatbot is None or not hasattr(chatbot, "switch_model"):
+        return
+
+    normalized_model = model.strip().lower()
+    model_map = {
+        "gemini 2.5 flash": "1",
+        "gemini-2.5-flash": "1",
+        "gemini 2.5 pro": "2",
+        "gemini-2.5-pro": "2",
+        "deepseek v3.2": "3",
+        "deepseek-chat": "3",
+    }
+    model_key = model_map.get(normalized_model)
+
+    if not model_key:
+        return
+
+    next_config = AVAILABLE_MODELS[model_key]
+    current_model_id = getattr(getattr(chatbot, "model_config", None), "id", None)
+    if current_model_id != next_config.id:
+        chatbot.switch_model(next_config)
 
 def _decode_audio_b64(audio_b64: str) -> bytes:
     if not audio_b64 or not audio_b64.strip():
@@ -270,12 +294,13 @@ async def chat(request: QuestionRequest):
 
     try:
         # ── 1. Get chatbot answer ──
+        _switch_model_if_requested(request.model)
+
         # Check if the chatbot object has ask_question_with_follow_ups, 
         # otherwise fallback to ask_question
         if hasattr(chatbot, 'ask_question_with_follow_ups'):
             result = chatbot.ask_question_with_follow_ups(
                 question=request.question.strip(),
-                model=request.model,
                 use_history=request.use_history if request.use_history is not None else True,
             )
         else:

@@ -69,6 +69,145 @@ const GREETING_SENTENCES = [
 
 ];
 
+const ACTIVE_DRAFT_STORAGE_PREFIX = "digilab-active-draft:";
+const PENDING_DRAFT_STORAGE_PREFIX = "digilab-pending-draft:";
+
+const CHAT_SESSION_SOURCE = {
+    DRAFTS: "drafts",
+    TODAY: "today",
+};
+
+const parseStoredActiveDraft = (value) => {
+    if (!value) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+
+        if (parsed && typeof parsed === "object" && typeof parsed.sessionId === "string" && parsed.sessionId) {
+            return {
+                sessionId: parsed.sessionId,
+                source: parsed.source === CHAT_SESSION_SOURCE.TODAY
+                    ? CHAT_SESSION_SOURCE.TODAY
+                    : CHAT_SESSION_SOURCE.DRAFTS,
+            };
+        }
+    } catch (error) {
+        // Backward compatibility for legacy plain-string storage.
+    }
+
+    return typeof value === "string" && value
+        ? { sessionId: value, source: CHAT_SESSION_SOURCE.DRAFTS }
+        : null;
+};
+
+const parsePendingDraftSnapshot = (value) => {
+    if (!value) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+
+        if (messages.length <= 1) {
+            return null;
+        }
+
+        return {
+            sessionId: typeof parsed.sessionId === "string" && parsed.sessionId ? parsed.sessionId : null,
+            title: typeof parsed.title === "string" && parsed.title.trim()
+                ? parsed.title
+                : getSessionTitle(messages),
+            source: parsed.source === CHAT_SESSION_SOURCE.TODAY
+                ? CHAT_SESSION_SOURCE.TODAY
+                : CHAT_SESSION_SOURCE.DRAFTS,
+            messages,
+        };
+    } catch (error) {
+        return null;
+    }
+};
+
+const resolveSessionSource = (session, preferredSource = null) => {
+    if (!session?.isDraft) {
+        return CHAT_SESSION_SOURCE.TODAY;
+    }
+
+    return preferredSource === CHAT_SESSION_SOURCE.TODAY
+        ? CHAT_SESSION_SOURCE.TODAY
+        : CHAT_SESSION_SOURCE.DRAFTS;
+};
+
+const normalizeConversationTitle = (value = "") => {
+    return typeof value === "string" ? value.trim() : "";
+};
+
+const serializeConversationMessages = (messages = []) => {
+    try {
+        return JSON.stringify(Array.isArray(messages) ? messages : []);
+    } catch (error) {
+        return "[]";
+    }
+};
+
+const isSameConversationPayload = (left = {}, right = {}) => {
+    return normalizeConversationTitle(left.title) === normalizeConversationTitle(right.title)
+        && serializeConversationMessages(left.messages) === serializeConversationMessages(right.messages);
+};
+
+const getSessionTitle = (messages = [], fallback = "Chat session") => {
+    const firstUserMessage = messages.find((message) => {
+        return message?.role === "user" && typeof message.content === "string" && message.content.trim();
+    });
+
+    if (!firstUserMessage) {
+        return fallback;
+    }
+
+    const normalized = firstUserMessage.content.replace(/\s+/g, " ").trim();
+    return normalized.length > 30 ? `${normalized.substring(0, 30)}...` : normalized;
+};
+
+const getSessionSortValue = (session) => {
+    const value = session?.updatedAt || session?.timestamp || session?.createdAt;
+    const parsed = new Date(value || 0);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const sortSessionsForSidebar = (items, starredChats) => {
+    return [...items].sort((a, b) => {
+        const aStarred = starredChats.includes(a.id);
+        const bStarred = starredChats.includes(b.id);
+
+        if (aStarred && !bStarred) return -1;
+        if (!aStarred && bStarred) return 1;
+
+        return getSessionSortValue(b) - getSessionSortValue(a);
+    });
+};
+
+const formatDraftExpiryTime = (value) => {
+    if (!value) {
+        return "";
+    }
+
+    const expiryDate = new Date(value);
+
+    if (Number.isNaN(expiryDate.getTime())) {
+        return "";
+    }
+
+    const now = new Date();
+    const sameDay = expiryDate.toDateString() === now.toDateString();
+    const timeLabel = expiryDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+    return sameDay
+        ? timeLabel
+        : `${expiryDate.toLocaleDateString([], { month: "short", day: "numeric" })}, ${timeLabel}`;
+};
+
 
 
 const IncognitoIcon = ({ className }) => (
@@ -214,6 +353,7 @@ export function ChatPage() {
     const isTeacher = user?.role === "teacher";
 
     const isGuest = !user;
+    const dashboardPath = isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard");
 
 
 
@@ -222,6 +362,8 @@ export function ChatPage() {
     const [sessions, setSessions] = React.useState([]);
 
     const [currentSessionId, setCurrentSessionId] = React.useState(null);
+    const [currentSessionSource, setCurrentSessionSource] = React.useState(null);
+    const [draftMenuSessionId, setDraftMenuSessionId] = React.useState(null);
 
 
 
@@ -282,6 +424,8 @@ export function ChatPage() {
     }, [selectedModel]);
 
     const messagesEndRef = React.useRef(null);
+    const isLoadingRef = React.useRef(false);
+    const pendingAbandonedDraftIdRef = React.useRef(null);
     const [followUpQuestions, setFollowUpQuestions] = React.useState([]);
 
     // ── Star & Disappearing Messages (Sagar's features) ──────────────
@@ -299,6 +443,10 @@ export function ChatPage() {
     React.useEffect(() => {
         localStorage.setItem('disappearingMode', String(isDisappearingMode));
     }, [isDisappearingMode]);
+
+    React.useEffect(() => {
+        isLoadingRef.current = isLoading;
+    }, [isLoading]);
 
     const toggleStar = (id, e) => {
         e.stopPropagation();
@@ -328,6 +476,367 @@ export function ChatPage() {
         return GREETING_SENTENCES[Math.floor(Math.random() * GREETING_SENTENCES.length)];
 
     });
+
+    const activeDraftStorageKey = user?.id ? `${ACTIVE_DRAFT_STORAGE_PREFIX}${user.id}` : null;
+    const pendingDraftStorageKey = user?.id ? `${PENDING_DRAFT_STORAGE_PREFIX}${user.id}` : null;
+    const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+
+    const getConversationTitle = (nextMessages = messages, sessionId = currentSessionId) => {
+        if (sessionId) {
+            return sessions.find((session) => session.id === sessionId)?.title || getSessionTitle(nextMessages);
+        }
+
+        return getSessionTitle(nextMessages);
+    };
+
+    const getSessionRecord = (sessionId = currentSessionId) => {
+        if (!sessionId) {
+            return null;
+        }
+
+        return sessions.find((session) => session.id === sessionId) || null;
+    };
+
+    const snapshotMatchesSession = (snapshot, session = getSessionRecord(snapshot?.sessionId)) => {
+        if (!snapshot || !session) {
+            return false;
+        }
+
+        return isSameConversationPayload(
+            {
+                title: snapshot.title || getSessionTitle(snapshot.messages),
+                messages: snapshot.messages,
+            },
+            {
+                title: session.title || getSessionTitle(session.messages),
+                messages: session.messages,
+            }
+        );
+    };
+
+    const shouldKeepDraftState = (sessionId = currentSessionId) => {
+        if (!sessionId) {
+            return false;
+        }
+
+        return getSessionRecord(sessionId)?.isDraft === true;
+    };
+
+    const getStoredActiveDraft = () => {
+        if (!activeDraftStorageKey) {
+            return null;
+        }
+
+        return parseStoredActiveDraft(localStorage.getItem(activeDraftStorageKey));
+    };
+
+    const rememberActiveDraft = (sessionId, source = CHAT_SESSION_SOURCE.DRAFTS) => {
+        if (!activeDraftStorageKey || !sessionId) {
+            return;
+        }
+
+        localStorage.setItem(activeDraftStorageKey, JSON.stringify({
+            sessionId,
+            source: source === CHAT_SESSION_SOURCE.TODAY
+                ? CHAT_SESSION_SOURCE.TODAY
+                : CHAT_SESSION_SOURCE.DRAFTS,
+        }));
+    };
+
+    const clearStoredDraft = (sessionId = null) => {
+        if (!activeDraftStorageKey) {
+            return;
+        }
+
+        const storedDraft = getStoredActiveDraft();
+        if (!sessionId || storedDraft?.sessionId === sessionId) {
+            localStorage.removeItem(activeDraftStorageKey);
+        }
+    };
+
+    const readPendingDraftSnapshot = () => {
+        if (!pendingDraftStorageKey) {
+            return null;
+        }
+
+        return parsePendingDraftSnapshot(localStorage.getItem(pendingDraftStorageKey));
+    };
+
+    const writePendingDraftSnapshot = ({
+        sessionId = currentSessionId,
+        nextMessages = messages,
+        title = getConversationTitle(nextMessages, sessionId),
+        source = currentSessionSource,
+    } = {}) => {
+        if (!pendingDraftStorageKey || isGuest || isIncognito || !Array.isArray(nextMessages) || nextMessages.length <= 1) {
+            return null;
+        }
+
+        const snapshot = {
+            sessionId: sessionId || null,
+            title,
+            source: source === CHAT_SESSION_SOURCE.TODAY
+                ? CHAT_SESSION_SOURCE.TODAY
+                : CHAT_SESSION_SOURCE.DRAFTS,
+            messages: nextMessages,
+        };
+
+        localStorage.setItem(pendingDraftStorageKey, JSON.stringify(snapshot));
+        return snapshot;
+    };
+
+    const clearPendingDraftSnapshot = () => {
+        if (!pendingDraftStorageKey) {
+            return;
+        }
+
+        localStorage.removeItem(pendingDraftStorageKey);
+    };
+
+    const sendKeepaliveDraftSnapshot = (snapshot) => {
+        if (!snapshot || !user?.token) {
+            return;
+        }
+
+        if (snapshotMatchesSession(snapshot)) {
+            return;
+        }
+
+        try {
+            window.fetch(`${apiBaseUrl}/chat/sessions`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${user.token}`,
+                },
+                body: JSON.stringify({
+                    sessionId: snapshot.sessionId,
+                    messages: snapshot.messages,
+                    title: snapshot.title,
+                    isDraft: true,
+                }),
+                keepalive: true,
+            }).catch(() => { });
+        } catch (error) {
+            console.error("Failed to keepalive-save draft:", error);
+        }
+    };
+
+    const upsertSessionInState = (nextSession) => {
+        setSessions((prev) => {
+            const filtered = prev.filter((session) => session.id !== nextSession.id);
+            return [nextSession, ...filtered];
+        });
+    };
+
+    const makeTodaySession = (session, nextMessages, title) => ({
+        ...session,
+        messages: nextMessages || session.messages || [],
+        title: title || session.title || getSessionTitle(nextMessages || session.messages || []),
+        isDraft: false,
+        draftExpiresAt: null,
+        updatedAt: new Date().toISOString()
+    });
+
+    const flushPendingDraftSnapshot = async (existingSessions = sessions) => {
+        const snapshot = readPendingDraftSnapshot();
+
+        if (!snapshot || isGuest || isIncognito) {
+            return null;
+        }
+
+        const matchingSession = snapshot.sessionId
+            ? existingSessions.find((session) => session.id === snapshot.sessionId)
+            : null;
+
+        if (snapshotMatchesSession(snapshot, matchingSession)) {
+            clearPendingDraftSnapshot();
+
+            if (matchingSession?.isDraft) {
+                rememberActiveDraft(matchingSession.id, snapshot.source);
+                return {
+                    session: matchingSession,
+                    source: snapshot.source,
+                };
+            }
+
+            return null;
+        }
+
+        try {
+            const res = await api.post('/chat/sessions', {
+                sessionId: snapshot.sessionId,
+                messages: snapshot.messages,
+                title: snapshot.title,
+                isDraft: true,
+            });
+
+            if (!res.data) {
+                return null;
+            }
+
+            const savedSession = {
+                ...res.data,
+                messages: snapshot.messages,
+                title: res.data.title || snapshot.title || getSessionTitle(snapshot.messages),
+            };
+
+            upsertSessionInState(savedSession);
+            rememberActiveDraft(savedSession.id, snapshot.source);
+            clearPendingDraftSnapshot();
+
+            return {
+                session: savedSession,
+                source: snapshot.source,
+            };
+        } catch (err) {
+            console.error("Failed to restore pending draft:", err);
+            return null;
+        }
+    };
+
+    const loadConversation = async (session, preferredSource = null) => {
+        if (!session) {
+            return;
+        }
+
+        const sessionSource = resolveSessionSource(session, preferredSource);
+
+        setCurrentSessionId(session.id);
+        setCurrentSessionSource(sessionSource);
+        setMessages(Array.isArray(session.messages) && session.messages.length > 0 ? session.messages : [INITIAL_MESSAGE]);
+        setError(null);
+        setQuotedText(null);
+        setFollowUpQuestions([]);
+        setDraftMenuSessionId(null);
+
+        if (session.isDraft) {
+            rememberActiveDraft(session.id, sessionSource);
+        } else {
+            clearStoredDraft(session.id);
+        }
+
+        try {
+            await chatbotApi.clearHistory();
+        } catch (err) {
+            console.error("Failed to clear AI memory:", err);
+        }
+
+        if (window.innerWidth < 1024) {
+            setIsSidebarOpen(false);
+        }
+    };
+
+    const persistSession = async ({ sessionId = currentSessionId, nextMessages, title, isDraft = false }) => {
+        if (isGuest || isIncognito) {
+            return null;
+        }
+
+        const requestedTitle = title || getConversationTitle(nextMessages, sessionId);
+
+        const res = await api.post('/chat/sessions', {
+            sessionId,
+            messages: nextMessages,
+            title: requestedTitle,
+            isDraft,
+        });
+
+        if (res.data) {
+            let savedSession = isDraft
+                ? res.data
+                : makeTodaySession(res.data, nextMessages, requestedTitle);
+
+            if (!isDraft && res.data.isDraft) {
+                try {
+                    const archiveRes = await api.post(`/chat/sessions/${savedSession.id}/archive`);
+                    savedSession = makeTodaySession(archiveRes.data || savedSession, nextMessages, requestedTitle);
+                } catch (err) {
+                    console.error("Failed to move chat out of drafts:", err);
+                }
+            }
+
+            upsertSessionInState(savedSession);
+
+            if (!sessionId && savedSession.id) {
+                setCurrentSessionId(savedSession.id);
+            }
+
+            const nextSource = savedSession.isDraft
+                ? (currentSessionSource === CHAT_SESSION_SOURCE.TODAY
+                    ? CHAT_SESSION_SOURCE.TODAY
+                    : CHAT_SESSION_SOURCE.DRAFTS)
+                : CHAT_SESSION_SOURCE.TODAY;
+
+            if (savedSession.isDraft) {
+                rememberActiveDraft(savedSession.id, nextSource);
+            } else {
+                clearStoredDraft(savedSession.id);
+            }
+
+            if (!sessionId || sessionId === currentSessionId) {
+                setCurrentSessionSource(nextSource);
+            }
+
+            clearPendingDraftSnapshot();
+
+            return savedSession;
+        }
+
+        return null;
+    };
+
+    const saveCurrentConversationAsDraft = async () => {
+        if (isGuest || isIncognito || messages.length <= 1) {
+            return null;
+        }
+
+        try {
+            const draftSession = await persistSession({
+                sessionId: currentSessionId,
+                nextMessages: messages,
+                title: getConversationTitle(messages, currentSessionId),
+                isDraft: true
+            });
+
+            return draftSession || null;
+        } catch (err) {
+            console.error("Failed to save dashboard draft:", err);
+            return null;
+        }
+    };
+
+    const resetChatSurface = () => {
+        setMessages([INITIAL_MESSAGE]);
+        setCurrentSessionId(null);
+        setCurrentSessionSource(null);
+        setError(null);
+        setQuotedText(null);
+        setFollowUpQuestions([]);
+        setDraftMenuSessionId(null);
+        clearPendingDraftSnapshot();
+    };
+
+    const navigateAfterSavingDraft = async (path) => {
+        await saveCurrentConversationAsDraft();
+        setIsSidebarOpen(false);
+        navigate(path);
+    };
+
+    React.useEffect(() => {
+        if (!draftMenuSessionId) {
+            return undefined;
+        }
+
+        const handleOutsideClick = () => {
+            setDraftMenuSessionId(null);
+        };
+
+        document.addEventListener("click", handleOutsideClick);
+
+        return () => {
+            document.removeEventListener("click", handleOutsideClick);
+        };
+    }, [draftMenuSessionId]);
 
 
 
@@ -421,29 +930,27 @@ export function ChatPage() {
                 try {
 
                     const res = await api.get('/chat/sessions');
+                    const fetchedSessions = Array.isArray(res.data) ? res.data : [];
+                    setSessions(fetchedSessions);
 
-                    if (res.data && res.data.length > 0) {
+                    const restoredDraft = await flushPendingDraftSnapshot(fetchedSessions);
+                    const hydratedSessions = restoredDraft?.session
+                        ? [restoredDraft.session, ...fetchedSessions.filter((session) => session.id !== restoredDraft.session.id)]
+                        : fetchedSessions;
 
-                        setSessions(res.data);
+                    setSessions(hydratedSessions);
 
+                    const storedDraft = getStoredActiveDraft();
+                    const sessionId = searchParams.get("sessionId") || storedDraft?.sessionId || restoredDraft?.session?.id;
+                    const sessionSource = searchParams.get("source")
+                        || (storedDraft?.sessionId === sessionId ? storedDraft.source : null)
+                        || restoredDraft?.source;
+                    const initialSession = hydratedSessions.find((session) => session.id === sessionId);
 
-
-                        const sessionId = searchParams.get("sessionId");
-
-                        if (sessionId) {
-
-                            const found = res.data.find(s => s.id === sessionId);
-
-                            if (found) {
-
-                                setCurrentSessionId(found.id);
-
-                                setMessages(found.messages);
-
-                            }
-
-                        }
-
+                    if (initialSession) {
+                        await loadConversation(initialSession, sessionSource);
+                    } else if (sessionId) {
+                        clearStoredDraft(sessionId);
                     }
 
                 } catch (err) {
@@ -458,7 +965,7 @@ export function ChatPage() {
 
         initChat();
 
-    }, [isGuest]);
+    }, [isGuest, searchParams, activeDraftStorageKey]);
 
 
 
@@ -499,14 +1006,45 @@ export function ChatPage() {
             }
             setSessions(prev => prev.filter(s => s.id !== sessionId));
             setStarredChats(prev => prev.filter(id => id !== sessionId));
+            clearStoredDraft(sessionId);
+            clearPendingDraftSnapshot();
             if (currentSessionId === sessionId) {
                 setMessages([INITIAL_MESSAGE]);
                 setCurrentSessionId(null);
+                setCurrentSessionSource(null);
             }
             setError(null);
         } catch (err) {
             console.error("Failed to delete session:", err);
             setError("Failed to delete chat session");
+        }
+    };
+
+    const handleDeleteDraft = async (sessionId, e) => {
+        if (e) e.stopPropagation();
+        if (!window.confirm("Delete this draft?")) return;
+
+        try {
+            if (!isGuest) {
+                await api.delete(`/chat/sessions/${sessionId}/draft`);
+            }
+
+            setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+            setStarredChats((prev) => prev.filter((id) => id !== sessionId));
+            clearStoredDraft(sessionId);
+            clearPendingDraftSnapshot();
+            setDraftMenuSessionId(null);
+
+            if (currentSessionId === sessionId) {
+                setMessages([INITIAL_MESSAGE]);
+                setCurrentSessionId(null);
+                setCurrentSessionSource(null);
+            }
+
+            setError(null);
+        } catch (err) {
+            console.error("Failed to delete draft:", err);
+            setError("Failed to delete draft");
         }
     };
 
@@ -529,6 +1067,10 @@ export function ChatPage() {
             setSessions([]);
 
             setCurrentSessionId(null);
+            setCurrentSessionSource(null);
+            clearStoredDraft();
+            clearPendingDraftSnapshot();
+            setDraftMenuSessionId(null);
 
             setError(null);
 
@@ -556,53 +1098,21 @@ export function ChatPage() {
 
         }
 
-
-
-        if (messages.length > 1) {
-
-            const lastSession = {
-
-                id: currentSessionId || `temp-${Date.now()}`,
-
-                title: messages[1]?.content?.substring(0, 30) + "..." || "Chat session",
-
-                messages: [...messages],
-
-                timestamp: new Date().toISOString()
-
-            };
-
-
-
-            setSessions(prev => {
-
-                const filtered = prev.filter(s => s.id !== lastSession.id);
-
-                return [lastSession, ...filtered];
-
-            });
-
-        }
-
-
-
+        clearStoredDraft(currentSessionId);
+        clearPendingDraftSnapshot();
         setMessages([INITIAL_MESSAGE]);
-
         setCurrentSessionId(null);
-
+        setCurrentSessionSource(null);
         setError(null);
-
         setQuotedText(null);
         setFollowUpQuestions([]);
-
+        setDraftMenuSessionId(null);
 
         if (searchParams.has("sessionId")) {
 
             navigate("/chat", { replace: true });
 
         }
-
-
 
         setGreeting(prev => {
 
@@ -612,27 +1122,19 @@ export function ChatPage() {
 
         });
 
-
-
         if (window.innerWidth < 1024) setIsSidebarOpen(false);
 
     };
 
 
 
-    const handleSelectSession = async (sessionId) => {
+    const handleSelectSession = async (sessionId, source) => {
 
         const session = sessions.find(s => s.id === sessionId);
 
         if (session) {
 
-            setCurrentSessionId(session.id);
-
-            setMessages(session.messages);
-
-            setError(null);
-
-            await chatbotApi.clearHistory();
+            await loadConversation(session, source);
 
         }
 
@@ -642,6 +1144,28 @@ export function ChatPage() {
 
     const handleSend = async (text) => {
 
+        const normalizedText = typeof text === "string" ? text.trim() : "";
+
+        if (!normalizedText || isLoading) {
+
+            return;
+
+        }
+
+        const trimmedQuote = quotedText?.trim();
+
+        const displayContent = trimmedQuote
+
+            ? `Quoted text: "${trimmedQuote}"\n\n${normalizedText}`
+
+            : normalizedText;
+
+        const apiPayload = trimmedQuote
+
+            ? `${normalizedText}\n\nQuoted text for context:\n"${trimmedQuote}"`
+
+            : normalizedText;
+
         if (isGuest && messages.length >= 10) {
 
             setShowLimitModal(true);
@@ -649,32 +1173,6 @@ export function ChatPage() {
             return;
 
         }
-
-
-
-        setError(null);
-        setFollowUpQuestions([]);
-
-
-
-        let displayContent = text;
-
-        let apiPayload = text;
-
-
-
-        if (quotedText) {
-
-            displayContent = `> "${quotedText}"\n\n${text}`;
-
-            apiPayload = `The user has highlighted the following specific text:\n"""\n${quotedText}\n"""\n\nUser's prompt: "${text}"\n\nINSTRUCTION: Please focus your response strictly on explaining, elaborating, or answering the user's prompt entirely within the context of the highlighted text. Do not provide a general overview of the broader topic.`;
-
-            setQuotedText(null);
-
-        }
-
-
-
         const userMsg = {
 
             role: "user",
@@ -684,12 +1182,43 @@ export function ChatPage() {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
 
         };
+        const pendingMessages = [...messages, userMsg];
+        setMessages(pendingMessages);
+        setQuotedText(null);
+        pendingAbandonedDraftIdRef.current = null;
 
-        setMessages((prev) => [...prev, userMsg]);
+        const keepDraftState = shouldKeepDraftState(currentSessionId);
+
+        const pendingTitle = getConversationTitle(pendingMessages, currentSessionId);
+        writePendingDraftSnapshot({
+            sessionId: currentSessionId,
+            nextMessages: pendingMessages,
+            title: pendingTitle,
+        });
 
 
 
         setIsLoading(true);
+        isLoadingRef.current = true;
+
+        let persistedSessionId = currentSessionId;
+
+        if (!isGuest && !isIncognito && keepDraftState) {
+            try {
+                const savedDraft = await persistSession({
+                    sessionId: persistedSessionId,
+                    nextMessages: pendingMessages,
+                    title: pendingTitle,
+                    isDraft: true,
+                });
+
+                if (savedDraft?.id) {
+                    persistedSessionId = savedDraft.id;
+                }
+            } catch (draftErr) {
+                console.error("Failed to save pending draft:", draftErr);
+            }
+        }
 
         try {
 
@@ -709,8 +1238,7 @@ export function ChatPage() {
 
 
 
-            const updatedMessages = [...messages, userMsg, assistantMsg];
-
+            const updatedMessages = [...pendingMessages, assistantMsg];
             setMessages(updatedMessages);
 
 
@@ -719,45 +1247,12 @@ export function ChatPage() {
 
                 try {
 
-                    const sessionTitle = currentSessionId
-
-                        ? sessions.find(s => s.id === currentSessionId)?.title
-
-                        : text.substring(0, 30) + "...";
-
-
-
-                    const res = await api.post('/chat/sessions', {
-
-                        sessionId: currentSessionId,
-
-                        messages: updatedMessages,
-
-                        title: sessionTitle
-
+                    await persistSession({
+                        sessionId: persistedSessionId,
+                        nextMessages: updatedMessages,
+                        title: getConversationTitle(updatedMessages, persistedSessionId),
+                        isDraft: keepDraftState
                     });
-
-
-
-                    if (res.data) {
-
-                        setSessions(prev => {
-
-                            const filtered = prev.filter(s => s.id !== res.data.id);
-
-                            return [res.data, ...filtered];
-
-                        });
-
-
-
-                        if (!currentSessionId) {
-
-                            setCurrentSessionId(res.data.id);
-
-                        }
-
-                    }
 
                 } catch (dbErr) {
 
@@ -775,7 +1270,7 @@ export function ChatPage() {
 
             setError(errorMessage);
 
-            const updatedWithErr = [...messages, userMsg, {
+            const updatedWithErr = [...pendingMessages, {
 
                 role: "assistant",
 
@@ -793,11 +1288,13 @@ export function ChatPage() {
 
             if (!isGuest && !isIncognito) {
 
-                api.post('/chat/sessions', {
+                persistSession({
 
-                    sessionId: currentSessionId,
+                    sessionId: persistedSessionId,
 
-                    messages: updatedWithErr
+                    nextMessages: updatedWithErr,
+                    title: getConversationTitle(updatedWithErr, persistedSessionId),
+                    isDraft: keepDraftState
 
                 }).catch(() => { });
 
@@ -806,6 +1303,7 @@ export function ChatPage() {
         } finally {
 
             setIsLoading(false);
+            isLoadingRef.current = false;
 
         }
 
@@ -815,6 +1313,8 @@ export function ChatPage() {
 
     const handleVoiceMessage = async ({ transcription, answer, audioBase64, reference_links }) => {
         if (!transcription && !answer) return;
+
+        const keepDraftState = shouldKeepDraftState(currentSessionId);
 
         const userMsg = {
             role: "user",
@@ -830,27 +1330,19 @@ export function ChatPage() {
             audioBase64: audioBase64
         };
 
-        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+        const updatedMessages = [...messages, userMsg, assistantMsg];
+        setMessages(updatedMessages);
 
         if (!isGuest && !isIncognito) {
             try {
-                const sessionTitle = currentSessionId
-                    ? sessions.find(s => s.id === currentSessionId)?.title
-                    : (transcription || "Voice Chat").substring(0, 30) + "...";
-
-                const res = await api.post('/chat/sessions', {
+                await persistSession({
                     sessionId: currentSessionId,
-                    messages: [...messages, userMsg, assistantMsg],
-                    title: sessionTitle
+                    nextMessages: updatedMessages,
+                    title: currentSessionId
+                        ? sessions.find((session) => session.id === currentSessionId)?.title || getSessionTitle(updatedMessages)
+                        : getSessionTitle(updatedMessages, "Voice Chat"),
+                    isDraft: keepDraftState
                 });
-
-                if (res.data) {
-                    setSessions(prev => {
-                        const filtered = prev.filter(s => s.id !== res.data.id);
-                        return [res.data, ...filtered];
-                    });
-                    if (!currentSessionId) setCurrentSessionId(res.data.id);
-                }
             } catch (dbErr) {
                 console.error("Failed to save voice chat to DB:", dbErr);
             }
@@ -868,8 +1360,41 @@ export function ChatPage() {
             content: text,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
-        setMessages(prev => [...prev, userMsg]);
+        const pendingMessages = [...messages, userMsg];
+        setMessages(pendingMessages);
+        pendingAbandonedDraftIdRef.current = null;
+
+        const keepDraftState = shouldKeepDraftState(currentSessionId);
+
+        const pendingTitle = getConversationTitle(pendingMessages, currentSessionId);
+        writePendingDraftSnapshot({
+            sessionId: currentSessionId,
+            nextMessages: pendingMessages,
+            title: pendingTitle,
+        });
+
         setIsLoading(true);
+        isLoadingRef.current = true;
+
+        let persistedSessionId = currentSessionId;
+
+        if (!isGuest && !isIncognito && keepDraftState) {
+            try {
+                const savedDraft = await persistSession({
+                    sessionId: persistedSessionId,
+                    nextMessages: pendingMessages,
+                    title: pendingTitle,
+                    isDraft: true,
+                });
+
+                if (savedDraft?.id) {
+                    persistedSessionId = savedDraft.id;
+                }
+            } catch (draftErr) {
+                console.error("Failed to save pending translated draft:", draftErr);
+            }
+        }
+
         try {
             const response = await chatbotApi.textToText(text, selectedLanguage);
             const assistantMsg = {
@@ -878,27 +1403,36 @@ export function ChatPage() {
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 modelName: selectedModel.name,
             };
-            const updatedMessages = [...messages, userMsg, assistantMsg];
+            const updatedMessages = [...pendingMessages, assistantMsg];
             setMessages(updatedMessages);
             if (!isGuest && !isIncognito) {
                 try {
-                    const sessionTitle = currentSessionId
-                        ? sessions.find(s => s.id === currentSessionId)?.title
-                        : text.substring(0, 30) + "...";
-                    const res = await api.post('/chat/sessions', { sessionId: currentSessionId, messages: updatedMessages, title: sessionTitle });
-                    if (res.data) {
-                        setSessions(prev => { const filtered = prev.filter(s => s.id !== res.data.id); return [res.data, ...filtered]; });
-                        if (!currentSessionId) setCurrentSessionId(res.data.id);
-                    }
+                    await persistSession({
+                        sessionId: persistedSessionId,
+                        nextMessages: updatedMessages,
+                        title: getConversationTitle(updatedMessages, persistedSessionId),
+                        isDraft: keepDraftState
+                    });
                 } catch (dbErr) { console.error("Failed to save translated chat to DB:", dbErr); }
             }
         } catch (err) {
             console.error("Text-to-Text API Error:", err);
             const errorMessage = err.response?.data?.detail || err.message || "Translation failed";
             setError(errorMessage);
-            setMessages(prev => [...prev, { role: "assistant", content: `Sorry, translation failed: ${errorMessage}. Please try again.`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isError: true }]);
+            const updatedWithError = [...pendingMessages, { role: "assistant", content: `Sorry, translation failed: ${errorMessage}. Please try again.`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isError: true }];
+            setMessages(updatedWithError);
+
+            if (!isGuest && !isIncognito) {
+                persistSession({
+                    sessionId: persistedSessionId,
+                    nextMessages: updatedWithError,
+                    title: getConversationTitle(updatedWithError, persistedSessionId),
+                    isDraft: keepDraftState
+                }).catch(() => { });
+            }
         } finally {
             setIsLoading(false);
+            isLoadingRef.current = false;
         }
     };
 
@@ -962,6 +1496,124 @@ export function ChatPage() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
+
+    React.useEffect(() => {
+        if (isGuest || isIncognito) {
+            return undefined;
+        }
+
+        const persistCurrentConversationDraft = () => {
+            const snapshot = writePendingDraftSnapshot({
+                sessionId: currentSessionId,
+                nextMessages: messages,
+                title: getConversationTitle(messages, currentSessionId),
+                source: currentSessionSource,
+            });
+
+            if (snapshot && navigator.onLine) {
+                sendKeepaliveDraftSnapshot(snapshot);
+            }
+        };
+
+        const handlePageHide = () => {
+            persistCurrentConversationDraft();
+        };
+
+        const handleOffline = () => {
+            persistCurrentConversationDraft();
+        };
+
+        const handleOnline = () => {
+            flushPendingDraftSnapshot();
+        };
+
+        window.addEventListener("pagehide", handlePageHide);
+        window.addEventListener("beforeunload", handlePageHide);
+        window.addEventListener("offline", handleOffline);
+        window.addEventListener("online", handleOnline);
+
+        return () => {
+            window.removeEventListener("pagehide", handlePageHide);
+            window.removeEventListener("beforeunload", handlePageHide);
+            window.removeEventListener("offline", handleOffline);
+            window.removeEventListener("online", handleOnline);
+        };
+    }, [
+        currentSessionId,
+        currentSessionSource,
+        flushPendingDraftSnapshot,
+        getConversationTitle,
+        isGuest,
+        isIncognito,
+        messages,
+        sendKeepaliveDraftSnapshot,
+        writePendingDraftSnapshot,
+    ]);
+
+    React.useEffect(() => {
+        if (isGuest) {
+            return undefined;
+        }
+
+        const timers = [];
+        const expireDraft = async (session) => {
+            setSessions((prev) => prev.filter((item) => item.id !== session.id));
+            setStarredChats((prev) => prev.filter((id) => id !== session.id));
+            clearStoredDraft(session.id);
+
+            if (currentSessionId === session.id) {
+                resetChatSurface();
+            }
+
+            try {
+                await api.delete(`/chat/sessions/${session.id}/draft`);
+            } catch (err) {
+                console.error("Failed to delete expired draft:", err);
+            }
+        };
+
+        sessions
+            .filter((session) => session.isDraft && session.draftExpiresAt)
+            .forEach((session) => {
+                const expiresAt = new Date(session.draftExpiresAt).getTime();
+
+                if (Number.isNaN(expiresAt)) {
+                    return;
+                }
+
+                const delay = expiresAt - Date.now();
+                if (delay <= 0) {
+                    expireDraft(session);
+                    return;
+                }
+
+                timers.push(window.setTimeout(() => {
+                    expireDraft(session);
+                }, delay));
+            });
+
+        return () => {
+            timers.forEach((timer) => window.clearTimeout(timer));
+        };
+    }, [sessions, isGuest, currentSessionId]);
+
+    const draftSessions = sortSessionsForSidebar(
+        sessions.filter((session) => session.isDraft),
+        starredChats
+    );
+
+    const todaySessions = sortSessionsForSidebar(
+        sessions,
+        starredChats
+    );
+
+    const isSessionActive = (session, source) => {
+        if (currentSessionId !== session.id) {
+            return false;
+        }
+
+        return resolveSessionSource(session, currentSessionSource) === source;
+    };
 
     return (
 
@@ -1063,9 +1715,12 @@ export function ChatPage() {
 
                                 <Link
 
-                                    to={isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard")}
+                                    to={dashboardPath}
 
-                                    onClick={() => setIsSidebarOpen(false)}
+                                    onClick={async (event) => {
+                                        event.preventDefault();
+                                        await navigateAfterSavingDraft(dashboardPath);
+                                    }}
 
                                     className="flex items-center space-x-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 group"
 
@@ -1144,6 +1799,75 @@ export function ChatPage() {
                                 <div className="space-y-2 pt-2">
 
                                     <div className="flex items-center justify-between px-2">
+                                        <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('chat.drafts')}</h3>
+                                    </div>
+
+                                    {draftSessions.length > 0 ? (
+                                        draftSessions.map((session) => (
+                                            <div
+                                                key={session.id}
+                                                className={cn(
+                                                    "relative flex w-full items-start gap-3 rounded-lg px-2 py-2 text-sm transition-all group",
+                                                    isSessionActive(session, CHAT_SESSION_SOURCE.DRAFTS)
+                                                        ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium ring-1 ring-blue-200 dark:ring-blue-900/50"
+                                                        : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                                )}
+                                            >
+                                                <button
+                                                    onClick={() => handleSelectSession(session.id, CHAT_SESSION_SOURCE.DRAFTS)}
+                                                    className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                                                >
+                                                    <MessageSquare className={cn("mt-0.5 h-4 w-4 shrink-0", isSessionActive(session, CHAT_SESSION_SOURCE.DRAFTS) ? "text-blue-600 dark:text-blue-400" : "text-zinc-400")} />
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate">{session.title || "Chat session"}</span>
+                                                        <span className="mt-1 block text-[11px] font-medium text-zinc-400">
+                                                            {t('chat.expiresAt')} {formatDraftExpiryTime(session.draftExpiresAt)}
+                                                        </span>
+                                                    </span>
+                                                </button>
+
+                                                <div className="relative shrink-0">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setDraftMenuSessionId((prev) => prev === session.id ? null : session.id);
+                                                        }}
+                                                        className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+                                                        title="Draft options"
+                                                    >
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </button>
+
+                                                    {draftMenuSessionId === session.id && (
+                                                        <div
+                                                            className="absolute right-0 top-8 z-20 min-w-36 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-zinc-900"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <button
+                                                                onClick={(e) => handleDeleteDraft(session.id, e)}
+                                                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                <span>{t('chat.deleteDraft')}</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="px-2 py-4 text-center rounded-lg border border-dashed border-zinc-200 dark:border-white/5">
+                                            <p className="text-xs text-zinc-400">{t('chat.noDrafts')}</p>
+                                        </div>
+                                    )}
+
+                                </div>
+
+
+
+                                <div className="space-y-2 pt-2">
+
+                                    <div className="flex items-center justify-between px-2">
                                         <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('chat.today')}</h3>
                                         <button
                                             onClick={handleClearHistory}
@@ -1154,27 +1878,19 @@ export function ChatPage() {
                                         </button>
                                     </div>
 
-                                    {sessions.length > 0 ? (
-                                        [...sessions]
-                                            .sort((a, b) => {
-                                                const aStarred = starredChats.includes(a.id);
-                                                const bStarred = starredChats.includes(b.id);
-                                                if (aStarred && !bStarred) return -1;
-                                                if (!aStarred && bStarred) return 1;
-                                                return 0;
-                                            })
-                                            .map((session) => (
+                                    {todaySessions.length > 0 ? (
+                                        todaySessions.map((session) => (
                                             <button
                                                 key={session.id}
-                                                onClick={() => handleSelectSession(session.id)}
+                                                onClick={() => handleSelectSession(session.id, CHAT_SESSION_SOURCE.TODAY)}
                                                 className={cn(
                                                     "flex w-full items-center space-x-3 rounded-lg px-2 py-2 text-sm transition-all group",
-                                                    currentSessionId === session.id
+                                                    isSessionActive(session, CHAT_SESSION_SOURCE.TODAY)
                                                         ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium ring-1 ring-blue-200 dark:ring-blue-900/50"
                                                         : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
                                                 )}
                                             >
-                                                <MessageSquare className={cn("h-4 w-4 shrink-0", currentSessionId === session.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-400")} />
+                                                <MessageSquare className={cn("h-4 w-4 shrink-0", isSessionActive(session, CHAT_SESSION_SOURCE.TODAY) ? "text-blue-600 dark:text-blue-400" : "text-zinc-400")} />
                                                 <span className="truncate flex-1 text-left">{session.title || "Chat session"}</span>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                                     <button
@@ -1220,7 +1936,10 @@ export function ChatPage() {
 
                                     to="/profile"
 
-                                    onClick={() => setIsSidebarOpen(false)}
+                                    onClick={async (event) => {
+                                        event.preventDefault();
+                                        await navigateAfterSavingDraft("/profile");
+                                    }}
 
                                     className="flex w-full items-center gap-3 rounded-xl p-3 transition-all hover:bg-zinc-100 dark:hover:bg-white/5 group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5"
 
@@ -1347,8 +2066,15 @@ export function ChatPage() {
                     )}
 
                     <button
-                        onClick={() => {
+                        onClick={async () => {
                             const nextIncognito = !isIncognito;
+                            if (nextIncognito) {
+                                await saveCurrentConversationAsDraft();
+                                resetChatSurface();
+                            } else {
+                                pendingAbandonedDraftIdRef.current = null;
+                                resetChatSurface();
+                            }
                             setIsIncognito(nextIncognito);
                             if (nextIncognito) {
                                 setIsSidebarOpen(false);
