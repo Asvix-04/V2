@@ -1428,7 +1428,7 @@ export function ChatPage() {
 
                                             onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
 
                                             disabled={isLoading || !isConnected}
 
@@ -1518,7 +1518,7 @@ export function ChatPage() {
 
                                                 onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
 
                                                 disabled={isLoading || !isConnected}
 
@@ -1709,7 +1709,7 @@ export function ChatPage() {
 
                                             onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
 
                                             disabled={isLoading || !isConnected}
 
@@ -2012,7 +2012,7 @@ export function ChatPage() {
 
                                                 onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
 
                                                 disabled={isLoading || !isConnected}
 
