@@ -22,6 +22,7 @@ import uvicorn
 from chatbot import PDFChatbot
 from llm_client import AVAILABLE_MODELS
 from sarvam_client import SarvamClient, LANGUAGE_DISPLAY
+from metrics_logger import log_request_metrics, get_metrics_summary
 try:
     from Db import find_reference_links, check_db_connection
 except ImportError:
@@ -53,6 +54,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time = (time.perf_counter() - start_time) * 1000
+    response.headers["X-Process-Time"] = str(process_time)
+
+    # Generic logging for non-chat endpoints (health, docs, etc.)
+    # Chat endpoint does its own detailed logging below.
+    if not request.url.path.startswith("/chat"):
+        log_request_metrics(
+            endpoint=request.url.path,
+            status_code=response.status_code,
+            response_time_ms=process_time,
+        )
+    return response
+
 
 chatbot = None
 sarvam_client = None
@@ -292,6 +312,8 @@ async def chat(request: QuestionRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+    start_time = time.perf_counter()
+
     try:
         # ── 1. Get chatbot answer ──
         _switch_model_if_requested(request.model)
@@ -328,7 +350,7 @@ async def chat(request: QuestionRequest):
             ]
 
         # ── 3. Build response ──
-        return {
+        chat_response = {
             "answer": result["answer"],
             "sources": result["sources"],
             "expanded_queries": result.get("expanded_queries", []),
@@ -338,8 +360,31 @@ async def chat(request: QuestionRequest):
             "follow_up_questions": result.get("follow_up_questions"),
         }
 
+        # ── 4. Log detailed metrics ──
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        answer_text = result["answer"].lower()
+        is_on_topic = "outside the scope" not in answer_text
+        has_sources = len(result["sources"]) > 0
+
+        log_request_metrics(
+            endpoint="/chat",
+            status_code=200,
+            response_time_ms=duration_ms,
+            model=request.model or "1",
+            on_topic=is_on_topic,
+            has_sources=has_sources,
+        )
+
+        return chat_response
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
+
+
+@app.get("/metrics/summary")
+async def metrics_summary():
+    """Get aggregated metrics for the dashboard."""
+    return get_metrics_summary()
 
 
 @app.post("/chat/simple")
