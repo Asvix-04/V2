@@ -129,24 +129,6 @@ export const ChatInput = React.forwardRef(({
                     onClose={() => setIsVoiceModeActive(false)}
                     responseLanguage={responseLanguage}
                 />
-            ) : isLLMActive ? (
-                <div className="flex min-h-[48px] flex-1 items-center gap-3 px-2">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-accent">
-                        <MdGraphicEq className="text-[24px]" />
-                    </div>
-                    <div className="flex h-8 flex-1 items-center gap-[3px] overflow-hidden">
-                        {Array.from({ length: 72 }, (_, index) => (
-                            <span
-                                key={index}
-                                className="w-[3px] shrink-0 animate-pulse rounded-full bg-foreground-muted/70"
-                                style={{
-                                    height: `${6 + ((index * 7) % 22)}px`,
-                                    animationDelay: `${index * 35}ms`,
-                                }}
-                            />
-                        ))}
-                    </div>
-                </div>
             ) : (
                 <textarea
                     ref={ref || textareaRef}

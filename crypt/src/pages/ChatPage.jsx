@@ -507,6 +507,7 @@ export function ChatPage() {
     const activeAssistantMessageIdRef = React.useRef(null);
     const suppressAbortStoppedRef = React.useRef(false);
     const pendingAbandonedDraftIdRef = React.useRef(null);
+    const skipLocalBackupRestoreRef = React.useRef(false);
     const [followUpQuestions, setFollowUpQuestions] = React.useState([]);
 
     // ── Star & Disappearing Messages (Sagar's features) ──────────────
@@ -563,6 +564,7 @@ export function ChatPage() {
 
     const activeDraftStorageKey = user?.id ? `${ACTIVE_DRAFT_STORAGE_PREFIX}${user.id}` : null;
     const pendingDraftStorageKey = user?.id ? `${PENDING_DRAFT_STORAGE_PREFIX}${user.id}` : null;
+    const localChatBackupKey = `digilab-chat-backup:${user?.id || "guest"}`;
     const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
     const resetComposerState = () => {
@@ -612,6 +614,22 @@ export function ChatPage() {
                 if (activeIndex !== -1) {
                     nextMessages[activeIndex] = {
                         ...nextMessages[activeIndex],
+                        isStreaming: false,
+                        stopped: true,
+                    };
+                    return nextMessages;
+                }
+            }
+
+            for (let index = nextMessages.length - 1; index >= 0; index -= 1) {
+                if (nextMessages[index]?.role === "assistant") {
+                    if (nextMessages[index].stopped) {
+                        return nextMessages;
+                    }
+
+                    nextMessages[index] = {
+                        ...nextMessages[index],
+                        isStreaming: false,
                         stopped: true,
                     };
                     return nextMessages;
@@ -623,6 +641,7 @@ export function ChatPage() {
                 withMessageId({
                     role: "assistant",
                     content: "",
+                    isStreaming: false,
                     stopped: true,
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 }),
@@ -1014,6 +1033,8 @@ export function ChatPage() {
     };
 
     const resetChatSurface = () => {
+        skipLocalBackupRestoreRef.current = true;
+        localStorage.removeItem(localChatBackupKey);
         setMessages([INITIAL_MESSAGE]);
         setCurrentSessionId(null);
         setCurrentSessionSource(null);
@@ -1186,6 +1207,115 @@ export function ChatPage() {
 
     }, [isGuest, searchParams, activeDraftStorageKey]);
 
+    React.useEffect(() => {
+        let backupTimer;
+
+        try {
+            backupTimer = window.setTimeout(() => {
+                if (skipLocalBackupRestoreRef.current) {
+                    return;
+                }
+
+                if (messages.length > 1) {
+                    return;
+                }
+
+                const rawBackup = localStorage.getItem(localChatBackupKey);
+                if (!rawBackup) {
+                    return;
+                }
+
+                const backup = JSON.parse(rawBackup);
+                const savedMessages = Array.isArray(backup.messages) ? backup.messages : [];
+                if (savedMessages.length <= 1) {
+                    return;
+                }
+
+                const restoredMessages = savedMessages
+                    .filter((message) => !(message.role === "assistant" && message.isStreaming && !message.content))
+                    .map((message) => withMessageId({
+                        ...message,
+                        isStreaming: false,
+                        autoReadAloud: false,
+                    }));
+
+                if (restoredMessages.length <= 1) {
+                    return;
+                }
+
+                const fallbackSessionId = backup.currentSessionId || `local-${Date.now()}`;
+                const fallbackSession = {
+                    id: fallbackSessionId,
+                    title: backup.title || getSessionTitle(restoredMessages),
+                    messages: restoredMessages,
+                    isDraft: false,
+                    updatedAt: backup.updatedAt || new Date().toISOString(),
+                    source: CHAT_SESSION_SOURCE.TODAY,
+                };
+
+                setMessages(restoredMessages);
+                setCurrentSessionId(fallbackSessionId);
+                setCurrentSessionSource(backup.currentSessionSource || CHAT_SESSION_SOURCE.TODAY);
+                setSessions((prev) => {
+                    if (prev.some((session) => session.id === fallbackSessionId)) {
+                        return prev;
+                    }
+
+                    return [fallbackSession, ...prev];
+                });
+            }, 700);
+        } catch (error) {
+            console.error("Failed to restore local chat backup:", error);
+        }
+
+        return () => {
+            if (backupTimer) {
+                window.clearTimeout(backupTimer);
+            }
+        };
+    }, [localChatBackupKey, messages.length]);
+
+    React.useEffect(() => {
+        if (messages.length <= 1) {
+            return;
+        }
+
+        try {
+            skipLocalBackupRestoreRef.current = false;
+            localStorage.setItem(localChatBackupKey, JSON.stringify({
+                messages,
+                currentSessionId,
+                currentSessionSource,
+                title: getConversationTitle(messages, currentSessionId),
+                updatedAt: new Date().toISOString(),
+            }));
+        } catch (error) {
+            console.error("Failed to save local chat backup:", error);
+        }
+    }, [messages, currentSessionId, currentSessionSource, localChatBackupKey]);
+
+    React.useEffect(() => {
+        if (messages.length <= 1) {
+            return;
+        }
+
+        const sessionId = currentSessionId || `local-${user?.id || "guest"}`;
+        setSessions((prev) => {
+            if (prev.some((session) => session.id === sessionId)) {
+                return prev;
+            }
+
+            return [{
+                id: sessionId,
+                title: getSessionTitle(messages),
+                messages,
+                isDraft: false,
+                updatedAt: new Date().toISOString(),
+                source: CHAT_SESSION_SOURCE.TODAY,
+            }, ...prev];
+        });
+    }, [messages, currentSessionId, user?.id]);
+
 
 
     React.useEffect(() => {
@@ -1328,6 +1458,8 @@ export function ChatPage() {
 
         clearStoredDraft(currentSessionId);
         clearPendingDraftSnapshot();
+        skipLocalBackupRestoreRef.current = true;
+        localStorage.removeItem(localChatBackupKey);
         setMessages([INITIAL_MESSAGE]);
         setCurrentSessionId(null);
         setCurrentSessionSource(null);
@@ -1475,7 +1607,7 @@ export function ChatPage() {
 
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
 
-            requestMode: "default",
+            requestMode,
 
         });
         const pendingMessages = [...messages, userMsg];
@@ -1497,6 +1629,18 @@ export function ChatPage() {
         setIsLoading(true);
         isLoadingRef.current = true;
         const controller = startLLMRequest();
+        const assistantId = createMessageId();
+        const pendingAssistantMsg = withMessageId({
+            id: assistantId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            modelName: selectedModel.name,
+            isStreaming: true,
+            autoReadAloud: requestMode === "voice",
+        });
+        activeAssistantMessageIdRef.current = assistantId;
+        setMessages([...pendingMessages, pendingAssistantMsg]);
 
         let persistedSessionId = currentSessionId;
 
@@ -1518,20 +1662,6 @@ export function ChatPage() {
         }
 
         try {
-
-            const assistantId = createMessageId();
-            const assistantMsg = withMessageId({
-                id: assistantId,
-                role: "assistant",
-                content: "",
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                modelName: selectedModel.name,
-                isStreaming: true,
-                autoReadAloud: requestMode === "voice",
-            });
-            activeAssistantMessageIdRef.current = assistantId;
-            setMessages([...pendingMessages, assistantMsg]);
-
             let streamedText = "";
             let response = null;
 
@@ -1558,7 +1688,7 @@ export function ChatPage() {
             }
 
             const finalAssistantMsg = withMessageId({
-                ...assistantMsg,
+                ...pendingAssistantMsg,
                 content: response?.answer || streamedText,
                 referenceLinks: response?.reference_links || [],
                 isStreaming: false,
@@ -1666,7 +1796,7 @@ export function ChatPage() {
             role: "user",
             content: transcription || "(Voice message)",
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            requestMode,
+            requestMode: "voice",
             voiceMode: "s2s",
         });
 
@@ -1739,6 +1869,18 @@ export function ChatPage() {
         setIsLoading(true);
         isLoadingRef.current = true;
         const controller = startLLMRequest();
+        const assistantId = createMessageId();
+        const pendingAssistantMsg = withMessageId({
+            id: assistantId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            modelName: selectedModel.name,
+            isStreaming: true,
+            autoReadAloud: options.source === "voice",
+        });
+        activeAssistantMessageIdRef.current = assistantId;
+        setMessages([...pendingMessages, pendingAssistantMsg]);
 
         let persistedSessionId = currentSessionId;
 
@@ -1762,9 +1904,9 @@ export function ChatPage() {
         try {
             const response = await chatbotApi.textToText(text, selectedLanguage, selectedModel.id, true, controller.signal);
             const assistantMsg = withMessageId({
+                ...pendingAssistantMsg,
                 role: "assistant",
                 content: response.answer,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 modelName: selectedModel.name,
                 autoReadAloud: options.source === "voice",
                 isStreaming: false,
@@ -1832,6 +1974,27 @@ export function ChatPage() {
         setIsLoading(true);
         isLoadingRef.current = true;
         const controller = startLLMRequest();
+        const keepDraftState = shouldKeepDraftState(currentSessionId);
+        const userMsg = withMessageId({
+            role: "user",
+            content: displayTranscript || "(Voice message)",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            requestMode: "voice",
+            voiceMode: "s2s",
+        });
+        const assistantId = createMessageId();
+        const pendingAssistantMsg = withMessageId({
+            id: assistantId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            modelName: selectedModel.name,
+            isStreaming: true,
+            autoReadAloud: true,
+        });
+        activeAssistantMessageIdRef.current = assistantId;
+        const pendingMessages = [...messages, userMsg, pendingAssistantMsg];
+        setMessages(pendingMessages);
 
         try {
             const audioBase64 = await blobToBase64(audioBlob);
@@ -1844,12 +2007,35 @@ export function ChatPage() {
                 controller.signal
             );
 
-            await handleVoiceMessage({
-                transcription: response.transcript || displayTranscript || "(Voice message)",
-                answer: response.answer || "",
+            const resolvedUserMsg = {
+                ...userMsg,
+                content: response.transcript || displayTranscript || "(Voice message)",
+            };
+            const finalAssistantMsg = withMessageId({
+                ...pendingAssistantMsg,
+                content: response.answer || "",
                 audioBase64: response.audio_base64,
-                reference_links: response.reference_links,
+                referenceLinks: response.reference_links,
+                isStreaming: false,
+                autoReadAloud: true,
             });
+            const updatedMessages = [...messages, resolvedUserMsg, finalAssistantMsg];
+            setMessages(updatedMessages);
+
+            if (!isGuest && !isIncognito) {
+                try {
+                    await persistSession({
+                        sessionId: currentSessionId,
+                        nextMessages: updatedMessages,
+                        title: currentSessionId
+                            ? sessions.find((session) => session.id === currentSessionId)?.title || getSessionTitle(updatedMessages)
+                            : getSessionTitle(updatedMessages, "Voice Chat"),
+                        isDraft: keepDraftState,
+                    });
+                } catch (dbErr) {
+                    console.error("Failed to save voice chat to DB:", dbErr);
+                }
+            }
 
             setS2sResult({
                 id: createMessageId(),
@@ -1862,12 +2048,15 @@ export function ChatPage() {
             }
 
             const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || "Speech processing failed.";
-            await handleVoiceMessage({
-                transcription: displayTranscript || "(Voice message)",
-                answer: "",
+            const updatedWithError = [...messages, userMsg, withMessageId({
+                ...pendingAssistantMsg,
+                content: errorMessage,
+                isStreaming: false,
                 isError: true,
-                error: errorMessage,
-            });
+                retryText: displayTranscript || "",
+                retryAsVoice: true,
+            })];
+            setMessages(updatedWithError);
             setS2sResult({ id: createMessageId() });
             finishLLMRequest();
         } finally {
@@ -1916,7 +2105,7 @@ export function ChatPage() {
         const pendingTitle = getConversationTitle(pendingMessages, currentSessionId);
         const shouldTranslate = originalMessage?.requestMode === "translated";
         const shouldReturnSpeech = originalMessage?.voiceMode === "s2s";
-        const shouldAutoRead = options.source === "voice" || originalMessage?.requestMode === "voice";
+        const shouldAutoRead = false;
         const editLanguageCode = shouldTranslate
             ? (originalMessage?.languageCode || selectedLanguage)
             : null;
@@ -1937,6 +2126,18 @@ export function ChatPage() {
         setIsLoading(true);
         isLoadingRef.current = true;
         const controller = startLLMRequest();
+        const assistantId = createMessageId();
+        const pendingAssistantMsg = withMessageId({
+            id: assistantId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            modelName: selectedModel.name,
+            isStreaming: true,
+            autoReadAloud: shouldAutoRead,
+        });
+        activeAssistantMessageIdRef.current = assistantId;
+        setMessages([...pendingMessages, pendingAssistantMsg]);
 
         let persistedSessionId = currentSessionId;
 
@@ -1967,16 +2168,15 @@ export function ChatPage() {
                     : await chatbotApi.sendMessage(normalizedText, selectedModel.id, true, controller.signal);
 
             const assistantMsg = withMessageId({
+                ...pendingAssistantMsg,
                 role: "assistant",
                 content: response.answer,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 modelName: selectedModel.name,
                 referenceLinks: response.reference_links,
                 audioBase64: response.audio_base64,
                 autoReadAloud: shouldAutoRead,
                 isStreaming: false,
             });
-            activeAssistantMessageIdRef.current = assistantMsg.id;
 
             const followUps = response?.follow_up_questions?.type_2_context_aware || response?.type_2_context_aware || response?.follow_ups || [];
             setFollowUpQuestions(followUps.slice(0, 3));
@@ -2855,8 +3055,6 @@ export function ChatPage() {
 
                                                     onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
 
-                                                    onStopAudio={msg.audioBase64 || msg.audio_base64 ? stopVoicePlayback : undefined}
-
                                                 />
 
                                             ))}
@@ -3195,8 +3393,6 @@ export function ChatPage() {
                                                     isEditing={false}
 
                                                     onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
-
-                                                    onStopAudio={msg.audioBase64 || msg.audio_base64 ? stopVoicePlayback : undefined}
 
                                                 />
 

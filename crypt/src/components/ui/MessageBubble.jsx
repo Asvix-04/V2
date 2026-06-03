@@ -1,6 +1,6 @@
 import { cn } from "../../lib/utils";
 import { MdPerson, MdSmartToy, MdVolumeUp, MdVolumeOff, MdContentCopy, MdCheck, MdLink, MdEdit, MdRefresh } from "react-icons/md";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // Helper to escape regex special characters
 function escapeRegExp(string) {
@@ -106,8 +106,9 @@ function formatMessage(text, links = []) {
     });
 }
 
-function playAudioBase64(base64) {
+function playAudioBase64(base64, { onAudio } = {}) {
     return new Promise((resolve, reject) => {
+        let url = null;
         try {
             const byteCharacters = atob(base64);
             const bytes = new Uint8Array(byteCharacters.length);
@@ -117,8 +118,9 @@ function playAudioBase64(base64) {
             }
 
             const blob = new Blob([bytes], { type: "audio/wav" });
-            const url = URL.createObjectURL(blob);
+            url = URL.createObjectURL(blob);
             const audio = new Audio(url);
+            onAudio?.(audio);
 
             audio.onended = () => {
                 URL.revokeObjectURL(url);
@@ -129,26 +131,27 @@ function playAudioBase64(base64) {
                 reject(error);
             };
             audio.play().catch((error) => {
-                URL.revokeObjectURL(url);
+                if (url) URL.revokeObjectURL(url);
                 reject(error);
             });
         } catch (error) {
+            if (url) URL.revokeObjectURL(url);
             reject(error);
         }
     });
 }
 
-export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit, onEditCancel, onRetry, onStopAudio }) {
+export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit, onEditCancel, onRetry }) {
     const isUser = message.role === "user";
     const voiceAudio = message.audioBase64 || message.audio_base64;
     const [copied, setCopied] = useState(false);
     const [editValue, setEditValue] = useState(message.content || "");
     const [isReading, setIsReading] = useState(false);
-    const [voiceVolume, setVoiceVolume] = useState(1);
     const editTextareaRef = useRef(null);
     const utteranceRef = useRef(null);
     const audioRef = useRef(null);
     const autoReadStartedRef = useRef(false);
+    const readingRunRef = useRef(0);
 
     // When entering edit mode, reset textarea content and focus
     useEffect(() => {
@@ -164,7 +167,8 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
         }
     }, [isEditing, isUser, message.content]);
 
-    const stopReading = () => {
+    const stopReading = useCallback(() => {
+        readingRunRef.current += 1;
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current = null;
@@ -174,55 +178,76 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
         }
         utteranceRef.current = null;
         setIsReading(false);
-    };
+    }, []);
 
-    const handleSpeak = () => {
-        if (isReading) {
-            stopReading();
-            return;
-        }
+    const startReading = useCallback(() => {
+        const runId = readingRunRef.current + 1;
+        readingRunRef.current = runId;
 
         if (voiceAudio) {
-            playAudioBase64(voiceAudio).catch(() => {}).finally(() => setIsReading(false));
             setIsReading(true);
+            playAudioBase64(voiceAudio, {
+                onAudio: (audio) => {
+                    audioRef.current = audio;
+                },
+            }).catch(() => {}).finally(() => {
+                if (readingRunRef.current !== runId) {
+                    return;
+                }
+                audioRef.current = null;
+                setIsReading(false);
+            });
             return;
         }
 
         if ('speechSynthesis' in window && message.content) {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(message.content);
-            utterance.volume = voiceVolume;
             utterance.onend = () => {
+                if (readingRunRef.current !== runId) {
+                    return;
+                }
                 utteranceRef.current = null;
                 setIsReading(false);
             };
             utterance.onerror = () => {
+                if (readingRunRef.current !== runId) {
+                    return;
+                }
                 utteranceRef.current = null;
                 setIsReading(false);
             };
             utteranceRef.current = utterance;
             setIsReading(true);
             window.speechSynthesis.speak(utterance);
+            window.speechSynthesis.resume();
         }
-    };
+    }, [message.content, voiceAudio]);
+
+    const handleSpeak = useCallback(() => {
+        if (isReading) {
+            stopReading();
+            return;
+        }
+
+        startReading();
+    }, [isReading, startReading, stopReading]);
 
     useEffect(() => {
-        if (utteranceRef.current) {
-            utteranceRef.current.volume = voiceVolume;
-        }
-    }, [voiceVolume]);
+        autoReadStartedRef.current = false;
+    }, [message.id]);
 
     useEffect(() => {
-        const autoReadKey = message.id ? `digilab-auto-read:${message.id}` : null;
-        const alreadyAutoRead = autoReadKey ? sessionStorage.getItem(autoReadKey) === 'true' : false;
-        if (!isUser && message.autoReadAloud && !message.isStreaming && message.content && !autoReadStartedRef.current && !alreadyAutoRead) {
+        if (!isUser && message.autoReadAloud && !message.isStreaming && message.content && !autoReadStartedRef.current) {
             autoReadStartedRef.current = true;
-            if (autoReadKey) sessionStorage.setItem(autoReadKey, 'true');
-            queueMicrotask(() => handleSpeak());
+            const frame = window.requestAnimationFrame(() => {
+                startReading();
+            });
+            return () => window.cancelAnimationFrame(frame);
         }
-    }, [isUser, message.autoReadAloud, message.content, message.isStreaming]);
+    }, [isUser, message.autoReadAloud, message.content, message.isStreaming, startReading]);
 
-    useEffect(() => () => stopReading(), []);
+    useEffect(() => () => stopReading(), [stopReading]);
 
     const handleCopy = async () => {
         try {
@@ -347,8 +372,10 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                 )}>
                     {message.content ? (
                         formatMessage(message.content, message.referenceLinks || message.reference_links)
+                    ) : message.stopped ? (
+                        <span className="text-foreground-muted">Response stopped</span>
                     ) : message.isStreaming ? (
-                        <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-zinc-100 px-4 py-3 dark:bg-white/10">
+                        <div className="flex items-center gap-1 px-1 py-2">
                             {[0, 1, 2].map((dot) => (
                                 <span
                                     key={dot}
@@ -368,7 +395,7 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                             Retry
                         </button>
                     )}
-                    {message.stopped && (
+                    {message.stopped && message.content && (
                         <div className="mt-2 text-xs text-foreground-muted opacity-70">
                             Response stopped
                         </div>
@@ -379,20 +406,6 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                         </div>
                     )}
                 </div>
-
-                {voiceAudio && onStopAudio && !message.isError && (
-                    <div className="mt-3 flex items-center">
-                        <button
-                            onClick={onStopAudio}
-                            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-foreground-muted transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5"
-                            title="Stop voice"
-                            aria-label="Stop voice"
-                        >
-                            <MdVolumeOff size={15} />
-                            <span>Stop voice</span>
-                        </button>
-                    </div>
-                )}
 
                 {/* Sublte footer for links - only if they exist but weren't necessarily all matched */}
                 {(message.referenceLinks || message.reference_links)?.length > 0 && (
@@ -437,19 +450,6 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                         {isReading ? <MdVolumeOff size={14} /> : <MdVolumeUp size={14} />}
                         <span>{isReading ? 'Stop reading' : 'Read aloud'}</span>
                     </button>
-
-                    {isReading && (
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value={voiceVolume}
-                            onChange={(event) => setVoiceVolume(Number(event.target.value))}
-                            className="w-24 accent-[var(--accent)]"
-                            aria-label="Voice volume"
-                        />
-                    )}
 
                     <span className="text-[10px] text-foreground-muted opacity-60 ml-2">
                         {message.timestamp}
