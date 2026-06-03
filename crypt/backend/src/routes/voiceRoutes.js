@@ -41,6 +41,9 @@ router.post('/chat/simple', voiceController.chatSimple);
 // @route   POST /api/voice/clear-history
 router.post('/clear-history', voiceController.clearHistory);
 
+// @route   POST /api/voice/history/sync
+router.post('/history/sync', voiceController.syncHistory);
+
 // @route   GET /api/voice/health
 // @desc    Check voice service health
 // @access  Public

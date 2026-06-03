@@ -20,7 +20,6 @@ import { MessageBubble } from "../components/ui/MessageBubble";
 
 import { PageTransition } from "../components/ui/PageTransition";
 
-import { VoiceOverlay } from "../components/ui/VoiceOverlay";
 import { 
     ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, 
     MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map, 
@@ -40,6 +39,7 @@ const MODELS = [
 
 
 const INITIAL_MESSAGE = {
+    id: "initial-assistant-message",
 
     role: "assistant",
 
@@ -48,6 +48,20 @@ const INITIAL_MESSAGE = {
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
 
 };
+
+const createMessageId = () => {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const withMessageId = (message) => ({
+    id: message?.id || createMessageId(),
+    ...message,
+});
+
+const getMessageDomId = (message, index) => message?.id || `message-${index}`;
 
 
 
@@ -208,6 +222,47 @@ const formatDraftExpiryTime = (value) => {
         : `${expiryDate.toLocaleDateString([], { month: "short", day: "numeric" })}, ${timeLabel}`;
 };
 
+const buildBackendHistoryFromMessages = (conversationMessages = []) => {
+    const history = [];
+    let pendingQuestion = null;
+
+    conversationMessages.forEach((message) => {
+        const content = typeof message?.content === "string" ? message.content.trim() : "";
+
+        if (!content) {
+            return;
+        }
+
+        if (message.role === "user") {
+            pendingQuestion = content;
+            return;
+        }
+
+        if (message.role === "assistant" && pendingQuestion) {
+            history.push({
+                question: pendingQuestion,
+                answer: content,
+                sources: [],
+                expanded_queries: [],
+                validation: {},
+            });
+            pendingQuestion = null;
+        }
+    });
+
+    return history;
+};
+
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read audio."));
+    reader.onloadend = () => {
+        const result = typeof reader.result === "string" ? reader.result : "";
+        resolve(result.split(",")[1] || "");
+    };
+    reader.readAsDataURL(blob);
+});
+
 
 
 const IncognitoIcon = ({ className }) => (
@@ -298,8 +353,6 @@ const QuotedTextPreview = ({ quotedText, onClear }) => (
 
 );
 
-
-
 export function ChatPage() {
 
     const { t } = useLanguage();
@@ -383,7 +436,9 @@ export function ChatPage() {
 
     const [showLimitModal, setShowLimitModal] = React.useState(false);
 
-    const [isVoiceMode, setIsVoiceMode] = React.useState(false);
+    const [isLLMActive, setIsLLMActive] = React.useState(false);
+    const [s2sResult, setS2sResult] = React.useState(null);
+    const [inlineSendError, setInlineSendError] = React.useState(null);
 
 
 
@@ -392,6 +447,12 @@ export function ChatPage() {
     const [error, setError] = React.useState(null);
 
     const [isConnected, setIsConnected] = React.useState(false);
+    const [connectionStatus, setConnectionStatus] = React.useState({
+        status: "checking",
+        message: "Checking backend connection",
+        node: false,
+        ai: false,
+    });
 
     const [isCheckingConnection, setIsCheckingConnection] = React.useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth >= 1024);
@@ -404,6 +465,9 @@ export function ChatPage() {
     const [selectedLanguage, setSelectedLanguage] = React.useState(null); // null = English (default)
     const [isTranslating, setIsTranslating] = React.useState(false);
     const [isLangDropdownOpen, setIsLangDropdownOpen] = React.useState(false);
+    const [composerValue, setComposerValue] = React.useState("");
+    const [editingMessageId, setEditingMessageId] = React.useState(null);
+    const lastSendAtRef = React.useRef(0);
 
     const TRANSLATE_LANGUAGES = [
         { code: null,    label: "English",    flag: "🇬🇧" },
@@ -419,12 +483,29 @@ export function ChatPage() {
         { code: "te-IN", label: "Telugu",     flag: "🇮🇳" },
     ];
 
+    const chatInputPlaceholder = isCheckingConnection
+        ? "Checking connection..."
+        : isConnected
+        ? (connectionStatus.ai === false
+            ? "AI service unavailable"
+            : selectedLanguage
+                ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...`
+                : t('chat.inputPlaceholder') || "How can I help?")
+        : "Backend not connected";
+
     React.useEffect(() => {
         localStorage.setItem("selectedModelId", selectedModel.id);
     }, [selectedModel]);
 
     const messagesEndRef = React.useRef(null);
+    const chatInputRef = React.useRef(null);
     const isLoadingRef = React.useRef(false);
+    const currentAbortController = React.useRef(null);
+    const currentVoiceAudioRef = React.useRef(null);
+    const currentVoiceAudioUrlRef = React.useRef(null);
+    const voiceInputRef = React.useRef(null);
+    const activeAssistantMessageIdRef = React.useRef(null);
+    const suppressAbortStoppedRef = React.useRef(false);
     const pendingAbandonedDraftIdRef = React.useRef(null);
     const [followUpQuestions, setFollowUpQuestions] = React.useState([]);
 
@@ -468,6 +549,9 @@ export function ChatPage() {
     });
 
     const [quotedText, setQuotedText] = React.useState(null);
+    const editingMessage = editingMessageId
+        ? messages.find((message, index) => getMessageDomId(message, index) === editingMessageId) || null
+        : null;
 
 
 
@@ -480,6 +564,113 @@ export function ChatPage() {
     const activeDraftStorageKey = user?.id ? `${ACTIVE_DRAFT_STORAGE_PREFIX}${user.id}` : null;
     const pendingDraftStorageKey = user?.id ? `${PENDING_DRAFT_STORAGE_PREFIX}${user.id}` : null;
     const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+
+    const resetComposerState = () => {
+        setComposerValue("");
+        setEditingMessageId(null);
+    };
+
+    const startLLMRequest = React.useCallback(() => {
+        if (currentAbortController.current) {
+            currentAbortController.current.abort();
+        }
+
+        const controller = new AbortController();
+        currentAbortController.current = controller;
+        setIsLLMActive(true);
+        setInlineSendError(null);
+        return controller;
+    }, []);
+
+    const finishLLMRequest = React.useCallback(() => {
+        currentAbortController.current = null;
+        activeAssistantMessageIdRef.current = null;
+        setIsLLMActive(false);
+    }, []);
+
+    const stopVoicePlayback = React.useCallback(() => {
+        if (currentVoiceAudioRef.current) {
+            currentVoiceAudioRef.current.pause();
+            currentVoiceAudioRef.current.onended = null;
+            currentVoiceAudioRef.current.onerror = null;
+            currentVoiceAudioRef.current = null;
+        }
+
+        if (currentVoiceAudioUrlRef.current) {
+            URL.revokeObjectURL(currentVoiceAudioUrlRef.current);
+            currentVoiceAudioUrlRef.current = null;
+        }
+    }, []);
+
+    const markLastAssistantStopped = React.useCallback(() => {
+        setMessages((currentMessages) => {
+            const nextMessages = [...currentMessages];
+            const activeAssistantId = activeAssistantMessageIdRef.current;
+
+            if (activeAssistantId) {
+                const activeIndex = nextMessages.findIndex((message) => message.id === activeAssistantId);
+                if (activeIndex !== -1) {
+                    nextMessages[activeIndex] = {
+                        ...nextMessages[activeIndex],
+                        stopped: true,
+                    };
+                    return nextMessages;
+                }
+            }
+
+            return [
+                ...nextMessages,
+                withMessageId({
+                    role: "assistant",
+                    content: "",
+                    stopped: true,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                }),
+            ];
+        });
+    }, []);
+
+    const markLastAssistantPlaybackFailed = React.useCallback(() => {
+        setMessages((currentMessages) => {
+            const nextMessages = [...currentMessages];
+            for (let index = nextMessages.length - 1; index >= 0; index -= 1) {
+                if (nextMessages[index]?.role === "assistant") {
+                    nextMessages[index] = {
+                        ...nextMessages[index],
+                        playbackFailed: true,
+                    };
+                    return nextMessages;
+                }
+            }
+            return nextMessages;
+        });
+    }, []);
+
+    const handleStopLLM = React.useCallback(() => {
+        if (!isLLMActive || !currentAbortController.current) {
+            return;
+        }
+
+        currentAbortController.current.abort();
+        voiceInputRef.current?.stopAudio?.();
+        stopVoicePlayback();
+        setS2sResult(null);
+        markLastAssistantStopped();
+        finishLLMRequest();
+        setIsLoading(false);
+        isLoadingRef.current = false;
+    }, [finishLLMRequest, isLLMActive, markLastAssistantStopped, stopVoicePlayback]);
+
+    const handleVoicePlaybackError = React.useCallback(() => {
+        markLastAssistantPlaybackFailed();
+        setS2sResult(null);
+        finishLLMRequest();
+    }, [finishLLMRequest, markLastAssistantPlaybackFailed]);
+
+    const handleVoicePlaybackComplete = React.useCallback(() => {
+        setS2sResult(null);
+        finishLLMRequest();
+    }, [finishLLMRequest]);
 
     const getConversationTitle = (nextMessages = messages, sessionId = currentSessionId) => {
         if (sessionId) {
@@ -700,15 +891,20 @@ export function ChatPage() {
             return;
         }
 
+        const nextMessages = Array.isArray(session.messages) && session.messages.length > 0
+            ? session.messages
+            : [INITIAL_MESSAGE];
+
         const sessionSource = resolveSessionSource(session, preferredSource);
 
         setCurrentSessionId(session.id);
         setCurrentSessionSource(sessionSource);
-        setMessages(Array.isArray(session.messages) && session.messages.length > 0 ? session.messages : [INITIAL_MESSAGE]);
+        setMessages(nextMessages);
         setError(null);
         setQuotedText(null);
         setFollowUpQuestions([]);
         setDraftMenuSessionId(null);
+        resetComposerState();
 
         if (session.isDraft) {
             rememberActiveDraft(session.id, sessionSource);
@@ -717,9 +913,21 @@ export function ChatPage() {
         }
 
         try {
-            await chatbotApi.clearHistory();
+            const history = buildBackendHistoryFromMessages(nextMessages);
+
+            if (history.length > 0) {
+                await chatbotApi.syncHistory(history);
+            } else {
+                await chatbotApi.clearHistory();
+            }
         } catch (err) {
-            console.error("Failed to clear AI memory:", err);
+            console.error("Failed to sync AI memory:", err);
+
+            try {
+                await chatbotApi.clearHistory();
+            } catch (clearErr) {
+                console.error("Failed to reset AI memory:", clearErr);
+            }
         }
 
         if (window.innerWidth < 1024) {
@@ -814,6 +1022,7 @@ export function ChatPage() {
         setFollowUpQuestions([]);
         setDraftMenuSessionId(null);
         clearPendingDraftSnapshot();
+        resetComposerState();
     };
 
     const navigateAfterSavingDraft = async (path) => {
@@ -907,15 +1116,25 @@ export function ChatPage() {
 
             try {
 
-                await chatbotApi.checkHealth();
+                const health = await chatbotApi.checkHealth();
+                setConnectionStatus(health);
+                setIsConnected(Boolean(health.node));
 
-                setIsConnected(true);
+                if (health.ai) {
+                    await chatbotApi.clearHistory();
+                }
 
             } catch (err) {
 
                 console.error("Backend not available:", err);
 
                 setIsConnected(false);
+                setConnectionStatus(err.healthStatus || {
+                    status: "offline",
+                    message: "Backend not connected",
+                    node: false,
+                    ai: false,
+                });
 
             } finally {
 
@@ -993,7 +1212,13 @@ export function ChatPage() {
 
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
-    }, [messages]);
+    }, [messages.length]);
+
+    React.useEffect(() => {
+        return () => {
+            stopVoicePlayback();
+        };
+    }, [stopVoicePlayback]);
 
 
 
@@ -1012,6 +1237,7 @@ export function ChatPage() {
                 setMessages([INITIAL_MESSAGE]);
                 setCurrentSessionId(null);
                 setCurrentSessionSource(null);
+                resetComposerState();
             }
             setError(null);
         } catch (err) {
@@ -1039,6 +1265,7 @@ export function ChatPage() {
                 setMessages([INITIAL_MESSAGE]);
                 setCurrentSessionId(null);
                 setCurrentSessionSource(null);
+                resetComposerState();
             }
 
             setError(null);
@@ -1071,6 +1298,7 @@ export function ChatPage() {
             clearStoredDraft();
             clearPendingDraftSnapshot();
             setDraftMenuSessionId(null);
+            resetComposerState();
 
             setError(null);
 
@@ -1107,6 +1335,7 @@ export function ChatPage() {
         setQuotedText(null);
         setFollowUpQuestions([]);
         setDraftMenuSessionId(null);
+        resetComposerState();
 
         if (searchParams.has("sessionId")) {
 
@@ -1140,17 +1369,57 @@ export function ChatPage() {
 
     };
 
+    const beginEditingMessage = (messageIndex) => {
 
+        const targetMessage = messages[messageIndex];
 
-    const handleSend = async (text) => {
-
-        const normalizedText = typeof text === "string" ? text.trim() : "";
-
-        if (!normalizedText || isLoading) {
+        if (targetMessage?.role !== "user") {
 
             return;
 
         }
+
+        stopVoicePlayback();
+        setEditingMessageId(getMessageDomId(targetMessage, messageIndex));
+        setComposerValue(targetMessage.content || "");
+        setQuotedText(null);
+        setFollowUpQuestions([]);
+        requestAnimationFrame(() => chatInputRef.current?.focus?.());
+
+    };
+
+    const syncConversationHistory = async (conversationMessages = messages) => {
+
+        const history = buildBackendHistoryFromMessages(conversationMessages);
+
+        if (history.length === 0) {
+
+            await chatbotApi.clearHistory();
+            return;
+
+        }
+
+        await chatbotApi.syncHistory(history);
+
+    };
+
+
+
+    const handleSend = async (text, options = {}) => {
+
+        const normalizedText = typeof text === "string" ? text.trim() : "";
+
+        if (!normalizedText) {
+
+            return;
+
+        }
+
+        const now = Date.now();
+        if (now - lastSendAtRef.current < 350) {
+            return;
+        }
+        lastSendAtRef.current = now;
 
         const trimmedQuote = quotedText?.trim();
 
@@ -1173,7 +1442,32 @@ export function ChatPage() {
             return;
 
         }
-        const userMsg = {
+        if (!connectionStatus.node) {
+            setInlineSendError("Backend not connected");
+            return;
+        }
+
+        if (connectionStatus.node && !connectionStatus.ai) {
+            setInlineSendError(connectionStatus.message || "AI service unavailable");
+            const updatedWithErr = [...messages, withMessageId({
+                role: "user",
+                content: displayContent,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                requestMode: "default",
+            }), withMessageId({
+                role: "assistant",
+                content: connectionStatus.message || "AI service unavailable",
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                isError: true,
+                retryText: normalizedText,
+            })];
+            setMessages(updatedWithErr);
+            return;
+        }
+
+        const requestMode = options.source === "voice" ? "voice" : "default";
+
+        const userMsg = withMessageId({
 
             role: "user",
 
@@ -1181,7 +1475,9 @@ export function ChatPage() {
 
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
 
-        };
+            requestMode: "default",
+
+        });
         const pendingMessages = [...messages, userMsg];
         setMessages(pendingMessages);
         setQuotedText(null);
@@ -1200,6 +1496,7 @@ export function ChatPage() {
 
         setIsLoading(true);
         isLoadingRef.current = true;
+        const controller = startLLMRequest();
 
         let persistedSessionId = currentSessionId;
 
@@ -1222,23 +1519,56 @@ export function ChatPage() {
 
         try {
 
-            const response = await chatbotApi.sendMessage(apiPayload, selectedModel.id);
-
-            const assistantMsg = {
+            const assistantId = createMessageId();
+            const assistantMsg = withMessageId({
+                id: assistantId,
                 role: "assistant",
-                content: response.answer,
+                content: "",
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 modelName: selectedModel.name,
-                referenceLinks: response.reference_links
-            };
+                isStreaming: true,
+                autoReadAloud: requestMode === "voice",
+            });
+            activeAssistantMessageIdRef.current = assistantId;
+            setMessages([...pendingMessages, assistantMsg]);
 
-            // Extract follow-up questions from backend response
+            let streamedText = "";
+            let response = null;
+
+            try {
+                response = await chatbotApi.sendMessageStreaming({
+                    question: apiPayload,
+                    model: selectedModel.id,
+                    useHistory: true,
+                    signal: controller.signal,
+                    onChunk: (delta) => {
+                        streamedText += delta;
+                        setMessages((currentMessages) => currentMessages.map((message) => (
+                            message.id === assistantId
+                                ? { ...message, content: `${message.content || ""}${delta}` }
+                                : message
+                        )));
+                    },
+                });
+            } catch (streamErr) {
+                if (streamErr?.name === 'AbortError') {
+                    throw streamErr;
+                }
+                response = await chatbotApi.sendMessage(apiPayload, selectedModel.id, true, controller.signal);
+            }
+
+            const finalAssistantMsg = withMessageId({
+                ...assistantMsg,
+                content: response?.answer || streamedText,
+                referenceLinks: response?.reference_links || [],
+                isStreaming: false,
+                autoReadAloud: requestMode === "voice",
+            });
+
             const followUps = response?.follow_up_questions?.type_2_context_aware || response?.type_2_context_aware || response?.follow_ups || [];
             setFollowUpQuestions(followUps.slice(0, 3));
 
-
-
-            const updatedMessages = [...pendingMessages, assistantMsg];
+            const updatedMessages = [...pendingMessages, finalAssistantMsg];
             setMessages(updatedMessages);
 
 
@@ -1264,6 +1594,16 @@ export function ChatPage() {
 
         } catch (err) {
 
+            // Silently discard aborted requests (user clicked Edit while loading)
+            if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') {
+                if (suppressAbortStoppedRef.current) {
+                    suppressAbortStoppedRef.current = false;
+                } else {
+                    markLastAssistantStopped();
+                }
+                return;
+            }
+
             console.error("API Error:", err);
 
             const errorMessage = err.response?.data?.detail || err.message || "Failed to get response";
@@ -1271,6 +1611,7 @@ export function ChatPage() {
             setError(errorMessage);
 
             const updatedWithErr = [...pendingMessages, {
+                id: createMessageId(),
 
                 role: "assistant",
 
@@ -1279,6 +1620,7 @@ export function ChatPage() {
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
 
                 isError: true,
+                retryText: normalizedText,
 
             }];
 
@@ -1304,6 +1646,7 @@ export function ChatPage() {
 
             setIsLoading(false);
             isLoadingRef.current = false;
+            finishLLMRequest();
 
         }
 
@@ -1311,24 +1654,34 @@ export function ChatPage() {
 
 
 
-    const handleVoiceMessage = async ({ transcription, answer, audioBase64, reference_links }) => {
-        if (!transcription && !answer) return;
+    const handleVoiceMessage = async ({ transcription, answer, audioBase64, reference_links, isError = false, error = null }) => {
+        if (!transcription && !answer && !isError) return;
+
+        setIsLoading(false);
+        isLoadingRef.current = false;
 
         const keepDraftState = shouldKeepDraftState(currentSessionId);
 
-        const userMsg = {
+        const userMsg = withMessageId({
             role: "user",
             content: transcription || "(Voice message)",
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
+            requestMode,
+            voiceMode: "s2s",
+        });
 
-        const assistantMsg = {
+        const assistantMsg = withMessageId({
             role: "assistant",
-            content: answer,
+            content: isError ? (error || "Speech processing failed.") : answer,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             modelName: selectedModel.name,
-            audioBase64: audioBase64
-        };
+            audioBase64: audioBase64,
+            referenceLinks: reference_links,
+            isError,
+            retryText: isError ? (transcription || "") : undefined,
+            retryAsVoice: isError,
+        });
+        activeAssistantMessageIdRef.current = assistantMsg.id;
 
         const updatedMessages = [...messages, userMsg, assistantMsg];
         setMessages(updatedMessages);
@@ -1350,16 +1703,26 @@ export function ChatPage() {
     };
 
     // ── Text-to-Text (Multilingual) handler ──
-    const handleTranslate = async (text) => {
+    const handleTranslate = async (text, options = {}) => {
         if (!text || !text.trim()) return;
         if (isGuest && messages.length >= 10) { setShowLimitModal(true); return; }
+        if (!connectionStatus.node) {
+            setInlineSendError("Backend not connected");
+            return;
+        }
+        if (connectionStatus.node && !connectionStatus.ai) {
+            setInlineSendError(connectionStatus.message || "AI service unavailable");
+            return;
+        }
         setError(null);
         setFollowUpQuestions([]);
-        const userMsg = {
+        const userMsg = withMessageId({
             role: "user",
             content: text,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
+            requestMode: "translated",
+            languageCode: selectedLanguage,
+        });
         const pendingMessages = [...messages, userMsg];
         setMessages(pendingMessages);
         pendingAbandonedDraftIdRef.current = null;
@@ -1375,6 +1738,7 @@ export function ChatPage() {
 
         setIsLoading(true);
         isLoadingRef.current = true;
+        const controller = startLLMRequest();
 
         let persistedSessionId = currentSessionId;
 
@@ -1396,13 +1760,15 @@ export function ChatPage() {
         }
 
         try {
-            const response = await chatbotApi.textToText(text, selectedLanguage);
-            const assistantMsg = {
+            const response = await chatbotApi.textToText(text, selectedLanguage, selectedModel.id, true, controller.signal);
+            const assistantMsg = withMessageId({
                 role: "assistant",
                 content: response.answer,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 modelName: selectedModel.name,
-            };
+                autoReadAloud: options.source === "voice",
+                isStreaming: false,
+            });
             const updatedMessages = [...pendingMessages, assistantMsg];
             setMessages(updatedMessages);
             if (!isGuest && !isIncognito) {
@@ -1416,11 +1782,21 @@ export function ChatPage() {
                 } catch (dbErr) { console.error("Failed to save translated chat to DB:", dbErr); }
             }
         } catch (err) {
+            // Silently discard aborted requests
+            if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') {
+                if (suppressAbortStoppedRef.current) {
+                    suppressAbortStoppedRef.current = false;
+                } else {
+                    markLastAssistantStopped();
+                }
+                return;
+            }
             console.error("Text-to-Text API Error:", err);
             const errorMessage = err.response?.data?.detail || err.message || "Translation failed";
             setError(errorMessage);
-            const updatedWithError = [...pendingMessages, { role: "assistant", content: `Sorry, translation failed: ${errorMessage}. Please try again.`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isError: true }];
+            const updatedWithError = [...pendingMessages, withMessageId({ role: "assistant", content: `Sorry, translation failed: ${errorMessage}. Please try again.`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isError: true, retryText: text })];
             setMessages(updatedWithError);
+            finishLLMRequest();
 
             if (!isGuest && !isIncognito) {
                 persistSession({
@@ -1433,7 +1809,276 @@ export function ChatPage() {
         } finally {
             setIsLoading(false);
             isLoadingRef.current = false;
+            finishLLMRequest();
         }
+    };
+
+    const handleS2SRequestReady = async ({ audioBlob, mimeType, displayTranscript }) => {
+        if (!audioBlob) {
+            return;
+        }
+
+        if (!connectionStatus.node) {
+            setInlineSendError("Backend not connected");
+            return;
+        }
+        if (connectionStatus.node && !connectionStatus.ai) {
+            setInlineSendError(connectionStatus.message || "AI service unavailable");
+            return;
+        }
+
+        setError(null);
+        setFollowUpQuestions([]);
+        setIsLoading(true);
+        isLoadingRef.current = true;
+        const controller = startLLMRequest();
+
+        try {
+            const audioBase64 = await blobToBase64(audioBlob);
+            const response = await chatbotApi.speechToSpeech(
+                audioBase64,
+                mimeType || "audio/webm",
+                selectedLanguage || "en-IN",
+                true,
+                selectedModel.id,
+                controller.signal
+            );
+
+            await handleVoiceMessage({
+                transcription: response.transcript || displayTranscript || "(Voice message)",
+                answer: response.answer || "",
+                audioBase64: response.audio_base64,
+                reference_links: response.reference_links,
+            });
+
+            setS2sResult({
+                id: createMessageId(),
+                ...response,
+            });
+        } catch (err) {
+            if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') {
+                markLastAssistantStopped();
+                return;
+            }
+
+            const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || "Speech processing failed.";
+            await handleVoiceMessage({
+                transcription: displayTranscript || "(Voice message)",
+                answer: "",
+                isError: true,
+                error: errorMessage,
+            });
+            setS2sResult({ id: createMessageId() });
+            finishLLMRequest();
+        } finally {
+            setIsLoading(false);
+            isLoadingRef.current = false;
+        }
+    };
+
+    const handleEditMessage = async (text, options = {}) => {
+        if (!editingMessageId) {
+            return;
+        }
+
+        const normalizedText = typeof text === "string" ? text.trim() : "";
+
+        if (!normalizedText) {
+            return;
+        }
+
+        const messageIndex = messages.findIndex((message, index) => getMessageDomId(message, index) === editingMessageId);
+        const originalMessage = messages[messageIndex];
+
+        if (originalMessage?.role !== "user") {
+            resetComposerState();
+            return;
+        }
+
+        if (isLoadingRef.current) {
+            suppressAbortStoppedRef.current = true;
+            currentAbortController.current?.abort();
+            setIsLoading(false);
+            isLoadingRef.current = false;
+        }
+
+        const previousMessages = messages.slice(0, messageIndex);
+        const editedUserMessage = withMessageId({
+            ...originalMessage,
+            content: normalizedText,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isEdited: true,
+            requestMode: options.source === "voice" ? "voice" : originalMessage.requestMode,
+        });
+
+        const pendingMessages = [...previousMessages, editedUserMessage];
+        const keepDraftState = shouldKeepDraftState(currentSessionId);
+        const pendingTitle = getConversationTitle(pendingMessages, currentSessionId);
+        const shouldTranslate = originalMessage?.requestMode === "translated";
+        const shouldReturnSpeech = originalMessage?.voiceMode === "s2s";
+        const shouldAutoRead = options.source === "voice" || originalMessage?.requestMode === "voice";
+        const editLanguageCode = shouldTranslate
+            ? (originalMessage?.languageCode || selectedLanguage)
+            : null;
+
+        setMessages(pendingMessages);
+        setError(null);
+        setQuotedText(null);
+        setFollowUpQuestions([]);
+        resetComposerState();
+        pendingAbandonedDraftIdRef.current = null;
+
+        writePendingDraftSnapshot({
+            sessionId: currentSessionId,
+            nextMessages: pendingMessages,
+            title: pendingTitle,
+        });
+
+        setIsLoading(true);
+        isLoadingRef.current = true;
+        const controller = startLLMRequest();
+
+        let persistedSessionId = currentSessionId;
+
+        if (!isGuest && !isIncognito && keepDraftState) {
+            try {
+                const savedDraft = await persistSession({
+                    sessionId: persistedSessionId,
+                    nextMessages: pendingMessages,
+                    title: pendingTitle,
+                    isDraft: true,
+                });
+
+                if (savedDraft?.id) {
+                    persistedSessionId = savedDraft.id;
+                }
+            } catch (draftErr) {
+                console.error("Failed to save edited draft:", draftErr);
+            }
+        }
+
+        try {
+            await syncConversationHistory(previousMessages);
+
+            const response = shouldReturnSpeech
+                ? await chatbotApi.speechToSpeechText(normalizedText, selectedLanguage || "en-IN", true, selectedModel.id, controller.signal)
+                : shouldTranslate
+                    ? await chatbotApi.textToText(normalizedText, editLanguageCode, selectedModel.id, true, controller.signal)
+                    : await chatbotApi.sendMessage(normalizedText, selectedModel.id, true, controller.signal);
+
+            const assistantMsg = withMessageId({
+                role: "assistant",
+                content: response.answer,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                modelName: selectedModel.name,
+                referenceLinks: response.reference_links,
+                audioBase64: response.audio_base64,
+                autoReadAloud: shouldAutoRead,
+                isStreaming: false,
+            });
+            activeAssistantMessageIdRef.current = assistantMsg.id;
+
+            const followUps = response?.follow_up_questions?.type_2_context_aware || response?.type_2_context_aware || response?.follow_ups || [];
+            setFollowUpQuestions(followUps.slice(0, 3));
+
+            const updatedMessages = [...pendingMessages, assistantMsg];
+            setMessages(updatedMessages);
+
+            if (shouldReturnSpeech && response.audio_base64) {
+                setS2sResult({
+                    id: createMessageId(),
+                    ...response,
+                });
+            } else {
+                finishLLMRequest();
+            }
+
+            if (!isGuest && !isIncognito) {
+                try {
+                    await persistSession({
+                        sessionId: persistedSessionId,
+                        nextMessages: updatedMessages,
+                        title: getConversationTitle(updatedMessages, persistedSessionId),
+                        isDraft: keepDraftState,
+                    });
+                } catch (dbErr) {
+                    console.error("Failed to save edited chat to DB:", dbErr);
+                }
+            }
+        } catch (err) {
+            // Silently discard aborted requests
+            if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') {
+                if (suppressAbortStoppedRef.current) {
+                    suppressAbortStoppedRef.current = false;
+                } else {
+                    markLastAssistantStopped();
+                }
+                return;
+            }
+            console.error("Edit regeneration error:", err);
+
+            const errorMessage = err.response?.data?.detail || err.message || "Failed to regenerate response";
+            setError(errorMessage);
+
+            const updatedWithError = [...pendingMessages, withMessageId({
+                role: "assistant",
+                content: `Sorry, I encountered an error: ${errorMessage}. Please try again.`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                isError: true,
+                retryText: normalizedText,
+                retryAsVoice: shouldReturnSpeech,
+            })];
+
+            setMessages(updatedWithError);
+            finishLLMRequest();
+
+            if (!isGuest && !isIncognito) {
+                persistSession({
+                    sessionId: persistedSessionId,
+                    nextMessages: updatedWithError,
+                    title: getConversationTitle(updatedWithError, persistedSessionId),
+                    isDraft: keepDraftState,
+                }).catch(() => { });
+            }
+        } finally {
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            if (!shouldReturnSpeech) {
+                finishLLMRequest();
+            }
+        }
+    };
+
+    const handleComposerSend = (text, options = {}) => {
+        if (editingMessageId !== null) {
+            handleEditMessage(text, options);
+            setComposerValue("");
+            return;
+        }
+
+        if (selectedLanguage) {
+            handleTranslate(text, options);
+            setComposerValue("");
+            return;
+        }
+
+        handleSend(text, options);
+        setComposerValue("");
+    };
+
+    const handleRetryMessage = (message) => {
+        const retryText = typeof message?.retryText === "string" ? message.retryText.trim() : "";
+        if (!retryText) {
+            return;
+        }
+
+        if (message.retryAsVoice) {
+            setEditingMessageId(null);
+            handleSend(retryText);
+            return;
+        }
+
+        handleSend(retryText);
     };
 
     const handleMarkComplete = async () => {
@@ -2152,15 +2797,26 @@ export function ChatPage() {
 
                                         <ChatInput
 
-                                            onSend={selectedLanguage ? handleTranslate : handleSend}
+                                            ref={chatInputRef}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                            onSend={handleComposerSend}
+                                            value={composerValue}
+                                            onValueChange={setComposerValue}
 
-                                            disabled={isLoading || !isConnected}
+                                            placeholder={chatInputPlaceholder}
 
-                                            onVoiceToggle={() => setIsVoiceMode(true)}
+                                            isLLMActive={isLLMActive}
+                                            onStop={handleStopLLM}
+                                            voiceControlRef={voiceInputRef}
+                                            responseLanguage={selectedLanguage}
 
                                         />
+
+                                        {inlineSendError && (
+                                            <p className="mt-2 text-center text-xs text-red-500 dark:text-red-300">
+                                                {inlineSendError}
+                                            </p>
+                                        )}
 
                                     </div>
 
@@ -2187,7 +2843,21 @@ export function ChatPage() {
 
                                             {messages.map((msg, idx) => (
 
-                                                <MessageBubble key={idx} message={msg} />
+                                                <MessageBubble
+
+                                                    key={getMessageDomId(msg, idx)}
+
+                                                    message={msg}
+
+                                                    onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
+
+                                                    isEditing={false}
+
+                                                    onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
+
+                                                    onStopAudio={msg.audioBase64 || msg.audio_base64 ? stopVoicePlayback : undefined}
+
+                                                />
 
                                             ))}
 
@@ -2209,6 +2879,7 @@ export function ChatPage() {
                                                                 transition={{ delay: 0.3 + i * 0.1 }}
                                                                 onClick={() => {
                                                                     setFollowUpQuestions([]);
+                                                                    resetComposerState();
                                                                     handleSend(q);
                                                                 }}
                                                                 className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-w-[280px] cursor-pointer"
@@ -2242,15 +2913,26 @@ export function ChatPage() {
 
                                             <ChatInput
 
-                                                onSend={selectedLanguage ? handleTranslate : handleSend}
+                                                ref={chatInputRef}
 
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                                onSend={handleComposerSend}
+                                                value={composerValue}
+                                                onValueChange={setComposerValue}
 
-                                                disabled={isLoading || !isConnected}
+                                                placeholder={chatInputPlaceholder}
 
-                                                onVoiceToggle={() => setIsVoiceMode(true)}
+                                                isLLMActive={isLLMActive}
+                                                onStop={handleStopLLM}
+                                                voiceControlRef={voiceInputRef}
+                                                responseLanguage={selectedLanguage}
 
                                             />
+
+                                            {inlineSendError && (
+                                                <p className="mt-2 text-center text-xs text-red-500 dark:text-red-300">
+                                                    {inlineSendError}
+                                                </p>
+                                            )}
 
                                             <p className="mt-2 text-center text-[10px] text-zinc-500">
 
@@ -2433,15 +3115,26 @@ export function ChatPage() {
 
                                         <ChatInput
 
-                                            onSend={selectedLanguage ? handleTranslate : handleSend}
+                                            ref={chatInputRef}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                            onSend={handleComposerSend}
+                                            value={composerValue}
+                                            onValueChange={setComposerValue}
 
-                                            disabled={isLoading || !isConnected}
+                                            placeholder={chatInputPlaceholder}
 
-                                            onVoiceToggle={() => setIsVoiceMode(true)}
+                                            isLLMActive={isLLMActive}
+                                            onStop={handleStopLLM}
+                                            voiceControlRef={voiceInputRef}
+                                            responseLanguage={selectedLanguage}
 
                                         />
+
+                                        {inlineSendError && (
+                                            <p className="mt-2 text-center text-xs text-red-500 dark:text-red-300">
+                                                {inlineSendError}
+                                            </p>
+                                        )}
 
                                         {/* Compact Language Dropdown */}
                                         <div className="mt-3 flex items-center gap-2 relative" style={{zIndex:50}}>
@@ -2491,53 +3184,25 @@ export function ChatPage() {
 
                                             {messages.map((msg, idx) => (
 
-                                                <MessageBubble key={idx} message={msg} />
+                                                <MessageBubble
+
+                                                    key={getMessageDomId(msg, idx)}
+
+                                                    message={msg}
+
+                                                    onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
+
+                                                    isEditing={false}
+
+                                                    onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
+
+                                                    onStopAudio={msg.audioBase64 || msg.audio_base64 ? stopVoicePlayback : undefined}
+
+                                                />
 
                                             ))}
 
 
-
-                                            {isLoading && (
-
-                                                <motion.div
-
-                                                    initial={{ opacity: 0, y: 10 }}
-
-                                                    animate={{ opacity: 1, y: 0 }}
-
-                                                    className="flex items-center gap-3 p-4"
-
-                                                >
-
-                                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-
-                                                        <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-
-                                                    </div>
-
-                                                    <div className="flex items-center gap-1">
-
-                                                        <span className="text-sm text-zinc-500 dark:text-zinc-400">Thinking</span>
-
-                                                        <motion.span
-
-                                                            animate={{ opacity: [0.2, 1, 0.2] }}
-
-                                                            transition={{ repeat: Infinity, duration: 1.5 }}
-
-                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
-
-                                                        >
-
-                                                            ...
-
-                                                        </motion.span>
-
-                                                    </div>
-
-                                                </motion.div>
-
-                                            )}
 
                                             {/* Follow-up Question Chips */}
                                             <AnimatePresence>
@@ -2557,6 +3222,7 @@ export function ChatPage() {
                                                                 transition={{ delay: 0.3 + i * 0.1 }}
                                                                 onClick={() => {
                                                                     setFollowUpQuestions([]);
+                                                                    resetComposerState();
                                                                     handleSend(q);
                                                                 }}
                                                                 className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-w-[280px] cursor-pointer"
@@ -2732,19 +3398,28 @@ export function ChatPage() {
 
                                             />
 
-                                           
-
                                             <ChatInput
 
-                                                onSend={selectedLanguage ? handleTranslate : handleSend}
+                                                ref={chatInputRef}
 
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : t('chat.inputPlaceholder') || "How can I help?") : "Backend not connected..."}
+                                                onSend={handleComposerSend}
+                                                value={composerValue}
+                                                onValueChange={setComposerValue}
 
-                                                disabled={isLoading || !isConnected}
+                                                placeholder={chatInputPlaceholder}
 
-                                                onVoiceToggle={() => setIsVoiceMode(true)}
+                                                isLLMActive={isLLMActive}
+                                                onStop={handleStopLLM}
+                                                voiceControlRef={voiceInputRef}
+                                                responseLanguage={selectedLanguage}
 
                                             />
+
+                                            {inlineSendError && (
+                                                <p className="mt-2 text-center text-xs text-red-500 dark:text-red-300">
+                                                    {inlineSendError}
+                                                </p>
+                                            )}
 
                                             {/* Compact Language Dropdown */}
                                             <div className="mt-2 flex items-center gap-2 relative" style={{zIndex:50}}>
@@ -2873,20 +3548,6 @@ export function ChatPage() {
                     )}
 
                 </AnimatePresence>
-
-
-
-                <VoiceOverlay
-
-                    isOpen={isVoiceMode}
-
-                    onClose={() => setIsVoiceMode(false)}
-
-                    onVoiceMessage={handleVoiceMessage}
-
-                    isIncognito={isIncognito}
-
-                />
 
             </div>
 

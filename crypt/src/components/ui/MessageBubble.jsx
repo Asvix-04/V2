@@ -1,7 +1,6 @@
 import { cn } from "../../lib/utils";
-import { MdPerson, MdSmartToy, MdVolumeUp, MdContentCopy, MdCheck, MdLink } from "react-icons/md";
-import { motion } from "framer-motion";
-import { useState } from "react";
+import { MdPerson, MdSmartToy, MdVolumeUp, MdVolumeOff, MdContentCopy, MdCheck, MdLink, MdEdit, MdRefresh } from "react-icons/md";
+import { useState, useEffect, useRef } from "react";
 
 // Helper to escape regex special characters
 function escapeRegExp(string) {
@@ -28,7 +27,9 @@ function processText(text, links) {
                 if (pathParts.length > 0) {
                     mainTitle = pathParts[pathParts.length - 1].replace(/[-_]/g, ' ');
                 }
-            } catch (e) {}
+            } catch {
+                // Ignore malformed reference URLs.
+            }
         }
         
         const displayTitle = mainTitle || "Resource";
@@ -105,24 +106,132 @@ function formatMessage(text, links = []) {
     });
 }
 
-export function MessageBubble({ message }) {
-    const isUser = message.role === "user";
-    const [copied, setCopied] = useState(false);
+function playAudioBase64(base64) {
+    return new Promise((resolve, reject) => {
+        try {
+            const byteCharacters = atob(base64);
+            const bytes = new Uint8Array(byteCharacters.length);
 
-    const handleSpeak = () => {
+            for (let index = 0; index < byteCharacters.length; index += 1) {
+                bytes[index] = byteCharacters.charCodeAt(index);
+            }
+
+            const blob = new Blob([bytes], { type: "audio/wav" });
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+
+            audio.onended = () => {
+                URL.revokeObjectURL(url);
+                resolve();
+            };
+            audio.onerror = (error) => {
+                URL.revokeObjectURL(url);
+                reject(error);
+            };
+            audio.play().catch((error) => {
+                URL.revokeObjectURL(url);
+                reject(error);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit, onEditCancel, onRetry, onStopAudio }) {
+    const isUser = message.role === "user";
+    const voiceAudio = message.audioBase64 || message.audio_base64;
+    const [copied, setCopied] = useState(false);
+    const [editValue, setEditValue] = useState(message.content || "");
+    const [isReading, setIsReading] = useState(false);
+    const [voiceVolume, setVoiceVolume] = useState(1);
+    const editTextareaRef = useRef(null);
+    const utteranceRef = useRef(null);
+    const audioRef = useRef(null);
+    const autoReadStartedRef = useRef(false);
+
+    // When entering edit mode, reset textarea content and focus
+    useEffect(() => {
+        if (isEditing && isUser) {
+            queueMicrotask(() => setEditValue(message.content || ""));
+            requestAnimationFrame(() => {
+                if (editTextareaRef.current) {
+                    editTextareaRef.current.focus();
+                    const len = editTextareaRef.current.value.length;
+                    editTextareaRef.current.setSelectionRange(len, len);
+                }
+            });
+        }
+    }, [isEditing, isUser, message.content]);
+
+    const stopReading = () => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current = null;
+        }
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
+        }
+        utteranceRef.current = null;
+        setIsReading(false);
+    };
+
+    const handleSpeak = () => {
+        if (isReading) {
+            stopReading();
+            return;
+        }
+
+        if (voiceAudio) {
+            playAudioBase64(voiceAudio).catch(() => {}).finally(() => setIsReading(false));
+            setIsReading(true);
+            return;
+        }
+
+        if ('speechSynthesis' in window && message.content) {
+            window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(message.content);
+            utterance.volume = voiceVolume;
+            utterance.onend = () => {
+                utteranceRef.current = null;
+                setIsReading(false);
+            };
+            utterance.onerror = () => {
+                utteranceRef.current = null;
+                setIsReading(false);
+            };
+            utteranceRef.current = utterance;
+            setIsReading(true);
             window.speechSynthesis.speak(utterance);
         }
     };
+
+    useEffect(() => {
+        if (utteranceRef.current) {
+            utteranceRef.current.volume = voiceVolume;
+        }
+    }, [voiceVolume]);
+
+    useEffect(() => {
+        const autoReadKey = message.id ? `digilab-auto-read:${message.id}` : null;
+        const alreadyAutoRead = autoReadKey ? sessionStorage.getItem(autoReadKey) === 'true' : false;
+        if (!isUser && message.autoReadAloud && !message.isStreaming && message.content && !autoReadStartedRef.current && !alreadyAutoRead) {
+            autoReadStartedRef.current = true;
+            if (autoReadKey) sessionStorage.setItem(autoReadKey, 'true');
+            queueMicrotask(() => handleSpeak());
+        }
+    }, [isUser, message.autoReadAloud, message.content, message.isStreaming]);
+
+    useEffect(() => () => stopReading(), []);
 
     const handleCopy = async () => {
         try {
             await navigator.clipboard.writeText(message.content);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch (err) {}
+        } catch {
+            // Clipboard can be unavailable in restricted browser contexts.
+        }
     };
 
     // Detect quoted message pattern
@@ -130,28 +239,87 @@ export function MessageBubble({ message }) {
 
     // USER MESSAGE
     if (isUser) {
+        // ── Inline Edit Mode (Claude.ai style) ──────────────────────────
+        if (isEditing && onEditSubmit) {
+            return (
+                <div
+                    className="flex w-full justify-end space-x-2 px-4"
+                >
+                    <div className="flex w-full max-w-[75%] flex-col gap-2">
+                        <textarea
+                            ref={editTextareaRef}
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    if (editValue.trim()) onEditSubmit(editValue.trim());
+                                }
+                                if (e.key === 'Escape') {
+                                    onEditCancel?.();
+                                }
+                            }}
+                            className="w-full resize-none rounded-2xl rounded-tr-sm border border-accent/40 bg-accent/10 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-accent/50 dark:bg-accent/10 dark:text-white"
+                            rows={Math.max(2, (editValue.match(/\n/g) || []).length + 1)}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => onEditCancel?.()}
+                                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-foreground-muted transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => { if (editValue.trim()) onEditSubmit(editValue.trim()); }}
+                                disabled={!editValue.trim()}
+                                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Confirm Edit
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-black/5 bg-gray-100 dark:border-white/10 dark:bg-white/10">
+                        <MdPerson size={14} className="text-foreground" />
+                    </div>
+                </div>
+            );
+        }
+
+        // ── Normal display ───────────────────────────────────────────────
         return (
-            <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+            <div
                 className="flex w-full justify-end space-x-2 px-4 group"
             >
-                <div className="max-w-[70%] rounded-2xl rounded-tr-sm bg-accent text-white px-4 py-2 text-sm leading-relaxed shadow-sm">
+                <div className="flex max-w-[70%] flex-col items-end gap-1">
+                    <div className="w-full rounded-2xl rounded-tr-sm bg-accent px-4 py-2 text-sm leading-relaxed text-white shadow-sm">
 
-                    {quoteMatch ? (
-                        <div className="space-y-2">
-                            <div className="rounded-lg border-l-4 border-white/40 bg-white/10 px-3 py-2 text-xs italic">
-                                "{quoteMatch[1]}"
+                        {quoteMatch ? (
+                            <div className="space-y-2">
+                                <div className="rounded-lg border-l-4 border-white/40 bg-white/10 px-3 py-2 text-xs italic">
+                                    "{quoteMatch[1]}"
+                                </div>
+                                <div>{quoteMatch[2]}</div>
                             </div>
-                            <div>{quoteMatch[2]}</div>
-                        </div>
-                    ) : (
-                        message.content
-                    )}
+                        ) : (
+                            message.content
+                        )}
+                    </div>
 
-                    <div className="max-h-0 overflow-hidden opacity-0 group-hover:max-h-6 group-hover:opacity-100 group-hover:mt-1 transition-all duration-200">
-                        <span className="text-[10px] opacity-60 text-accent-100">
-                            {message.timestamp}
+                    <div className="flex items-center gap-2 opacity-100 transition-opacity">
+                        {onEdit && (
+                            <button
+                                onClick={onEdit}
+                                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-foreground-muted transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5"
+                                title="Edit message"
+                                aria-label="Edit message"
+                            >
+                                <MdEdit size={14} />
+                            </button>
+                        )}
+
+                        <span className="text-[10px] text-accent/70">
+                            {message.isEdited ? 'Edited · ' : ''}{message.timestamp}
                         </span>
                     </div>
                 </div>
@@ -159,15 +327,13 @@ export function MessageBubble({ message }) {
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 border border-black/5 dark:bg-white/10 dark:border-white/10">
                     <MdPerson size={14} className="text-foreground" />
                 </div>
-            </motion.div>
+            </div>
         );
     }
 
     // ASSISTANT MESSAGE
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+        <div
             className="flex w-full justify-start space-x-3 px-4 group"
         >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10 border border-accent/20">
@@ -175,9 +341,58 @@ export function MessageBubble({ message }) {
             </div>
 
             <div className="w-full min-w-0">
-                <div className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                    {formatMessage(message.content, message.referenceLinks || message.reference_links)}
+                <div className={cn(
+                    "text-sm leading-relaxed whitespace-pre-wrap",
+                    message.isError ? "rounded-2xl rounded-tl-sm border border-red-200 bg-red-50 px-4 py-3 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200" : "text-foreground"
+                )}>
+                    {message.content ? (
+                        formatMessage(message.content, message.referenceLinks || message.reference_links)
+                    ) : message.isStreaming ? (
+                        <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-zinc-100 px-4 py-3 dark:bg-white/10">
+                            {[0, 1, 2].map((dot) => (
+                                <span
+                                    key={dot}
+                                    className="h-2 w-2 animate-pulse rounded-full bg-zinc-500 dark:bg-zinc-300"
+                                    style={{ animationDelay: `${dot * 140}ms` }}
+                                />
+                            ))}
+                        </div>
+                    ) : null}
+                    {message.isError && onRetry && (
+                        <button
+                            onClick={onRetry}
+                            className="mt-3 flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
+                            title="Retry"
+                        >
+                            <MdRefresh size={14} />
+                            Retry
+                        </button>
+                    )}
+                    {message.stopped && (
+                        <div className="mt-2 text-xs text-foreground-muted opacity-70">
+                            Response stopped
+                        </div>
+                    )}
+                    {message.playbackFailed && (
+                        <div className="mt-2 text-xs text-foreground-muted opacity-70">
+                            Voice playback failed
+                        </div>
+                    )}
                 </div>
+
+                {voiceAudio && onStopAudio && !message.isError && (
+                    <div className="mt-3 flex items-center">
+                        <button
+                            onClick={onStopAudio}
+                            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-foreground-muted transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5"
+                            title="Stop voice"
+                            aria-label="Stop voice"
+                        >
+                            <MdVolumeOff size={15} />
+                            <span>Stop voice</span>
+                        </button>
+                    </div>
+                )}
 
                 {/* Sublte footer for links - only if they exist but weren't necessarily all matched */}
                 {(message.referenceLinks || message.reference_links)?.length > 0 && (
@@ -203,7 +418,7 @@ export function MessageBubble({ message }) {
                 )}
 
                 {/* Actions */}
-                <div className="mt-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-foreground-muted">
 
                     <button
                         onClick={handleCopy}
@@ -217,11 +432,24 @@ export function MessageBubble({ message }) {
                     <button
                         onClick={handleSpeak}
                         className="flex items-center space-x-1 rounded-md px-2 py-1 text-xs text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                        title="Read aloud"
+                        title={isReading ? "Stop reading" : "Read aloud"}
                     >
-                        <MdVolumeUp size={14} />
-                        <span>Read aloud</span>
+                        {isReading ? <MdVolumeOff size={14} /> : <MdVolumeUp size={14} />}
+                        <span>{isReading ? 'Stop reading' : 'Read aloud'}</span>
                     </button>
+
+                    {isReading && (
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={voiceVolume}
+                            onChange={(event) => setVoiceVolume(Number(event.target.value))}
+                            className="w-24 accent-[var(--accent)]"
+                            aria-label="Voice volume"
+                        />
+                    )}
 
                     <span className="text-[10px] text-foreground-muted opacity-60 ml-2">
                         {message.timestamp}
@@ -240,6 +468,6 @@ export function MessageBubble({ message }) {
 
                 </div>
             </div>
-        </motion.div>
+        </div>
     );
 }

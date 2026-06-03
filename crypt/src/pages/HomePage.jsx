@@ -9,13 +9,16 @@ import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star
 import { Logo } from "../components/ui/Logo";
 import { PerformanceStats } from "../components/PerformanceStats";
 
-function PricingFeature({ children, highlighted = false }) {
+function PricingFeature({ children, desc, highlighted = false }) {
     return (
-        <li className="flex items-center space-x-3 text-sm">
-            <div className={`flex h-5 w-5 items-center justify-center rounded-full ${highlighted ? 'bg-accent/20 text-accent' : 'bg-accent/10 text-accent dark:bg-white/10 dark:text-foreground-muted'}`}>
+        <li className="flex items-start space-x-3 text-sm">
+            <div className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${highlighted ? 'bg-accent/20 text-accent' : 'bg-accent/10 text-accent dark:bg-white/10 dark:text-foreground-muted'}`}>
                 <Check className="h-3 w-3" />
             </div>
-            <span className={highlighted ? "text-foreground" : "text-foreground-muted"}>{children}</span>
+            <div>
+                <span className={`font-medium ${highlighted ? 'text-foreground' : 'text-foreground-muted'}`}>{children}</span>
+                {desc && <p className="mt-1 text-xs text-foreground-muted leading-relaxed">{desc}</p>}
+            </div>
         </li>
     );
 }
@@ -183,7 +186,7 @@ export function HomePage() {
                     </motion.p>
                 </div>
 
-                <div className="max-w-2xl mx-auto">
+                <div className="w-full">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
@@ -197,15 +200,15 @@ export function HomePage() {
                                 </div>
                                 <h3 className="text-2xl font-semibold text-foreground">All Features Included</h3>
                             </div>
-                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                                <PricingFeature highlighted>Real-time Voice Interactions</PricingFeature>
-                                <PricingFeature highlighted>Engineered with Sarvam: India’s Own AI</PricingFeature>
-                                <PricingFeature highlighted>Multilingual Support</PricingFeature>
-                                <PricingFeature highlighted>Deep Concept Mapping</PricingFeature>
-                                <PricingFeature highlighted>Multi-model Support</PricingFeature>
-                                <PricingFeature highlighted>Fast and quick responses</PricingFeature>
-                                <PricingFeature highlighted>Accurate and robust responses</PricingFeature>
-                                <PricingFeature highlighted>Source grounding information</PricingFeature>
+                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                                <PricingFeature highlighted desc="Speak naturally and get instant responses in your preferred language. Enjoy seamless, low-latency voice conversations powered by cutting-edge AI.">Real-time Voice Interactions</PricingFeature>
+                                <PricingFeature highlighted desc="Built on Sarvam AI, a homegrown large language model designed to understand Indian languages and contexts. Trusted, local, and culturally aware.">Engineered with Sarvam: India's Own AI</PricingFeature>
+                                <PricingFeature highlighted desc="Communicate in over 10 Indian and global languages with ease. Break language barriers and learn in the language you're most comfortable with.">Multilingual Support</PricingFeature>
+                                <PricingFeature highlighted desc="Explore how concepts interconnect through intelligent knowledge graphs. Gain a structured understanding of topics beyond surface-level answers.">Deep Concept Mapping</PricingFeature>
+                                <PricingFeature highlighted desc="Switch between leading AI models including Gemini, Sarvam, and more. Choose the best model for each task to get the most accurate results.">Multi-model Support</PricingFeature>
+                                <PricingFeature highlighted desc="Get answers in seconds without compromising on quality. Our optimized pipeline ensures minimal wait times even for complex queries.">Fast and quick responses</PricingFeature>
+                                <PricingFeature highlighted desc="Responses are grounded in verified academic content and cross-referenced for accuracy. Rely on consistent, high-quality answers every time.">Accurate and robust responses</PricingFeature>
+                                <PricingFeature highlighted desc="Every answer comes with traceable sources from textbooks and course material. Know exactly where the information comes from for better trust and verification.">Source grounding information</PricingFeature>
                             </ul>
                             <Link to="/signup">
                                 <Button className="w-full shadow-[0_0_20px_-5px_rgba(94,106,210,0.4)]">
