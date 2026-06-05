@@ -572,6 +572,28 @@ export function ChatPage() {
         setEditingMessageId(null);
     };
 
+    const refreshConnectionStatus = React.useCallback(async () => {
+        const health = await chatbotApi.checkHealth();
+        setConnectionStatus(health);
+        setIsConnected(Boolean(health.node));
+        setIsCheckingConnection(false);
+        return health;
+    }, []);
+
+    const getReadyConnectionStatus = React.useCallback(async () => {
+        let latestConnectionStatus = connectionStatus;
+
+        if (!latestConnectionStatus.node || latestConnectionStatus.ai === false) {
+            try {
+                latestConnectionStatus = await refreshConnectionStatus();
+            } catch (healthErr) {
+                latestConnectionStatus = healthErr.healthStatus || latestConnectionStatus;
+            }
+        }
+
+        return latestConnectionStatus;
+    }, [connectionStatus, refreshConnectionStatus]);
+
     const startLLMRequest = React.useCallback(() => {
         if (currentAbortController.current) {
             currentAbortController.current.abort();
@@ -1137,9 +1159,7 @@ export function ChatPage() {
 
             try {
 
-                const health = await chatbotApi.checkHealth();
-                setConnectionStatus(health);
-                setIsConnected(Boolean(health.node));
+                const health = await refreshConnectionStatus();
 
                 if (health.ai) {
                     await chatbotApi.clearHistory();
@@ -1339,6 +1359,16 @@ export function ChatPage() {
 
 
     React.useEffect(() => {
+        const activeAssistantId = activeAssistantMessageIdRef.current;
+
+        if (activeAssistantId) {
+            const activeAssistantNode = document.getElementById(`chat-message-${activeAssistantId}`);
+
+            if (activeAssistantNode) {
+                activeAssistantNode.scrollIntoView({ behavior: "smooth", block: "start" });
+                return;
+            }
+        }
 
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -1574,13 +1604,15 @@ export function ChatPage() {
             return;
 
         }
-        if (!connectionStatus.node) {
+        const latestConnectionStatus = await getReadyConnectionStatus();
+
+        if (!latestConnectionStatus.node) {
             setInlineSendError("Backend not connected");
             return;
         }
 
-        if (connectionStatus.node && !connectionStatus.ai) {
-            setInlineSendError(connectionStatus.message || "AI service unavailable");
+        if (latestConnectionStatus.node && !latestConnectionStatus.ai) {
+            setInlineSendError(latestConnectionStatus.message || "AI service unavailable");
             const updatedWithErr = [...messages, withMessageId({
                 role: "user",
                 content: displayContent,
@@ -1588,7 +1620,7 @@ export function ChatPage() {
                 requestMode: "default",
             }), withMessageId({
                 role: "assistant",
-                content: connectionStatus.message || "AI service unavailable",
+                content: latestConnectionStatus.message || "AI service unavailable",
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 isError: true,
                 retryText: normalizedText,
@@ -1836,12 +1868,15 @@ export function ChatPage() {
     const handleTranslate = async (text, options = {}) => {
         if (!text || !text.trim()) return;
         if (isGuest && messages.length >= 10) { setShowLimitModal(true); return; }
-        if (!connectionStatus.node) {
+
+        const latestConnectionStatus = await getReadyConnectionStatus();
+
+        if (!latestConnectionStatus.node) {
             setInlineSendError("Backend not connected");
             return;
         }
-        if (connectionStatus.node && !connectionStatus.ai) {
-            setInlineSendError(connectionStatus.message || "AI service unavailable");
+        if (latestConnectionStatus.node && !latestConnectionStatus.ai) {
+            setInlineSendError(latestConnectionStatus.message || "AI service unavailable");
             return;
         }
         setError(null);
@@ -1960,12 +1995,14 @@ export function ChatPage() {
             return;
         }
 
-        if (!connectionStatus.node) {
+        const latestConnectionStatus = await getReadyConnectionStatus();
+
+        if (!latestConnectionStatus.node) {
             setInlineSendError("Backend not connected");
             return;
         }
-        if (connectionStatus.node && !connectionStatus.ai) {
-            setInlineSendError(connectionStatus.message || "AI service unavailable");
+        if (latestConnectionStatus.node && !latestConnectionStatus.ai) {
+            setInlineSendError(latestConnectionStatus.message || "AI service unavailable");
             return;
         }
 
@@ -2340,7 +2377,7 @@ export function ChatPage() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [refreshConnectionStatus]);
 
     React.useEffect(() => {
         if (isGuest || isIncognito) {
@@ -3041,23 +3078,31 @@ export function ChatPage() {
                                     <div className="flex-1 overflow-y-auto p-4 sm:p-8">
                                         <div className="mx-auto w-[95%] sm:w-[85%] lg:w-[80%] max-w-none space-y-6">
 
-                                            {messages.map((msg, idx) => (
+                                            {messages.map((msg, idx) => {
 
-                                                <MessageBubble
+                                                const messageDomId = getMessageDomId(msg, idx);
 
-                                                    key={getMessageDomId(msg, idx)}
+                                                return (
 
-                                                    message={msg}
+                                                    <div key={messageDomId} id={`chat-message-${messageDomId}`}>
 
-                                                    onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
+                                                        <MessageBubble
 
-                                                    isEditing={false}
+                                                            message={msg}
 
-                                                    onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
+                                                            onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
 
-                                                />
+                                                            isEditing={false}
 
-                                            ))}
+                                                            onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
+
+                                                        />
+
+                                                    </div>
+
+                                                );
+
+                                            })}
 
                                             {/* Follow-up Question Chips */}
                                             <AnimatePresence>
@@ -3380,23 +3425,31 @@ export function ChatPage() {
 
                                         <div className="mx-auto w-[95%] sm:w-[85%] lg:w-[80%] max-w-none space-y-6">
 
-                                            {messages.map((msg, idx) => (
+                                            {messages.map((msg, idx) => {
 
-                                                <MessageBubble
+                                                const messageDomId = getMessageDomId(msg, idx);
 
-                                                    key={getMessageDomId(msg, idx)}
+                                                return (
 
-                                                    message={msg}
+                                                    <div key={messageDomId} id={`chat-message-${messageDomId}`}>
 
-                                                    onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
+                                                        <MessageBubble
 
-                                                    isEditing={false}
+                                                            message={msg}
 
-                                                    onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
+                                                            onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
 
-                                                />
+                                                            isEditing={false}
 
-                                            ))}
+                                                            onRetry={msg.isError ? () => handleRetryMessage(msg) : undefined}
+
+                                                        />
+
+                                                    </div>
+
+                                                );
+
+                                            })}
 
 
 
