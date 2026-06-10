@@ -5,9 +5,10 @@ import {
     PieChart, Pie, Cell, Label
 } from 'recharts';
 import { Card } from './ui/Card';
-import { 
-    MessageSquare, Clock, AlertCircle, FileCheck, 
-    ArrowUpRight, ArrowDownRight, Activity, 
+import GlobeChatIcon from "./icons/GlobeChatIcon";
+import {
+    MessageSquare, Clock, AlertCircle, FileCheck,
+    ArrowUpRight, ArrowDownRight, Activity,
     ChevronRight, Info, Globe, ShieldCheck, Database
 } from 'lucide-react';
 
@@ -36,11 +37,11 @@ const offTopicData = [
 
 const MetricTooltip = ({ info }) => (
     <div className="group/tooltip relative inline-block z-50">
-        <div className="flex items-center justify-center w-4 h-4 rounded-full bg-white/5 border border-white/10 hover:bg-white/20 hover:border-white/30 transition-all cursor-help active:scale-95">
-            <span className="text-[10px] font-bold text-foreground-muted group-hover/tooltip:text-foreground">i</span>
-        </div>
-        <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-black/95 backdrop-blur-2xl border border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0">
-            <p className="text-[11px] leading-relaxed text-white font-medium">
+        <button type="button" tabIndex={0} className="flex items-center justify-center w-4 h-4 rounded-full bg-white/5 border border-white/10 hover:bg-white/20 hover:border-white/30 focus:bg-white/20 focus:border-white/30 focus:outline-none transition-all cursor-help active:scale-95">
+            <span className="text-[10px] font-bold text-foreground-muted group-hover/tooltip:text-foreground group-focus-within/tooltip:text-foreground">i</span>
+        </button>
+        <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-black/95 backdrop-blur-2xl border border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible group-focus-within/tooltip:opacity-100 group-focus-within/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0 group-focus-within/tooltip:translate-y-0">
+            <p className="text-[11px] leading-relaxed text-white font-medium text-left">
                 {info}
             </p>
             <div className="absolute top-[calc(100%-1px)] right-2 border-[6px] border-transparent border-t-white/20" />
@@ -57,26 +58,26 @@ const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, b
             </div>
             <div className={`absolute bottom-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-700 bg-gradient-to-r ${bgGradient}`} />
         </div>
-        
-        <div className="flex items-center justify-between mb-1.5 relative z-10">
-            <div className="flex items-center space-x-2.5">
-                <div className={`p-1.5 rounded-lg bg-white/5 border border-white/10 ${colorClass}`}>
-                    <Icon size={16} />
+
+        <div className="flex items-start justify-between mb-1.5 relative z-10 gap-2">
+            <div className="flex items-start space-x-2 min-w-0">
+                <div className={`shrink-0 p-1.5 rounded-lg bg-white/5 border border-white/10 ${colorClass}`}>
+                    <Icon size={14} />
                 </div>
-                <span className="text-xs font-medium text-foreground-muted truncate">{label}</span>
+                <span className="text-[11px] sm:text-xs font-medium text-foreground-muted leading-tight mt-0.5 break-words">{label}</span>
             </div>
-            {info && <MetricTooltip info={info} />}
+            {info && <div className="shrink-0"><MetricTooltip info={info} /></div>}
         </div>
 
-        <div className="mt-auto">
-            <div className="text-2xl font-bold text-foreground mb-0.5 tracking-tight">{value}</div>
+        <div className="mt-auto pt-2">
+            <div className="text-xl sm:text-2xl font-bold text-foreground mb-0.5 tracking-tight">{value}</div>
             <div className={`flex items-center text-[10px] ${trend === 'up' ? 'text-green-500' : 'text-red-500'}`}>
-                {trend === 'up' ? <ArrowUpRight size={12} className="mr-0.5" /> : <ArrowDownRight size={12} className="mr-0.5" />}
-                <span className="font-medium">{trendValue}</span>
-                <span className="text-foreground-muted ml-1 opacity-60">last 7 days</span>
+                {trend === 'up' ? <ArrowUpRight size={12} className="mr-0.5 shrink-0" /> : <ArrowDownRight size={12} className="mr-0.5 shrink-0" />}
+                <span className="font-medium whitespace-nowrap">{trendValue}</span>
+                <span className="text-foreground-muted ml-1 opacity-60 truncate">last 7 days</span>
             </div>
         </div>
-        
+
         {/* Subtle Decorative Element */}
         <div className={`absolute bottom-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-700 bg-gradient-to-r ${bgGradient}`} />
     </Card>
@@ -102,8 +103,8 @@ const SystemStatusItem = ({ label, subLabel, icon: Icon, status = "100% uptime",
                 else if (seed > 82) color = "bg-blue-400";
 
                 return (
-                    <div 
-                        key={i} 
+                    <div
+                        key={i}
                         className={`h-4 flex-1 rounded-[1px] ${color} opacity-90 hover:opacity-100 transition-opacity`}
                     />
                 );
@@ -137,49 +138,49 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
-    <div className="flex items-center justify-between flex-1 p-1">
-        <div className="flex-1">
-            <div className="flex items-center justify-between mb-3 pr-2">
-                <h4 className="text-xs font-semibold text-foreground">{label}</h4>
-                {info && <MetricTooltip info={info} />}
-            </div>
-            <div className="space-y-2">
-                <div className="flex items-center space-x-2.5">
-                    <div className={`w-2 h-2 rounded-sm`} style={{ backgroundColor: color }} />
-                    <span className="text-[10px] text-foreground-muted">{subLabel.primary}</span>
-                </div>
-                <div className="flex items-center space-x-2.5">
-                    <div className="w-2 h-2 rounded-sm bg-white/5" />
-                    <span className="text-[10px] text-foreground-muted">{subLabel.secondary}</span>
-                </div>
-            </div>
+    <div className="flex flex-col justify-between h-full w-full">
+        <div className="flex items-start justify-between mb-6 gap-3">
+            <h4 className="text-sm font-semibold text-foreground leading-tight">{label}</h4>
+            {info && <div className="shrink-0 mt-0.5"><MetricTooltip info={info} /></div>}
         </div>
-        <div className="relative h-20 w-20 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                    <Pie
-                        data={data}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={28}
-                        outerRadius={36}
-                        paddingAngle={0}
-                        dataKey="value"
-                        startAngle={90}
-                        endAngle={-270}
-                    >
-                        {data.map((entry, index) => (
-                            <Cell 
-                                key={`cell-${index}`} 
-                                fill={entry.color} 
-                                stroke="none" 
-                            />
-                        ))}
-                    </Pie>
-                </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-sm font-bold text-foreground">{value}%</span>
+        <div className="flex items-center justify-between mt-auto gap-4">
+            <div className="flex flex-col justify-center space-y-3 min-w-0 flex-1 pr-2">
+                <div className="flex items-center space-x-2.5">
+                    <div className={`shrink-0 w-2 h-2 rounded-full`} style={{ backgroundColor: color }} />
+                    <span className="text-[11px] sm:text-xs text-foreground-muted truncate font-medium">{subLabel.primary}</span>
+                </div>
+                <div className="flex items-center space-x-2.5">
+                    <div className="shrink-0 w-2 h-2 rounded-full bg-white/10" />
+                    <span className="text-[11px] sm:text-xs text-foreground-muted truncate font-medium">{subLabel.secondary}</span>
+                </div>
+            </div>
+            <div className="relative h-[72px] w-[72px] sm:h-20 sm:w-20 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                        <Pie
+                            data={data}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={28}
+                            outerRadius={36}
+                            paddingAngle={0}
+                            dataKey="value"
+                            startAngle={90}
+                            endAngle={-270}
+                        >
+                            {data.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={entry.color}
+                                    stroke="none"
+                                />
+                            ))}
+                        </Pie>
+                    </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-sm font-bold text-foreground">{value}%</span>
+                </div>
             </div>
         </div>
     </div>
@@ -188,7 +189,7 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
 export function PerformanceStats() {
     return (
         <div className="space-y-6 container mx-auto max-w-5xl px-4 pb-12">
-            
+
             {/* ROW 1: PERFORMANCE TREND + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
@@ -224,23 +225,23 @@ export function PerformanceStats() {
                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={8} />
                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
                                     <Tooltip content={<CustomTooltip />} />
-                                    <Area 
-                                        type="monotone" 
-                                        dataKey="aiResponseTime" 
+                                    <Area
+                                        type="monotone"
+                                        dataKey="aiResponseTime"
                                         name="AI Response Time"
-                                        stroke="#3B82F6" 
-                                        strokeWidth={2} 
-                                        fillOpacity={1} 
-                                        fill="url(#colorAI)" 
+                                        stroke="#3B82F6"
+                                        strokeWidth={2}
+                                        fillOpacity={1}
+                                        fill="url(#colorAI)"
                                     />
-                                    <Area 
-                                        type="monotone" 
-                                        dataKey="networkLatency" 
+                                    <Area
+                                        type="monotone"
+                                        dataKey="networkLatency"
                                         name="Network Latency"
-                                        stroke="#60A5FA" 
-                                        strokeWidth={1} 
-                                        fillOpacity={1} 
-                                        fill="url(#colorNetwork)" 
+                                        stroke="#60A5FA"
+                                        strokeWidth={1}
+                                        fillOpacity={1}
+                                        fill="url(#colorNetwork)"
                                     />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -259,10 +260,10 @@ export function PerformanceStats() {
                         </div>
                     </Card>
                 </div>
-                <div className="lg:w-[30%] flex flex-col gap-6">
+                <div className="lg:w-[30%] grid grid-cols-2 gap-4 lg:flex lg:flex-col lg:gap-6">
                     <div className="flex-1 flex flex-col min-h-0">
                         <MetricCard
-                            icon={MessageSquare}
+                            icon={GlobeChatIcon}
                             label="Total Questions Answered"
                             value="12,540"
                             trend="up"
@@ -305,10 +306,10 @@ export function PerformanceStats() {
                             </div>
                             <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                                 <Activity size={10} className="text-emerald-500 animate-pulse" />
-                                <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-wider">Operational</span>
+                                <span className="text-[9px] uppercase font-bold text-emerald-500  tracking-wider">Operational</span>
                             </div>
                         </div>
-                        
+
                         <div className="divide-y divide-white/5">
                             <SystemStatusItem label="API" icon={Globe} />
                             <SystemStatusItem label="Production" subLabel="7 components" icon={Activity} />
@@ -318,27 +319,27 @@ export function PerformanceStats() {
                         </div>
 
                         {/* Status Legend */}
-                        <div className="flex items-center space-x-6 mt-6 pt-4 border-t border-white/5">
-                            <div className="flex items-center space-x-2">
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mt-6 pt-4 border-t border-white/5">
+                            <div className="flex items-center space-x-2 min-w-[100px]">
                                 <div className="w-2 h-2 rounded-sm bg-emerald-500" />
-                                <span className="text-[10px] text-foreground-muted">Operational</span>
+                                <span className="text-[10px] text-foreground-muted font-medium">Operational</span>
                             </div>
-                            <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-2 min-w-[100px]">
                                 <div className="w-2 h-2 rounded-sm bg-blue-400" />
-                                <span className="text-[10px] text-foreground-muted">Maintenance</span>
+                                <span className="text-[10px] text-foreground-muted font-medium">Maintenance</span>
                             </div>
-                            <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-2 min-w-[100px]">
                                 <div className="w-2 h-2 rounded-sm bg-amber-400" />
-                                <span className="text-[10px] text-foreground-muted">Partial Outage</span>
+                                <span className="text-[10px] text-foreground-muted font-medium">Partial Outage</span>
                             </div>
-                            <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-2 min-w-[100px]">
                                 <div className="w-2 h-2 rounded-sm bg-rose-500" />
-                                <span className="text-[10px] text-foreground-muted">Major Outage</span>
+                                <span className="text-[10px] text-foreground-muted font-medium">Major Outage</span>
                             </div>
                         </div>
                     </Card>
                 </div>
-                <div className="lg:w-[30%] flex flex-col gap-6">
+                <div className="lg:w-[30%] grid grid-cols-2 gap-4 lg:flex lg:flex-col lg:gap-6">
                     <div className="flex-1 flex flex-col min-h-0">
                         <MetricCard
                             icon={ShieldCheck}
@@ -369,12 +370,12 @@ export function PerformanceStats() {
             </div>
 
             {/* ROW 3: SOURCE GROUNDING & OFF-TOPIC DETECTION (Split Cards) */}
-            <div className="flex flex-col lg:flex-row gap-6">
+            <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-4 lg:flex lg:flex-row lg:gap-6">
                 <div className="lg:w-1/2">
                     <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
-                        <GaugeMetric 
-                            data={sourceData} 
-                            label="Source Grounding" 
+                        <GaugeMetric
+                            data={sourceData}
+                            label="Source Grounding"
                             subLabel={{ primary: "With Sources", secondary: "Without Sources" }}
                             value={82}
                             color="#3B82F6"
@@ -384,9 +385,9 @@ export function PerformanceStats() {
                 </div>
                 <div className="lg:w-1/2">
                     <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
-                        <GaugeMetric 
-                            data={offTopicData} 
-                            label="Off-Topic Detection" 
+                        <GaugeMetric
+                            data={offTopicData}
+                            label="Off-Topic Detection"
                             subLabel={{ primary: "On-Topic Queries", secondary: "Off-Topic Queries" }}
                             value={92}
                             color="#6366F1"

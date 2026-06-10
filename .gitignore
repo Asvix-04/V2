@@ -7,3 +7,11 @@ __pycache__/
 env
 .env
 data
+
+Backend_chatbot/venv/
+**/venv/
+
+*_diff.txt
+*_history.txt
+
+ChatPage_main.jsx

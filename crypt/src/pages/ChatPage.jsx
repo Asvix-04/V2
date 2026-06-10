@@ -21,11 +21,12 @@ import { MessageBubble } from "../components/ui/MessageBubble";
 import { PageTransition } from "../components/ui/PageTransition";
 
 import { VoiceOverlay } from "../components/ui/VoiceOverlay";
-import { 
-    ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, 
-    MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map, 
+import {
+    ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Layout, Lightbulb,
+    MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map,
     Trash2, AlertCircle, Loader2, Wifi, WifiOff, Plus, User as UserIcon, X,
-    CornerDownRight, Sparkles, Zap, ChevronDown, Star
+    CornerDownRight, Sparkles, Zap, ChevronDown, Star, Menu,
+    MoreVertical, MessageSquareDashed, Check
 } from "lucide-react";
 import { MdSearch } from "react-icons/md";
 
@@ -161,6 +162,233 @@ const QuotedTextPreview = ({ quotedText, onClear }) => (
 
 
 
+const ConversationNavigator = ({ messages }) => {
+    const [activeIndex, setActiveIndex] = React.useState(0);
+    const [isHovered, setIsHovered] = React.useState(false);
+    const [isMobilePanelOpen, setIsMobilePanelOpen] = React.useState(false);
+    const [tooltipData, setTooltipData] = React.useState({ text: null, x: 0, y: 0 });
+
+    // Extract user messages with original indices
+    const userMessages = React.useMemo(() => {
+        return messages
+            .map((msg, idx) => ({ ...msg, originalIdx: idx }))
+            .filter(msg => msg.role === 'user' && msg.content && msg.content.trim() !== '');
+    }, [messages]);
+
+    React.useEffect(() => {
+        if (messages.length < 20) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                let maxRatio = 0;
+                let activeId = null;
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
+                        maxRatio = entry.intersectionRatio;
+                        activeId = entry.target.getAttribute('data-message-index');
+                    }
+                });
+
+                if (activeId !== null) {
+                    setActiveIndex(parseInt(activeId, 10));
+                }
+            },
+            {
+                root: null,
+                rootMargin: "-20% 0px -60% 0px",
+                threshold: [0, 0.25, 0.5, 0.75, 1.0],
+            }
+        );
+
+        const elements = document.querySelectorAll('[data-message-index]');
+        elements.forEach((el) => observer.observe(el));
+
+        return () => observer.disconnect();
+    }, [messages.length]);
+
+    if (messages.length < 20 || userMessages.length === 0) return null;
+
+    // Find the active user marker
+    let activeUserMarkerIdx = 0;
+    for (let i = userMessages.length - 1; i >= 0; i--) {
+        if (userMessages[i].originalIdx <= activeIndex) {
+            activeUserMarkerIdx = i;
+            break;
+        }
+    }
+
+
+
+    const handleMouseMove = (e, text) => {
+        setTooltipData({ text, x: e.clientX, y: e.clientY });
+    };
+
+    const handleMouseLeaveTooltip = () => {
+        setTooltipData({ text: null, x: 0, y: 0 });
+    };
+
+    const handleNavigate = (originalIdx) => {
+        const el = document.getElementById(`chat-message-${originalIdx}`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Temporary highlight effect
+            el.style.transition = 'background-color 0.3s ease';
+            el.classList.add('bg-zinc-100', 'dark:bg-white/5', 'rounded-2xl');
+
+            setTimeout(() => {
+                el.classList.remove('bg-zinc-100', 'dark:bg-white/5', 'rounded-2xl');
+            }, 1500);
+        }
+        setIsHovered(false);
+        setIsMobilePanelOpen(false);
+        handleMouseLeaveTooltip();
+    };
+
+    return (
+        <>
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed right-4 lg:right-6 top-1/2 -translate-y-1/2 z-50 hidden lg:flex items-center"
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => { setIsHovered(false); handleMouseLeaveTooltip(); }}
+            >
+                {/* Custom Tooltip */}
+                {tooltipData.text && (
+                    <div
+                        className="fixed z-[100] bg-zinc-900 dark:bg-black text-zinc-100 dark:text-zinc-300 text-xs px-2.5 py-1.5 rounded-lg shadow-xl border border-white/10 max-w-[280px] pointer-events-none"
+                        style={{ left: tooltipData.x - 16, top: tooltipData.y + 16, transform: 'translateX(-100%)' }}
+                    >
+                        {tooltipData.text}
+                    </div>
+                )}
+
+                {/* Preview Panel */}
+                <AnimatePresence>
+                    {isHovered && (
+                        <motion.div
+                            initial={{ opacity: 0, x: 10, filter: 'blur(4px)' }}
+                            animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                            exit={{ opacity: 0, x: 10, filter: 'blur(4px)' }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute right-8 mr-4 w-[240px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-white/5 shadow-sm overflow-hidden"
+                        >
+                            {/* Top Fade Indicator */}
+                            <div className="absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-white dark:from-zinc-900 to-transparent z-10 pointer-events-none" />
+
+                            <div className="max-h-[350px] overflow-y-auto overflow-x-hidden p-1.5 overscroll-contain [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-black/10 dark:hover:[&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full transition-colors relative z-0">
+                                <div className="flex flex-col gap-0.5">
+                                    {userMessages.map((msg, i) => (
+                                        <button
+                                            key={msg.originalIdx}
+                                            onClick={() => handleNavigate(msg.originalIdx)}
+                                            onMouseMove={(e) => handleMouseMove(e, msg.content)}
+                                            onMouseLeave={handleMouseLeaveTooltip}
+                                            className={cn(
+                                                "text-left px-3 h-8 flex items-center rounded-lg text-xs font-medium transition-all duration-150 ease-in-out hover:scale-[1.02] overflow-hidden shrink-0",
+                                                activeUserMarkerIdx === i
+                                                    ? "bg-zinc-50 dark:bg-white/5 border border-zinc-200/50 dark:border-white/5 text-zinc-800 dark:text-zinc-200"
+                                                    : "border border-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-white/5 hover:text-zinc-700 dark:hover:text-zinc-200"
+                                            )}
+                                        >
+                                            <span className="whitespace-nowrap overflow-hidden text-ellipsis block w-full">
+                                                {msg.content}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Bottom Fade Indicator */}
+                            <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-white dark:from-zinc-900 to-transparent z-10 pointer-events-none" />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Vertical Rail */}
+                <div className="flex flex-col gap-1.5 items-center py-4 px-2 w-8 cursor-pointer">
+                    {userMessages.map((msg, i) => (
+                        <button
+                            key={msg.originalIdx}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleNavigate(msg.originalIdx);
+                            }}
+                            className={cn(
+                                "rounded-full transition-all duration-300 shrink-0",
+                                activeUserMarkerIdx === i
+                                    ? "w-2 h-4 bg-zinc-600 dark:bg-zinc-400"
+                                    : "w-1 h-2.5 bg-zinc-300 dark:bg-white/20 hover:bg-zinc-400 dark:hover:bg-white/40 hover:h-3.5"
+                            )}
+                            aria-label="Jump to question"
+                        />
+                    ))}
+                </div>
+            </motion.div>
+        </AnimatePresence>
+
+        {/* Mobile UI */}
+        <div className="lg:hidden">
+            {!isMobilePanelOpen && (
+                <button
+                    onClick={() => setIsMobilePanelOpen(true)}
+                    className="fixed right-0 top-1/2 -translate-y-1/2 z-40 min-w-[44px] min-h-[44px] flex items-center justify-center transition-opacity"
+                    aria-label="Open chat navigator"
+                >
+                    <ChevronLeft className="h-5 w-5 text-zinc-500 dark:text-zinc-400 drop-shadow-md" />
+                </button>
+            )}
+
+            <AnimatePresence>
+                {isMobilePanelOpen && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            onClick={() => setIsMobilePanelOpen(false)}
+                            className="fixed inset-0 z-40 bg-black/20"
+                        />
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, x: "-50%", y: "-50%" }}
+                            animate={{ scale: 1, opacity: 1, x: "-50%", y: "-50%" }}
+                            exit={{ scale: 0.95, opacity: 0, x: "-50%", y: "-50%" }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="fixed left-1/2 top-1/2 z-50 w-[240px] max-h-[60vh] bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-white/5 shadow-2xl rounded-xl overflow-hidden flex flex-col"
+                        >
+                            <div className="flex-1 overflow-y-auto overscroll-contain p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                <div className="flex flex-col gap-1">
+                                    {userMessages.map((msg, i) => (
+                                        <button
+                                            key={msg.originalIdx}
+                                            onClick={() => handleNavigate(msg.originalIdx)}
+                                            className={cn(
+                                                "text-left px-4 min-h-[44px] flex items-center rounded-xl text-sm font-medium transition-colors overflow-hidden shrink-0",
+                                                activeUserMarkerIdx === i
+                                                    ? "bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100"
+                                                    : "bg-transparent text-zinc-600 dark:text-zinc-400"
+                                            )}
+                                        >
+                                            <span className="whitespace-nowrap overflow-hidden text-ellipsis block w-full">
+                                                {msg.content}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+        </div>
+        </>
+    );
+};
+
 export function ChatPage() {
 
     const { t } = useLanguage();
@@ -253,7 +481,15 @@ export function ChatPage() {
 
     const [isCheckingConnection, setIsCheckingConnection] = React.useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth >= 1024);
-    const [isIncognito, setIsIncognito] = React.useState(false);
+
+    // UI Polish & Sidebar states
+    const [searchQuery, setSearchQuery] = React.useState("");
+    const [activeMenuId, setActiveMenuId] = React.useState(null);
+    const [renamingSessionId, setRenamingSessionId] = React.useState(null);
+    const [renameValue, setRenameValue] = React.useState("");
+    const [isIncognito, setIsIncognito] = React.useState(() => {
+        try { return sessionStorage.getItem('isIncognito') === 'true'; } catch { return false; }
+    });
     const [selectedModel, setSelectedModel] = React.useState(() => {
         const saved = localStorage.getItem("selectedModelId");
         return MODELS.find(m => m.id === saved) || MODELS[0];
@@ -264,17 +500,17 @@ export function ChatPage() {
     const [isLangDropdownOpen, setIsLangDropdownOpen] = React.useState(false);
 
     const TRANSLATE_LANGUAGES = [
-        { code: null,    label: "English",    flag: "🇬🇧" },
-        { code: "hi-IN", label: "Hindi",      flag: "🇮🇳" },
-        { code: "bn-IN", label: "Bengali",    flag: "🇧🇩" },
-        { code: "gu-IN", label: "Gujarati",   flag: "🇮🇳" },
-        { code: "kn-IN", label: "Kannada",    flag: "🇮🇳" },
-        { code: "ml-IN", label: "Malayalam",  flag: "🇮🇳" },
-        { code: "mr-IN", label: "Marathi",    flag: "🇮🇳" },
-        { code: "od-IN", label: "Odia",       flag: "🇮🇳" },
-        { code: "pa-IN", label: "Punjabi",    flag: "🇮🇳" },
-        { code: "ta-IN", label: "Tamil",      flag: "🇮🇳" },
-        { code: "te-IN", label: "Telugu",     flag: "🇮🇳" },
+        { code: null, label: "English", flag: "🇬🇧" },
+        { code: "hi-IN", label: "Hindi", flag: "🇮🇳" },
+        { code: "bn-IN", label: "Bengali", flag: "🇧🇩" },
+        { code: "gu-IN", label: "Gujarati", flag: "🇮🇳" },
+        { code: "kn-IN", label: "Kannada", flag: "🇮🇳" },
+        { code: "ml-IN", label: "Malayalam", flag: "🇮🇳" },
+        { code: "mr-IN", label: "Marathi", flag: "🇮🇳" },
+        { code: "od-IN", label: "Odia", flag: "🇮🇳" },
+        { code: "pa-IN", label: "Punjabi", flag: "🇮🇳" },
+        { code: "ta-IN", label: "Tamil", flag: "🇮🇳" },
+        { code: "te-IN", label: "Telugu", flag: "🇮🇳" },
     ];
 
     React.useEffect(() => {
@@ -291,6 +527,120 @@ export function ChatPage() {
     const [isDisappearingMode, setIsDisappearingMode] = React.useState(() => {
         try { return localStorage.getItem('disappearingMode') === 'true'; } catch { return false; }
     });
+
+    const [isRestoringSession, setIsRestoringSession] = React.useState(!!searchParams.get("sessionId"));
+
+    const normalStateCache = React.useRef((() => {
+        try {
+            const cached = sessionStorage.getItem('normalStateCache');
+            if (cached) return JSON.parse(cached);
+        } catch {}
+        return {
+            messages: null,
+            sessionId: null,
+            urlSessionId: null,
+            scrollPos: 0,
+            followUpQuestions: null
+        };
+    })());
+    const scrollContainerRef = React.useRef(null);
+
+    const handleScroll = (e) => {
+        if (!isIncognito) {
+            normalStateCache.current.scrollPos = e.target.scrollTop;
+        }
+    };
+
+    const setScrollRef = React.useCallback((node) => {
+        scrollContainerRef.current = node;
+        if (node && !isIncognito && normalStateCache.current.scrollPos > 0) {
+            // Restore instantly upon mount
+            node.scrollTop = normalStateCache.current.scrollPos;
+        }
+    }, [isIncognito]);
+
+    const handleIncognitoToggle = async () => {
+        const nextIncognito = !isIncognito;
+        
+        try {
+            await chatbotApi.clearHistory();
+        } catch (err) {
+            console.error("Failed to clear AI memory on incognito toggle:", err);
+        }
+
+        if (nextIncognito) {
+            // Entering Incognito: Cache normal state
+            normalStateCache.current = {
+                messages,
+                sessionId: currentSessionId,
+                urlSessionId: searchParams.get("sessionId"),
+                scrollPos: scrollContainerRef.current ? scrollContainerRef.current.scrollTop : 0,
+                followUpQuestions
+            };
+            try { sessionStorage.setItem('normalStateCache', JSON.stringify(normalStateCache.current)); } catch {}
+            
+            // Start fresh incognito session
+            setMessages([INITIAL_MESSAGE]);
+            setCurrentSessionId(null);
+            setFollowUpQuestions([]);
+            if (searchParams.get("sessionId")) {
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete("sessionId");
+                navigate({ search: newParams.toString() }, { replace: true });
+            }
+        } else {
+            // Exiting Incognito: Restore normal state
+            const cache = normalStateCache.current;
+            if (cache.messages) {
+                setMessages(cache.messages);
+                setCurrentSessionId(cache.sessionId);
+                setFollowUpQuestions(cache.followUpQuestions || []);
+                
+                if (cache.urlSessionId) {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set("sessionId", cache.urlSessionId);
+                    navigate({ search: newParams.toString() }, { replace: true });
+                }
+            }
+            try { sessionStorage.removeItem('normalStateCache'); } catch {}
+        }
+        setIsIncognito(nextIncognito);
+        try { sessionStorage.setItem('isIncognito', nextIncognito); } catch {}
+        if (nextIncognito) {
+            setIsSidebarOpen(false);
+            setIsModelDropdownOpen(false);
+        }
+    };
+
+    // --- Mobile Footer Visibility State ---
+    const [isMobileFooterExpanded, setIsMobileFooterExpanded] = React.useState(false);
+    const [isTyping, setIsTyping] = React.useState(false);
+
+    React.useEffect(() => {
+        let typingTimeout;
+        const handleFocusIn = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                setIsTyping(true);
+                setIsMobileFooterExpanded(false); // Collapse immediately when focusing input
+                clearTimeout(typingTimeout);
+            }
+        };
+        const handleFocusOut = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                typingTimeout = setTimeout(() => {
+                    setIsTyping(false);
+                }, 1500);
+            }
+        };
+
+        document.addEventListener('focusin', handleFocusIn);
+        document.addEventListener('focusout', handleFocusOut);
+        return () => {
+            document.removeEventListener('focusin', handleFocusIn);
+            document.removeEventListener('focusout', handleFocusOut);
+            clearTimeout(typingTimeout);
+        };
+    }, []);
 
     React.useEffect(() => {
         localStorage.setItem('starredChats', JSON.stringify(starredChats));
@@ -333,131 +683,114 @@ export function ChatPage() {
 
     React.useEffect(() => {
 
-    const handleSelectionChange = () => {
+        const handleSelectionChange = () => {
 
-        const selection = window.getSelection();
+            const selection = window.getSelection();
 
-        if (!selection || selection.rangeCount === 0) {
-            setSelectionData(prev => ({ ...prev, visible: false }));
-            return;
-        }
-
-        const text = selection.toString().trim();
-
-        if (!text) {
-            setSelectionData(prev => ({ ...prev, visible: false }));
-            return;
-        }
-
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-
-        if (!rect || rect.width === 0) {
-            setSelectionData(prev => ({ ...prev, visible: false }));
-            return;
-        }
-
-        let xPos = rect.left + rect.width / 2;
-
-        const screenWidth = window.innerWidth;
-
-        if (xPos < 80) xPos = 80;
-        if (xPos > screenWidth - 80) xPos = screenWidth - 80;
-
-        setSelectionData({
-            text,
-            x: xPos,
-            y: rect.top,
-            visible: true
-        });
-
-    };
-
-    const hideTooltip = (e) => {
-        if (!e.target.closest("#selection-tooltip")) {
-            setSelectionData(prev => ({ ...prev, visible: false }));
-        }
-    };
-
-    document.addEventListener("selectionchange", handleSelectionChange);
-    document.addEventListener("mousedown", hideTooltip);
-
-    return () => {
-        document.removeEventListener("selectionchange", handleSelectionChange);
-        document.removeEventListener("mousedown", hideTooltip);
-    };
-
-}, []);
-
-           
-
-
-    React.useEffect(() => {
-
-        const initChat = async () => {
-
-            try {
-
-                await chatbotApi.checkHealth();
-
-                setIsConnected(true);
-
-            } catch (err) {
-
-                console.error("Backend not available:", err);
-
-                setIsConnected(false);
-
-            } finally {
-
-                setIsCheckingConnection(false);
-
+            if (!selection || selection.rangeCount === 0) {
+                setSelectionData(prev => ({ ...prev, visible: false }));
+                return;
             }
 
+            const text = selection.toString().trim();
 
-
-            if (!isGuest) {
-
-                try {
-
-                    const res = await api.get('/chat/sessions');
-
-                    if (res.data && res.data.length > 0) {
-
-                        setSessions(res.data);
-
-
-
-                        const sessionId = searchParams.get("sessionId");
-
-                        if (sessionId) {
-
-                            const found = res.data.find(s => s.id === sessionId);
-
-                            if (found) {
-
-                                setCurrentSessionId(found.id);
-
-                                setMessages(found.messages);
-
-                            }
-
-                        }
-
-                    }
-
-                } catch (err) {
-
-                    console.error("Failed to fetch sessions from DB:", err);
-
-                }
-
+            if (!text) {
+                setSelectionData(prev => ({ ...prev, visible: false }));
+                return;
             }
+
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+
+            if (!rect || rect.width === 0) {
+                setSelectionData(prev => ({ ...prev, visible: false }));
+                return;
+            }
+
+            let xPos = rect.left + rect.width / 2;
+
+            const screenWidth = window.innerWidth;
+
+            if (xPos < 80) xPos = 80;
+            if (xPos > screenWidth - 80) xPos = screenWidth - 80;
+
+            setSelectionData({
+                text,
+                x: xPos,
+                y: rect.top,
+                visible: true
+            });
 
         };
 
-        initChat();
+        const hideTooltip = (e) => {
+            if (!e.target.closest("#selection-tooltip")) {
+                setSelectionData(prev => ({ ...prev, visible: false }));
+            }
+        };
 
+        document.addEventListener("selectionchange", handleSelectionChange);
+        document.addEventListener("mousedown", hideTooltip);
+
+        return () => {
+            document.removeEventListener("selectionchange", handleSelectionChange);
+            document.removeEventListener("mousedown", hideTooltip);
+        };
+
+    }, []);
+
+
+
+
+    React.useEffect(() => {
+        const checkHealth = async () => {
+            try {
+                await chatbotApi.checkHealth();
+                setIsConnected(true);
+            } catch (err) {
+                console.error("Backend not available:", err);
+                setIsConnected(false);
+            } finally {
+                setIsCheckingConnection(false);
+            }
+        };
+
+        const loadSessions = async () => {
+            if (!isGuest) {
+                try {
+                    const res = await api.get('/chat/sessions');
+                    if (res.data && res.data.length > 0) {
+                        setSessions(res.data);
+
+                        const sessionId = searchParams.get("sessionId");
+                        if (sessionId) {
+                            const found = res.data.find(s => s.id === sessionId);
+                            if (found) {
+                                setCurrentSessionId(found.id);
+                                setMessages(found.messages);
+                            } else {
+                                const newParams = new URLSearchParams(searchParams);
+                                newParams.delete("sessionId");
+                                navigate({ search: newParams.toString() }, { replace: true });
+                            }
+                        }
+                    } else {
+                        const sessionId = searchParams.get("sessionId");
+                        if (sessionId) {
+                            const newParams = new URLSearchParams(searchParams);
+                            newParams.delete("sessionId");
+                            navigate({ search: newParams.toString() }, { replace: true });
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch sessions from DB:", err);
+                }
+            }
+            setIsRestoringSession(false);
+        };
+
+        checkHealth();
+        loadSessions();
     }, [isGuest]);
 
 
@@ -502,11 +835,53 @@ export function ChatPage() {
             if (currentSessionId === sessionId) {
                 setMessages([INITIAL_MESSAGE]);
                 setCurrentSessionId(null);
+
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete("sessionId");
+                navigate({ search: newParams.toString() }, { replace: true });
             }
             setError(null);
         } catch (err) {
             console.error("Failed to delete session:", err);
             setError("Failed to delete chat session");
+        }
+    };
+
+    const handleRenameSubmit = async (sessionId) => {
+        const trimmedTitle = renameValue.trim();
+        const session = sessions.find(s => s.id === sessionId);
+
+        setRenamingSessionId(null);
+        setActiveMenuId(null);
+
+        if (!trimmedTitle || trimmedTitle === session.title) return;
+
+        // Optimistic UI update
+        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title: trimmedTitle } : s));
+
+        if (!isGuest && !isIncognito) {
+            try {
+                await api.post('/chat/sessions', {
+                    sessionId: session.id,
+                    messages: session.messages,
+                    title: trimmedTitle
+                });
+            } catch (err) {
+                console.error("Failed to rename session:", err);
+                // Revert on failure
+                setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title: session.title } : s));
+                setError("Failed to rename chat session");
+            }
+        }
+    };
+
+    const handleRenameKeyDown = (e, sessionId) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleRenameSubmit(sessionId);
+        } else if (e.key === 'Escape') {
+            setRenamingSessionId(null);
+            setActiveMenuId(null);
         }
     };
 
@@ -598,7 +973,9 @@ export function ChatPage() {
 
         if (searchParams.has("sessionId")) {
 
-            navigate("/chat", { replace: true });
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete("sessionId");
+            navigate({ search: newParams.toString() }, { replace: true });
 
         }
 
@@ -631,6 +1008,10 @@ export function ChatPage() {
             setMessages(session.messages);
 
             setError(null);
+
+            const newParams = new URLSearchParams(searchParams);
+            newParams.set("sessionId", session.id);
+            navigate({ search: newParams.toString() }, { replace: true });
 
             await chatbotApi.clearHistory();
 
@@ -719,11 +1100,17 @@ export function ChatPage() {
 
                 try {
 
-                    const sessionTitle = currentSessionId
-
+                    let sessionTitle = currentSessionId
                         ? sessions.find(s => s.id === currentSessionId)?.title
+                        : "New Chat";
 
-                        : text.substring(0, 30) + "...";
+                    if (!currentSessionId) {
+                        const meaningless = ["hi", "hello", "ok", "thanks", "test", "hey"];
+                        const cleanedText = text.trim();
+                        if (!meaningless.includes(cleanedText.toLowerCase())) {
+                            sessionTitle = cleanedText.length > 40 ? cleanedText.substring(0, 40) + "..." : cleanedText;
+                        }
+                    }
 
 
 
@@ -754,6 +1141,10 @@ export function ChatPage() {
                         if (!currentSessionId) {
 
                             setCurrentSessionId(res.data.id);
+
+                            const newParams = new URLSearchParams(searchParams);
+                            newParams.set("sessionId", res.data.id);
+                            navigate({ search: newParams.toString() }, { replace: true });
 
                         }
 
@@ -957,17 +1348,30 @@ export function ChatPage() {
                 e.preventDefault();
                 handleNewChatRef.current();
             }
+            if (e.key === 'Escape' && window.innerWidth < 1024) {
+                setIsSidebarOpen(false);
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
+    const filteredSessions = React.useMemo(() => {
+        if (!searchQuery.trim()) return sessions;
+        const query = searchQuery.toLowerCase();
+        return sessions.filter(session => {
+            const matchesTitle = session.title?.toLowerCase().includes(query);
+            const firstUserMsg = session.messages?.find(m => m.role === 'user')?.content?.toLowerCase() || "";
+            return matchesTitle || firstUserMsg.includes(query);
+        });
+    }, [sessions, searchQuery]);
+
     return (
 
         <PageTransition className="relative flex h-screen w-full overflow-hidden bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
 
-           
+
 
             {/* Ask DigiLab Tooltip */}
 
@@ -1005,7 +1409,7 @@ export function ChatPage() {
 
                             }}
 
-                            className="flex items-center gap-2 rounded-xl bg-zinc-900 dark:bg-zinc-800 px-3 py-2 text-sm font-medium text-white shadow-xl border border-white/10 hover:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
+                            className="flex items-center gap-2 rounded-xl bg-zinc-900 dark:bg-zinc-800 max-sm:px-4 max-sm:min-h-[44px] px-3 py-2 text-sm font-medium text-white shadow-xl border border-white/10 hover:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
 
                         >
 
@@ -1024,340 +1428,449 @@ export function ChatPage() {
 
 
             {/* Sidebar - Context / History */}
-
-            <AnimatePresence>
-
-                {!isIncognito && isSidebarOpen && (
-
-                    <>
-
+            <>
+                {/* Mobile Overlay */}
+                <AnimatePresence>
+                    {isSidebarOpen && (
                         <motion.div
-
                             initial={{ opacity: 0 }}
-
                             animate={{ opacity: 1 }}
-
                             exit={{ opacity: 0 }}
-
                             onClick={() => setIsSidebarOpen(false)}
-
-                            className="fixed inset-0 z-[55] bg-black/40 backdrop-blur-sm lg:hidden"
-
+                            className={cn("fixed inset-0 z-[55] bg-black/50", !isIncognito && "lg:hidden")}
                         />
+                    )}
+                </AnimatePresence>
 
-                        <motion.div
+                    {/* Sidebar Container */}
+                    <div
+                        className={cn(
+                            "fixed inset-y-0 left-0 z-[60] flex flex-col border-r border-zinc-200 dark:border-white/5 bg-white dark:bg-zinc-950 h-full transition-[width,transform] duration-300 ease-in-out lg:relative",
+                            isSidebarOpen
+                                ? "w-[85vw] min-w-[280px] max-w-[320px] translate-x-0 lg:w-80 lg:min-w-[320px]"
+                                : "-translate-x-full lg:translate-x-0 lg:w-[72px] lg:min-w-[72px]"
+                        )}
+                    >
+                        {/* Expanded Sidebar (Visible when open, hidden on desktop when closed) */}
+                        <div className={cn("flex flex-col h-full w-full overflow-hidden whitespace-nowrap", !isSidebarOpen && "lg:hidden")}>
 
-                            initial={{ x: -320 }}
-
-                            animate={{ x: 0 }}
-
-                            exit={{ x: -320 }}
-
-                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-
-                            className="fixed inset-y-0 left-0 z-[60] flex w-80 flex-col border-r border-zinc-200 dark:border-white/5 bg-white dark:bg-zinc-950 backdrop-blur-xl lg:relative lg:flex h-full"
-
-                        >
-
-                            <div className="flex h-16 items-center justify-between border-b border-zinc-200 dark:border-white/5 px-4 bg-white/80 dark:bg-zinc-950/80 sticky top-0 z-10">
-
+                            <div className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-200 dark:border-white/5 px-4 bg-white/80 dark:bg-zinc-950/80 sticky top-0 z-10">
                                 <Link
-
                                     to={isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard")}
-
                                     onClick={() => setIsSidebarOpen(false)}
-
                                     className="flex items-center space-x-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 group"
-
                                 >
-
                                     <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
-
                                     <span className="text-sm font-medium">{isGuest ? t('nav.home') : t('chat.backToDashboard')}</span>
-
                                 </Link>
 
-
-
                                 <button
-
                                     onClick={() => setIsSidebarOpen(false)}
-
-                                    className="h-10 w-10 p-0 text-zinc-600 dark:text-zinc-400 hover:text-red-600 hover:bg-red-500/10 transition-all rounded-full flex items-center justify-center shrink-0 border-2 border-transparent"
-
-                                    title="Close"
-
+                                    className="h-11 w-11 p-0 text-foreground-muted hover:text-accent hover:bg-accent/10 transition-all duration-300 rounded-xl flex items-center justify-center shrink-0"
+                                    title="Close sidebar"
                                 >
-
-                                    <X className="h-4 w-4" strokeWidth={2.5} />
-
+                                    <Menu className="h-5 w-5 transform rotate-90 transition-transform duration-300" />
                                 </button>
-
                             </div>
 
-
-
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-
-                                {/* Disappearing Messages Toggle */}
-                                <div className="flex items-center justify-between px-3 py-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-white/5 shadow-sm">
-                                    <div className="flex items-center gap-2">
-                                        <div className={cn("p-1.5 rounded-lg", isDisappearingMode ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400")}>
-                                            <Loader2 className={cn("h-4 w-4", isDisappearingMode && "animate-spin")} />
+                            <div className="flex flex-col flex-1 overflow-hidden">
+                                <div className="p-4 space-y-4 shrink-0 border-b border-zinc-200 dark:border-white/5">
+                                    {/* Disappearing Messages Toggle */}
+                                    <div className="flex items-center justify-between px-3 py-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-white/5 shadow-sm">
+                                        <div className="flex items-center gap-2">
+                                            <div className={cn("p-1.5 rounded-lg", isDisappearingMode ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400")}>
+                                                <Loader2 className={cn("h-4 w-4", isDisappearingMode && "animate-spin")} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">Disappearing</p>
+                                                <p className="text-[10px] text-zinc-500 font-medium">Auto-delete after 24h</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">Disappearing</p>
-                                            <p className="text-[10px] text-zinc-500 font-medium">Auto-delete after 24h</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => setIsDisappearingMode(!isDisappearingMode)}
-                                        className={cn(
-                                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                                            isDisappearingMode ? "bg-orange-500" : "bg-zinc-300 dark:bg-zinc-700"
-                                        )}
-                                    >
-                                        <span className={cn(
-                                            "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                                            isDisappearingMode ? "translate-x-4" : "translate-x-0"
-                                        )} />
-                                    </button>
-                                </div>
-
-
-                                <button
-
-                                    onClick={handleNewChat}
-
-                                    className="w-full flex items-center justify-start gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-900/50 rounded-lg px-4 py-2 font-medium transition-colors"
-
-                                >
-
-                                    <Plus className="h-4 w-4" />
-
-                                    New Chat
-
-                                </button>
-
-
-
-                                <div className="space-y-2 pt-2">
-
-                                    <div className="flex items-center justify-between px-2">
-                                        <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('chat.today')}</h3>
                                         <button
-                                            onClick={handleClearHistory}
-                                            className="text-zinc-400 hover:text-red-500 transition-colors p-1 rounded"
-                                            title="Clear all history"
+                                            onClick={() => setIsDisappearingMode(!isDisappearingMode)}
+                                            className={cn(
+                                                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                                isDisappearingMode ? "bg-orange-500" : "bg-zinc-300 dark:bg-zinc-700"
+                                            )}
                                         >
-                                            <Trash2 className="h-3.5 w-3.5" />
+                                            <span className={cn(
+                                                "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                                                isDisappearingMode ? "translate-x-4" : "translate-x-0"
+                                            )} />
                                         </button>
                                     </div>
 
-                                    {sessions.length > 0 ? (
-                                        [...sessions]
-                                            .sort((a, b) => {
-                                                const aStarred = starredChats.includes(a.id);
-                                                const bStarred = starredChats.includes(b.id);
-                                                if (aStarred && !bStarred) return -1;
-                                                if (!aStarred && bStarred) return 1;
-                                                return 0;
-                                            })
-                                            .map((session) => (
-                                            <button
-                                                key={session.id}
-                                                onClick={() => handleSelectSession(session.id)}
-                                                className={cn(
-                                                    "flex w-full items-center space-x-3 rounded-lg px-2 py-2 text-sm transition-all group",
-                                                    currentSessionId === session.id
-                                                        ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium ring-1 ring-blue-200 dark:ring-blue-900/50"
-                                                        : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
-                                                )}
-                                            >
-                                                <MessageSquare className={cn("h-4 w-4 shrink-0", currentSessionId === session.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-400")} />
-                                                <span className="truncate flex-1 text-left">{session.title || "Chat session"}</span>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                    <button
+                                        onClick={() => {
+                                            handleNewChat();
+                                            if (window.innerWidth < 1024) setIsSidebarOpen(false);
+                                        }}
+                                        className="w-full flex items-center justify-start gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-900/50 rounded-lg px-4 py-2 font-medium transition-colors min-h-[44px]"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                        New Chat
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                    <div className="space-y-2 pt-2">
+                                        {!isIncognito && (
+                                            <>
+                                                {/* SEARCH BAR */}
+                                                <div className="relative px-2 mb-4">
+                                                    <div className="relative flex items-center">
+                                                        <MdSearch className="absolute left-4 text-zinc-400 h-4 w-4" />
+                                                        <input
+                                                            id="sidebar-search"
+                                                            type="text"
+                                                            placeholder="Search chats..."
+                                                            value={searchQuery}
+                                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                                            className="w-full bg-zinc-100 dark:bg-zinc-800/50 border border-zinc-200 dark:border-white/5 rounded-lg pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 transition-all"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between px-2">
+                                                    <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('chat.today')}</h3>
                                                     <button
-                                                        onClick={(e) => toggleStar(session.id, e)}
-                                                        className={cn(
-                                                            "p-1 rounded-md hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors",
-                                                            starredChats.includes(session.id) ? "text-yellow-400" : "text-zinc-400"
-                                                        )}
-                                                        title="Star chat"
-                                                    >
-                                                        <Star className={cn("h-3.5 w-3.5", starredChats.includes(session.id) && "fill-yellow-400")} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => handleDeleteSession(session.id, e)}
-                                                        className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 text-zinc-400 hover:text-red-500 transition-colors"
-                                                        title="Delete chat"
+                                                        onClick={handleClearHistory}
+                                                        className="text-zinc-400 hover:text-red-500 transition-colors p-1 rounded"
+                                                        title="Clear all history"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </button>
                                                 </div>
-                                            </button>
-                                        ))
-
-                                    ) : (
-
-                                        <div className="px-2 py-4 text-center rounded-lg border border-dashed border-zinc-200 dark:border-white/5">
-
-                                            <p className="text-xs text-zinc-400">No recent chats. Start a new one!</p>
-
-                                        </div>
-
-                                    )}
-
-                                </div>
-
-                            </div>
-
-
-
-                            <div className="mt-auto border-t border-zinc-200 dark:border-white/5 p-4 bg-zinc-50 dark:bg-zinc-950/50">
-
-                                <Link
-
-                                    to="/profile"
-
-                                    onClick={() => setIsSidebarOpen(false)}
-
-                                    className="flex w-full items-center gap-3 rounded-xl p-3 transition-all hover:bg-zinc-100 dark:hover:bg-white/5 group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5"
-
-                                >
-
-                                    <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 ring-2 ring-blue-100 dark:ring-blue-900/30 group-hover:ring-blue-200 dark:group-hover:ring-blue-900/50 transition-all overflow-hidden shrink-0">
-
-                                        {user?.profilePhoto ? (
-
-                                            <img src={user.profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
-
-                                        ) : (
-
-                                            <UserIcon className="h-5 w-5" />
-
+                                            </>
                                         )}
 
+                                        {isIncognito ? (
+                                            <div className="px-4 py-8 mt-4 text-center flex flex-col items-center justify-center">
+                                                <div className="h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-800/50 flex items-center justify-center mb-3">
+                                                    <IncognitoIcon className="h-6 w-6 text-zinc-400" />
+                                                </div>
+                                                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-1">
+                                                    Incognito Mode Active
+                                                </p>
+                                                <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-[200px] leading-relaxed">
+                                                    Chats are temporary and not saved to history.
+                                                </p>
+                                            </div>
+                                        ) : filteredSessions.length > 0 ? (
+                                            [...filteredSessions]
+                                                .sort((a, b) => {
+                                                    const aStarred = starredChats.includes(a.id);
+                                                    const bStarred = starredChats.includes(b.id);
+                                                    if (aStarred && !bStarred) return -1;
+                                                    if (!aStarred && bStarred) return 1;
+                                                    return 0;
+                                                })
+                                                .map((session) => (
+                                                    <div
+                                                        key={session.id}
+                                                        className="relative group px-2"
+                                                    >
+                                                        <button
+                                                            onClick={() => {
+                                                                if (renamingSessionId !== session.id) {
+                                                                    handleSelectSession(session.id);
+                                                                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
+                                                                }
+                                                            }}
+                                                            className={cn(
+                                                                "flex w-full items-center space-x-3 rounded-lg px-2 py-2 text-sm transition-all duration-200 min-h-[44px]",
+                                                                currentSessionId === session.id
+                                                                    ? "bg-accent/10 text-accent font-medium ring-1 ring-accent/30"
+                                                                    : "text-zinc-700 dark:text-zinc-300 hover:bg-accent/5 hover:text-zinc-900 dark:hover:text-zinc-100 hover:ring-1 hover:ring-accent/20"
+                                                            )}
+                                                        >
+                                                            <MessageSquare className={cn("h-4 w-4 shrink-0 transition-colors duration-200", currentSessionId === session.id ? "text-accent" : "text-zinc-400 group-hover:text-accent/70")} />
+
+                                                            {renamingSessionId === session.id ? (
+                                                                <input
+                                                                    autoFocus
+                                                                    value={renameValue}
+                                                                    onChange={(e) => setRenameValue(e.target.value)}
+                                                                    onKeyDown={(e) => handleRenameKeyDown(e, session.id)}
+                                                                    onBlur={() => handleRenameSubmit(session.id)}
+                                                                    className="flex-1 min-w-0 bg-white dark:bg-zinc-800 border border-accent/50 rounded px-1.5 py-0.5 text-sm focus:outline-none text-zinc-900 dark:text-zinc-100"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                />
+                                                            ) : (
+                                                                <span className="truncate flex-1 min-w-0 text-left overflow-hidden text-ellipsis whitespace-nowrap block">{session.title || "Chat session"}</span>
+                                                            )}
+
+                                                            {/* Hover Menu */}
+                                                            {renamingSessionId !== session.id && (
+                                                                <div className="flex items-center max-sm:opacity-100 opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0">
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setActiveMenuId(activeMenuId === session.id ? null : session.id);
+                                                                        }}
+                                                                        className="p-1 rounded-md hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 min-w-[36px] min-h-[36px] flex items-center justify-center"
+                                                                    >
+                                                                        <MoreVertical className="h-4 w-4" />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </button>
+
+                                                        <AnimatePresence>
+                                                            {activeMenuId === session.id && (
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                    exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                                                                    transition={{ duration: 0.15 }}
+                                                                    className="absolute right-4 top-10 z-[60] w-36 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden"
+                                                                >
+                                                                    <div className="flex flex-col p-1">
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                toggleStar(session.id, e);
+                                                                                setActiveMenuId(null);
+                                                                            }}
+                                                                            className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                                                                        >
+                                                                            <span>Star Chat</span>
+                                                                            <Star className={cn("h-3.5 w-3.5", starredChats.includes(session.id) && "fill-yellow-400 text-yellow-400")} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setRenameValue(session.title || "");
+                                                                                setRenamingSessionId(session.id);
+                                                                                setActiveMenuId(null);
+                                                                            }}
+                                                                            className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                                                                        >
+                                                                            <span>Rename</span>
+                                                                        </button>
+                                                                        <div className="h-px bg-zinc-200 dark:bg-white/10 my-1 mx-2" />
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleDeleteSession(session.id, e);
+                                                                                setActiveMenuId(null);
+                                                                            }}
+                                                                            className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                                        >
+                                                                            <span>Delete</span>
+                                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                </motion.div>
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </div>
+                                                ))
+                                        ) : (
+                                            <div className="px-4 py-8 mt-4 text-center flex flex-col items-center justify-center">
+                                                <div className="h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-800/50 flex items-center justify-center mb-3">
+                                                    <MessageSquareDashed className="h-6 w-6 text-zinc-400" />
+                                                </div>
+                                                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-1">
+                                                    {searchQuery ? "No matching chats found" : "No conversations yet"}
+                                                </p>
+                                                {!searchQuery && (
+                                                    <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-[200px] leading-relaxed">
+                                                        Start a new chat to begin learning.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-
-                                    <div className="flex-1 overflow-hidden">
-
-                                        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-
-                                            {user?.name || "Guest User"}
-
-                                        </p>
-
-                                        <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate capitalize">
-
-                                            {user?.role || "Learning Member"}
-
-                                        </p>
-
-                                    </div>
-
-                                    <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
-
-                                </Link>
-
+                                </div>
                             </div>
 
-                        </motion.div>
+                            <div className="mt-auto border-t border-zinc-200 dark:border-white/5 p-4 bg-zinc-50 dark:bg-zinc-950/50 shrink-0">
+                                <Link
+                                    to="/profile"
+                                    onClick={() => setIsSidebarOpen(false)}
+                                    className="flex w-full items-center gap-3 rounded-xl p-3 transition-all hover:bg-zinc-100 dark:hover:bg-white/5 group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5"
+                                >
+                                    <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 ring-2 ring-blue-100 dark:ring-blue-900/30 group-hover:ring-blue-200 dark:group-hover:ring-blue-900/50 transition-all overflow-hidden shrink-0">
+                                        {user?.profilePhoto ? (
+                                            <img src={user.profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <UserIcon className="h-5 w-5" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 overflow-hidden">
+                                        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                            {user?.name || "Guest User"}
+                                        </p>
+                                        <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate capitalize">
+                                            {user?.role || "Learning Member"}
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                                </Link>
+                            </div>
+                        </div>
 
-                    </>
+                        {/* Collapsed Rail (Visible on desktop when closed) */}
+                        <div className={cn("hidden flex-col h-full w-full items-center py-4 opacity-0 transition-opacity duration-300", !isSidebarOpen && "lg:flex opacity-100")}>
+                            {/* Toggle Sidebar Button */}
+                            <button
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="h-10 w-10 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors rounded-xl flex items-center justify-center shrink-0 mb-6"
+                                title="Expand sidebar"
+                            >
+                                <Menu className="h-5 w-5" />
+                            </button>
 
-                )}
+                            {/* Disappearing Messages Toggle */}
+                            <button
+                                onClick={() => setIsDisappearingMode(!isDisappearingMode)}
+                                className={cn(
+                                    "h-10 w-10 flex items-center justify-center rounded-xl transition-colors shrink-0 mb-4",
+                                    isDisappearingMode
+                                        ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                                        : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                )}
+                                title={isDisappearingMode ? "Disappearing Mode: ON" : "Disappearing Mode: OFF"}
+                            >
+                                <Loader2 className={cn("h-5 w-5", isDisappearingMode && "animate-spin")} />
+                            </button>
 
-            </AnimatePresence>
+                            {/* New Chat Button */}
+                            <button
+                                onClick={() => handleNewChat()}
+                                className="h-10 w-10 flex items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-900/50 transition-colors shrink-0"
+                                title="New Chat"
+                            >
+                                <Plus className="h-5 w-5" />
+                            </button>
+
+                            {/* Search Icon */}
+                            <button
+                                onClick={() => { setIsSidebarOpen(true); setTimeout(() => document.getElementById("sidebar-search")?.focus(), 300); }}
+                                className="h-10 w-10 flex items-center justify-center rounded-xl text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors shrink-0 mt-4"
+                                title="Search chats"
+                            >
+                                <MdSearch className="h-5 w-5" />
+                            </button>
+
+                            {/* User Avatar */}
+                            <div className="mt-auto">
+                                <Link
+                                    to="/profile"
+                                    className="h-10 w-10 flex items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-2 ring-blue-100 dark:ring-blue-900/30 hover:ring-blue-200 dark:hover:ring-blue-900/50 transition-all overflow-hidden"
+                                    title="Profile"
+                                >
+                                    {user?.profilePhoto ? (
+                                        <img src={user.profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <UserIcon className="h-5 w-5" />
+                                    )}
+                                </Link>
+                            </div>
+                        </div>
+
+                    </div>
+                </>
 
 
 
             {/* Main Chat Area */}
-
             <div className="flex flex-1 flex-col relative">
+                <ConversationNavigator messages={messages} />
 
                 <div className={cn(
-                    "flex h-16 items-center px-4 sm:px-6 transition-all duration-300 z-50 sticky top-0 backdrop-blur-md border-b",
-                    isIncognito ? "bg-zinc-900 justify-between border-white/5" : "bg-white/50 dark:bg-zinc-950/50 border-transparent justify-between"
+                    "flex h-[56px] sm:h-16 items-center px-3 sm:px-6 transition-all duration-300 z-50 sticky top-0 backdrop-blur-md border-b",
+                    isIncognito ? "bg-zinc-950 justify-between border-white/5" : "bg-white/50 dark:bg-zinc-950/50 border-transparent justify-between"
                 )}>
-                    {isIncognito ? (
-                        <div className="flex items-center gap-2">
-                            <IncognitoIcon className="h-5 w-5 text-zinc-300" />
-                            <span className="text-sm font-semibold text-zinc-200 tracking-tight">Incognito chat</span>
-                        </div>
-                    ) : (
-                        <div className="relative">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                        {!isSidebarOpen && (
                             <button
-                                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group"
-                            >
-                                <span className="text-lg font-bold tracking-tight">
-                                    {selectedModel.name}
-                                </span>
-                                <ChevronDown className={cn("h-4 w-4 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
-                            </button>
-
-                            <AnimatePresence>
-                                {isModelDropdownOpen && (
-                                    <>
-                                        <div 
-                                            className="fixed inset-0 z-10" 
-                                            onClick={() => setIsModelDropdownOpen(false)}
-                                        />
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                            className="absolute top-full left-0 mt-2 w-72 p-2 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
-                                        >
-                                            <div className="space-y-1">
-                                                {MODELS.map((model) => (
-                                                    <button
-                                                        key={model.id}
-                                                        onClick={() => {
-                                                            setSelectedModel(model);
-                                                            setIsModelDropdownOpen(false);
-                                                        }}
-                                                        className={cn(
-                                                            "w-full flex items-start gap-3 p-3 rounded-xl transition-all text-left",
-                                                            selectedModel.id === model.id 
-                                                                ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
-                                                                : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
-                                                        )}
-                                                    >
-                                                        <div className={cn("mt-0.5", model.color)}>
-                                                            <model.icon className="h-4 w-4" />
-                                                        </div>
-                                                        <div>
-                                                            <p className={cn("text-xs font-bold leading-none mb-1", selectedModel.id === model.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
-                                                                {model.name}
-                                                            </p>
-                                                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
-                                                                {model.description}
-                                                            </p>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </motion.div>
-                                    </>
+                                onClick={() => setIsSidebarOpen(true)}
+                                aria-label="Open sidebar"
+                                className={cn(
+                                    "flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl transition-all lg:hidden",
+                                    isIncognito
+                                        ? "text-zinc-400 hover:text-white hover:bg-white/5"
+                                        : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-white/5"
                                 )}
-                            </AnimatePresence>
-                        </div>
-                    )}
+                            >
+                                <Menu className="h-5 w-5" />
+                            </button>
+                        )}
+
+                        {isIncognito ? (
+                            <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                                <IncognitoIcon className="h-5 w-5 text-zinc-300 shrink-0" />
+                                <span className="text-sm font-semibold text-zinc-200 tracking-tight truncate block">Incognito chat</span>
+                            </div>
+                        ) : (
+                            <div className="relative flex-1 min-w-0">
+                                <button
+                                    onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                                    className="flex items-center gap-1 sm:gap-2 px-1 sm:px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group max-w-full"
+                                >
+                                    <span className="text-base sm:text-lg font-bold tracking-tight truncate block">
+                                        {selectedModel.name}
+                                    </span>
+                                    <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
+                                </button>
+
+                                <AnimatePresence>
+                                    {isModelDropdownOpen && (
+                                        <>
+                                            <div
+                                                className="fixed inset-0 z-10"
+                                                onClick={() => setIsModelDropdownOpen(false)}
+                                            />
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                className="max-sm:fixed max-sm:top-[60px] max-sm:left-3 max-sm:right-3 max-sm:w-auto sm:absolute sm:top-full sm:left-0 sm:mt-2 sm:w-72 p-2 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
+                                            >
+                                                <div className="space-y-1">
+                                                    {MODELS.map((model) => (
+                                                        <button
+                                                            key={model.id}
+                                                            onClick={() => {
+                                                                setSelectedModel(model);
+                                                                setIsModelDropdownOpen(false);
+                                                            }}
+                                                            className={cn(
+                                                                "w-full flex items-start gap-3 max-sm:p-4 sm:p-3 rounded-xl transition-all text-left",
+                                                                selectedModel.id === model.id
+                                                                    ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
+                                                                    : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
+                                                            )}
+                                                        >
+                                                            <div className={cn("mt-0.5 shrink-0", model.color)}>
+                                                                <model.icon className="max-sm:h-5 max-sm:w-5 sm:h-4 sm:w-4" />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className={cn("max-sm:text-sm sm:text-xs font-bold leading-none mb-1 truncate", selectedModel.id === model.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
+                                                                    {model.name}
+                                                                </p>
+                                                                <p className="max-sm:text-xs sm:text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                                                                    {model.description}
+                                                                </p>
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        </>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        )}
+                    </div>
 
                     <button
-                        onClick={() => {
-                            const nextIncognito = !isIncognito;
-                            setIsIncognito(nextIncognito);
-                            if (nextIncognito) {
-                                setIsSidebarOpen(false);
-                                setIsModelDropdownOpen(false);
-                            }
-                        }}
+                        onClick={handleIncognitoToggle}
                         title={isIncognito ? "Turn off incognito" : "Turn on incognito"}
                         className={cn(
-                            "transition-all duration-200 p-2 rounded-full outline-none focus:outline-none",
+                            "flex h-[44px] w-[44px] shrink-0 items-center justify-center transition-all duration-200 rounded-full outline-none focus:outline-none ml-2",
                             isIncognito
                                 ? "text-zinc-400 hover:text-white hover:bg-white/5"
                                 : "text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
@@ -1384,7 +1897,7 @@ export function ChatPage() {
 
                             exit={{ opacity: 0 }}
 
-                            className="flex flex-1 flex-col bg-zinc-900 text-white overflow-hidden"
+                            className="flex flex-1 flex-col bg-zinc-950 text-white overflow-hidden"
 
                         >
 
@@ -1428,7 +1941,7 @@ export function ChatPage() {
 
                                             onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
+                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
 
                                             disabled={isLoading || !isConnected}
 
@@ -1456,8 +1969,12 @@ export function ChatPage() {
 
                                 <div className="flex-1 flex flex-col overflow-hidden">
 
-                                    <div className="flex-1 overflow-y-auto p-4 sm:p-8">
-                                        <div className="mx-auto w-[95%] sm:w-[85%] lg:w-[80%] max-w-none space-y-6">
+                                    <div 
+                                        className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:px-3 max-sm:py-4 sm:p-8"
+                                        onScroll={handleScroll}
+                                        ref={scrollContainerRef}
+                                    >
+                                        <div className="mx-auto w-full max-w-[900px] max-sm:space-y-6 sm:space-y-8">
 
                                             {messages.map((msg, idx) => (
 
@@ -1473,7 +1990,7 @@ export function ChatPage() {
                                                         animate={{ opacity: 1, y: 0 }}
                                                         exit={{ opacity: 0, y: -10 }}
                                                         transition={{ duration: 0.3, delay: 0.2 }}
-                                                        className="flex flex-wrap gap-2 px-4 pt-2"
+                                                        className="flex max-sm:flex-col max-sm:items-stretch max-sm:gap-2 sm:flex-row sm:flex-wrap sm:gap-2 px-4 pt-2 pb-1 sm:max-h-none"
                                                     >
                                                         {followUpQuestions.map((q, i) => (
                                                             <motion.button
@@ -1485,7 +2002,7 @@ export function ChatPage() {
                                                                     setFollowUpQuestions([]);
                                                                     handleSend(q);
                                                                 }}
-                                                                className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-w-[280px] cursor-pointer"
+                                                                className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-sm:max-w-full sm:max-w-[280px] cursor-pointer"
                                                             >
                                                                 {q}
                                                             </motion.button>
@@ -1502,7 +2019,7 @@ export function ChatPage() {
 
 
 
-                                    <div className="w-full pb-4 sm:pb-6 pt-4 z-40 bg-gradient-to-t from-zinc-900 to-transparent">
+                                    <div className="w-full max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6 pt-4 z-40 bg-gradient-to-t from-zinc-900 to-transparent">
 
                                         <div className="mx-auto max-w-4xl px-4 relative text-center">
 
@@ -1518,7 +2035,7 @@ export function ChatPage() {
 
                                                 onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
+                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
 
                                                 disabled={isLoading || !isConnected}
 
@@ -1558,31 +2075,7 @@ export function ChatPage() {
 
                         >
 
-                            <AnimatePresence>
-
-                                {!isSidebarOpen && (
-
-                                    <motion.button
-
-                                        initial={{ scale: 0, opacity: 0, rotate: -90 }}
-
-                                        animate={{ scale: 1, opacity: 1, rotate: 0 }}
-
-                                        exit={{ scale: 0, opacity: 0, rotate: 90 }}
-
-                                        onClick={() => setIsSidebarOpen(true)}
-
-                                        className="fixed bottom-6 left-6 z-50 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-500/40 transition-all active:scale-90 hover:scale-105"
-
-                                    >
-
-                                        <Plus className="h-6 w-6 sm:h-7 sm:w-7" />
-
-                                    </motion.button>
-
-                                )}
-
-                            </AnimatePresence>
+                            {/* Floating Sidebar Toggle Button Removed */}
 
 
 
@@ -1629,7 +2122,7 @@ export function ChatPage() {
 
                                                 className={cn(
 
-                                                    "flex-1 sm:flex-none gap-2 transition-all h-8 sm:h-9 py-0 rounded-lg text-sm",
+                                                    "flex-1 sm:flex-none gap-2 transition-all max-sm:min-h-[44px] h-8 sm:h-9 py-0 rounded-lg text-sm",
 
                                                     isTopicCompleted
 
@@ -1673,7 +2166,15 @@ export function ChatPage() {
 
 
 
-                            {messages.length <= 1 ? (
+                            {isRestoringSession ? (
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="flex-1 flex items-center justify-center"
+                                >
+                                    <Loader2 className="h-8 w-8 animate-spin text-zinc-300 dark:text-zinc-600" />
+                                </motion.div>
+                            ) : messages.length <= 1 ? (
 
                                 <motion.div
 
@@ -1681,15 +2182,15 @@ export function ChatPage() {
 
                                     animate={{ opacity: 1, scale: 1 }}
 
-                                    className="flex-1 flex flex-col items-center justify-center p-4 max-w-4xl mx-auto w-full"
+                                    className="flex-1 flex flex-col items-center justify-center max-sm:px-3 sm:p-4 max-w-4xl mx-auto w-full"
 
                                 >
 
-                                    <div className="text-center mb-10">
+                                    <div className="text-center max-sm:mb-6 sm:mb-10 flex flex-col items-center">
 
 
 
-                                        <h1 className="text-4xl font-bold tracking-tight mb-3 text-zinc-900 dark:text-white">{greeting}</h1>
+                                        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3 text-zinc-900 dark:text-white">{greeting}</h1>
 
                                     </div>
 
@@ -1709,7 +2210,7 @@ export function ChatPage() {
 
                                             onSend={selectedLanguage ? handleTranslate : handleSend}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
+                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
 
                                             disabled={isLoading || !isConnected}
 
@@ -1718,12 +2219,12 @@ export function ChatPage() {
                                         />
 
                                         {/* Compact Language Dropdown */}
-                                        <div className="mt-3 flex items-center gap-2 relative" style={{zIndex:50}}>
+                                        <div className="mt-3 flex items-center gap-2 relative" style={{ zIndex: 50 }}>
                                             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 shrink-0">Respond in:</span>
                                             <div className="relative">
                                                 <button
                                                     onClick={() => setIsLangDropdownOpen(o => !o)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:border-accent/50 hover:text-white transition-all"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 max-sm:min-h-[44px] rounded-full text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:border-accent/50 hover:text-white transition-all"
                                                 >
                                                     <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.flag}</span>
                                                     <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'English'}</span>
@@ -1759,14 +2260,18 @@ export function ChatPage() {
 
                                 <div className="flex-1 flex flex-col overflow-hidden">
 
-                                    <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+                                    <div 
+                                        className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:px-3 max-sm:py-4 sm:p-8"
+                                        onScroll={handleScroll}
+                                        ref={setScrollRef}
+                                    >
 
-                                        <div className="mx-auto w-[95%] sm:w-[85%] lg:w-[80%] max-w-none space-y-6">
+                                        <div className="mx-auto w-full max-w-[900px] max-sm:space-y-6 sm:space-y-8">
 
                                             {messages.map((msg, idx) => (
-
-                                                <MessageBubble key={idx} message={msg} />
-
+                                                <div key={idx} id={`chat-message-${idx}`} data-message-index={idx}>
+                                                    <MessageBubble message={msg} />
+                                                </div>
                                             ))}
 
 
@@ -1779,7 +2284,7 @@ export function ChatPage() {
 
                                                     animate={{ opacity: 1, y: 0 }}
 
-                                                    className="flex items-center gap-3 p-4"
+                                                    className="flex items-center gap-3 max-sm:p-2 sm:p-4"
 
                                                 >
 
@@ -1821,7 +2326,7 @@ export function ChatPage() {
                                                         animate={{ opacity: 1, y: 0 }}
                                                         exit={{ opacity: 0, y: -10 }}
                                                         transition={{ duration: 0.3, delay: 0.2 }}
-                                                        className="flex flex-wrap gap-2 px-4 pt-2"
+                                                        className="flex max-sm:flex-col max-sm:items-stretch max-sm:gap-2 sm:flex-row sm:flex-wrap sm:gap-2 px-4 pt-2 pb-1 sm:max-h-none"
                                                     >
                                                         {followUpQuestions.map((q, i) => (
                                                             <motion.button
@@ -1833,7 +2338,7 @@ export function ChatPage() {
                                                                     setFollowUpQuestions([]);
                                                                     handleSend(q);
                                                                 }}
-                                                                className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-w-[280px] cursor-pointer"
+                                                                className="text-xs px-3 py-2 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/15 text-accent hover:border-accent/40 transition-all duration-200 text-left leading-snug max-sm:max-w-full sm:max-w-[280px] cursor-pointer"
                                                             >
                                                                 {q}
                                                             </motion.button>
@@ -1850,7 +2355,7 @@ export function ChatPage() {
 
 
 
-                                    <div className="w-full bg-gradient-to-t from-white dark:from-zinc-950 to-transparent pb-4 sm:pb-6 pt-4 z-40">
+                                    <div className="w-full bg-gradient-to-t from-white dark:from-zinc-950 to-transparent max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6 pt-4 z-40">
 
                                         <div className="mx-auto max-w-4xl px-4 relative">
 
@@ -1999,34 +2504,24 @@ export function ChatPage() {
 
 
                                             <QuotedTextPreview
-
                                                 quotedText={quotedText}
-
                                                 onClear={() => setQuotedText(null)}
-
                                             />
-
-                                           
 
                                             <ChatInput
-
                                                 onSend={selectedLanguage ? handleTranslate : handleSend}
-
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : t('chat.inputPlaceholder') || "How can I help?") : ""}
-
+                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : "Ask anything...") : ""}
                                                 disabled={isLoading || !isConnected}
-
                                                 onVoiceToggle={() => setIsVoiceMode(true)}
-
                                             />
 
-                                            {/* Compact Language Dropdown */}
-                                            <div className="mt-2 flex items-center gap-2 relative" style={{zIndex:50}}>
+                                            {/* DESKTOP/TABLET: Desktop original components intact */}
+                                            <div className="mt-2 flex items-center gap-2 relative max-sm:hidden" style={{ zIndex: 50 }}>
                                                 <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground-muted/60 shrink-0">Respond in:</span>
                                                 <div className="relative">
                                                     <button
                                                         onClick={() => setIsLangDropdownOpen(o => !o)}
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:border-accent/50 hover:text-white transition-all"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 max-sm:min-h-[44px] rounded-full text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:border-accent/50 hover:text-white transition-all"
                                                     >
                                                         <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.flag}</span>
                                                         <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'English'}</span>
@@ -2054,11 +2549,72 @@ export function ChatPage() {
                                                 </div>
                                             </div>
 
-                                            <p className="mt-2 text-center text-[10px] text-zinc-400 dark:text-zinc-500">
-
+                                            <p className="mt-2 text-center text-[10px] text-zinc-400 dark:text-zinc-500 max-sm:hidden">
                                                 {t('chat.disclaimer') || "Content generated by AI may contain errors."}
-
                                             </p>
+
+                                            {/* MOBILE: Collapsible Footer Panel */}
+                                            <div className="sm:hidden w-full flex flex-col items-center mt-3 relative">
+                                                <div
+                                                    onClick={() => setIsMobileFooterExpanded(e => !e)}
+                                                    className="w-10 h-1.5 rounded-full bg-zinc-300 dark:bg-white/20 cursor-pointer transition-all hover:bg-zinc-400 dark:hover:bg-white/30"
+                                                />
+                                                <AnimatePresence>
+                                                    {isMobileFooterExpanded && !isTyping && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: -15, height: 0 }}
+                                                            animate={{ opacity: 1, y: 0, height: "auto" }}
+                                                            exit={{ opacity: 0, y: -15, height: 0 }}
+                                                            transition={{ duration: 0.25, ease: "easeOut" }}
+                                                            className="flex flex-col items-center justify-center overflow-visible pt-4 w-full"
+                                                        >
+                                                            <div className="relative" style={{ zIndex: 60 }}>
+                                                                <button
+                                                                    onClick={() => setIsLangDropdownOpen(o => !o)}
+                                                                    className="flex items-center justify-center gap-1.5 px-4 py-1.5 min-h-[36px] rounded-full text-[13px] font-medium border border-white/10 bg-black/40 dark:bg-white/5 text-white dark:text-zinc-300 hover:border-accent/50 hover:text-white transition-all shadow-sm backdrop-blur-md"
+                                                                >
+                                                                    <span className="text-[14px]">{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.flag}</span>
+                                                                    <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'English'}</span>
+                                                                    <ChevronDown className={cn("h-3.5 w-3.5 opacity-60 transition-transform", isLangDropdownOpen && "rotate-180")} />
+                                                                </button>
+                                                                <AnimatePresence>
+                                                                    {isLangDropdownOpen && (
+                                                                        <motion.div
+                                                                            initial={{ opacity: 0, y: 10, scale: 0.95, x: "-50%" }}
+                                                                            animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
+                                                                            exit={{ opacity: 0, y: 10, scale: 0.95, x: "-50%" }}
+                                                                            transition={{ duration: 0.15 }}
+                                                                            style={{ transformOrigin: 'bottom center' }}
+                                                                            className="absolute left-1/2 bottom-full mb-3 w-[280px] rounded-2xl border border-white/10 bg-zinc-900/95 backdrop-blur-xl shadow-2xl p-2 z-[100]"
+                                                                        >
+                                                                            <div className="max-h-[300px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                                                                {TRANSLATE_LANGUAGES.map(lang => (
+                                                                                    <button
+                                                                                        key={lang.code || 'en'}
+                                                                                        onClick={() => { setSelectedLanguage(lang.code); setIsLangDropdownOpen(false); }}
+                                                                                        className={cn(
+                                                                                            "flex items-center gap-4 w-full px-4 py-3.5 rounded-xl text-[14px] font-medium transition-all",
+                                                                                            selectedLanguage === lang.code
+                                                                                                ? "bg-accent text-white shadow-md"
+                                                                                                : "text-zinc-400 hover:bg-white/5 hover:text-white active:bg-white/10"
+                                                                                        )}
+                                                                                    >
+                                                                                        <span className="text-xl">{lang.flag}</span>
+                                                                                        <span>{lang.label}</span>
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </motion.div>
+                                                                    )}
+                                                                </AnimatePresence>
+                                                            </div>
+                                                            <p className="mt-3 mb-1 text-center text-[11px] text-zinc-400/80 dark:text-zinc-500 max-w-[280px] leading-relaxed tracking-wide">
+                                                                {t('chat.disclaimer') || "DigiLab Learning Assistant can make mistakes. Verify important information."}
+                                                            </p>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
 
                                         </div>
 
@@ -2097,9 +2653,7 @@ export function ChatPage() {
                                 <div className="space-y-2">
 
                                     <div className="h-12 w-12 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
-
                                         <MessageSquare className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-
                                     </div>
 
                                     <h3 className="text-xl font-semibold text-zinc-900 dark:text-white">Chat Limit Exceeded</h3>

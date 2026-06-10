@@ -82,7 +82,7 @@ class ChatResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     reference_links: List[ReferenceLink] = []
-    follow_up_questions: Optional[List[str]] = None
+    follow_up_questions: Optional[Dict[str, Any]] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -255,6 +255,19 @@ async def health_check():
     }
 
 
+def _switch_model_if_requested(model_name: Optional[str]):
+    if model_name and chatbot:
+        from llm_client import AVAILABLE_MODELS
+        matched_config = None
+        for cfg in AVAILABLE_MODELS.values():
+            if cfg.display_name.lower() == model_name.lower() or cfg.id.lower() == model_name.lower():
+                matched_config = cfg
+                break
+        if matched_config and chatbot.model_config != matched_config:
+            print(f"🔄 Switching chatbot model to: {matched_config.display_name}")
+            chatbot.switch_model(matched_config)
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: QuestionRequest):
     """
@@ -270,12 +283,13 @@ async def chat(request: QuestionRequest):
 
     try:
         # ── 1. Get chatbot answer ──
+        _switch_model_if_requested(request.model)
+
         # Check if the chatbot object has ask_question_with_follow_ups, 
         # otherwise fallback to ask_question
         if hasattr(chatbot, 'ask_question_with_follow_ups'):
             result = chatbot.ask_question_with_follow_ups(
                 question=request.question.strip(),
-                model=request.model,
                 use_history=request.use_history if request.use_history is not None else True,
             )
         else:
@@ -329,6 +343,7 @@ async def chat_simple(request: QuestionRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
+        _switch_model_if_requested(request.model)
         result = chatbot.ask_question(
             question=request.question.strip(),
             use_history=request.use_history if request.use_history is not None else True,

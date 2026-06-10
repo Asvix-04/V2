@@ -1,7 +1,7 @@
 import { cn } from "../../lib/utils";
-import { MdPerson, MdSmartToy, MdVolumeUp, MdContentCopy, MdCheck, MdLink } from "react-icons/md";
+import { MdVolumeUp, MdContentCopy, MdCheck, MdLink } from "react-icons/md";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 // Helper to escape regex special characters
 function escapeRegExp(string) {
@@ -28,9 +28,9 @@ function processText(text, links) {
                 if (pathParts.length > 0) {
                     mainTitle = pathParts[pathParts.length - 1].replace(/[-_]/g, ' ');
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
-        
+
         const displayTitle = mainTitle || "Resource";
         linkEntries.push({ phrase: displayTitle, url: url, id: linkId });
 
@@ -91,7 +91,7 @@ function formatMessage(text, links = []) {
     if (!text) return null;
     const boldRegex = /(\*\*.*?\*\*)/g;
     const parts = text.split(boldRegex);
-    
+
     return parts.map((part, i) => {
         if (part.startsWith("**") && part.endsWith("**")) {
             const content = part.slice(2, -2);
@@ -108,8 +108,45 @@ function formatMessage(text, links = []) {
 export function MessageBubble({ message }) {
     const isUser = message.role === "user";
     const [copied, setCopied] = useState(false);
+    const [showMobileActions, setShowMobileActions] = useState(false);
+    const [showUserTimestamp, setShowUserTimestamp] = useState(false);
+    const bubbleRef = useRef(null);
+    const userBubbleRef = useRef(null);
 
-    const handleSpeak = () => {
+    // Outside-click handler for AI message actions panel
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (bubbleRef.current && !bubbleRef.current.contains(e.target)) {
+                setShowMobileActions(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        // Use 'click' not 'touchstart' — fires AFTER the bubble's own onClick,
+        // preventing the race that re-opens the panel on the second tap.
+        document.addEventListener("click", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+            document.removeEventListener("click", handleClickOutside);
+        };
+    }, []);
+
+    // Outside-click handler for USER message timestamp
+    useEffect(() => {
+        const handleUserClickOutside = (e) => {
+            if (userBubbleRef.current && !userBubbleRef.current.contains(e.target)) {
+                setShowUserTimestamp(false);
+            }
+        };
+        document.addEventListener("mousedown", handleUserClickOutside);
+        document.addEventListener("click", handleUserClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleUserClickOutside);
+            document.removeEventListener("click", handleUserClickOutside);
+        };
+    }, []);
+
+    const handleSpeak = (e) => {
+        if (e) e.stopPropagation();
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(message.content);
@@ -117,12 +154,13 @@ export function MessageBubble({ message }) {
         }
     };
 
-    const handleCopy = async () => {
+    const handleCopy = async (e) => {
+        if (e) e.stopPropagation();
         try {
             await navigator.clipboard.writeText(message.content);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch (err) {}
+        } catch (err) { }
     };
 
     // Detect quoted message pattern
@@ -132,11 +170,17 @@ export function MessageBubble({ message }) {
     if (isUser) {
         return (
             <motion.div
+                ref={userBubbleRef}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex w-full justify-end space-x-2 px-4 group"
+                className="flex w-full justify-end max-sm:px-0 sm:px-4 group mb-6"
+                onClick={() => {
+                    if (window.innerWidth < 640) {
+                        setShowUserTimestamp(prev => !prev);
+                    }
+                }}
             >
-                <div className="max-w-[70%] rounded-2xl rounded-tr-sm bg-accent text-white px-4 py-2 text-sm leading-relaxed shadow-sm">
+                <div className="max-sm:max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] rounded-[24px] bg-accent max-sm:bg-accent/75 max-sm:backdrop-blur-xl max-sm:border max-sm:border-white/10 text-white px-5 py-3.5 text-[15px] leading-relaxed shadow-sm">
 
                     {quoteMatch ? (
                         <div className="space-y-2">
@@ -149,15 +193,20 @@ export function MessageBubble({ message }) {
                         message.content
                     )}
 
-                    <div className="max-h-0 overflow-hidden opacity-0 group-hover:max-h-6 group-hover:opacity-100 group-hover:mt-1 transition-all duration-200">
-                        <span className="text-[10px] opacity-60 text-accent-100">
+                    {/* Desktop: hover-controlled. Mobile: state-controlled. */}
+                    <div className={cn(
+                        "overflow-hidden transition-all duration-200",
+                        // Desktop hover behavior (unchanged) — sm:group-hover: is the correct Tailwind order
+                        "sm:max-h-0 sm:opacity-0 sm:mt-0 sm:group-hover:max-h-6 sm:group-hover:opacity-100 sm:group-hover:mt-1",
+                        // Mobile: driven by showUserTimestamp state
+                        showUserTimestamp
+                            ? "max-sm:max-h-6 max-sm:opacity-100 max-sm:mt-1"
+                            : "max-sm:max-h-0 max-sm:opacity-0 max-sm:mt-0"
+                    )}>
+                        <span className="text-[10px] opacity-60 text-white/80">
                             {message.timestamp}
                         </span>
                     </div>
-                </div>
-
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 border border-black/5 dark:bg-white/10 dark:border-white/10">
-                    <MdPerson size={14} className="text-foreground" />
                 </div>
             </motion.div>
         );
@@ -168,46 +217,63 @@ export function MessageBubble({ message }) {
         <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex w-full justify-start space-x-3 px-4 group"
+            className="flex w-full justify-start max-sm:pl-3 max-sm:pr-1 sm:px-4 group mb-8"
+            ref={bubbleRef}
         >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10 border border-accent/20">
-                <MdSmartToy size={18} className="text-accent" />
-            </div>
-
+            {/* The assistant text should naturally fill the available width (up to the parent's 900px max-width) */}
             <div className="w-full min-w-0">
-                <div className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                    {formatMessage(message.content, message.referenceLinks || message.reference_links)}
+                {/* Clickable area for mobile to reveal actions */}
+                <div
+                    className="cursor-default sm:cursor-text"
+                    onClick={() => {
+                        // Only toggle on mobile screens, desktop uses hover
+                        if (window.innerWidth < 640) {
+                            setShowMobileActions(prev => !prev);
+                        }
+                    }}
+                >
+                    <div className="text-[15px] leading-relaxed text-foreground whitespace-pre-wrap">
+                        {formatMessage(message.content, message.referenceLinks || message.reference_links)}
+                    </div>
+
+                    {/* Sublte footer for links - only if they exist but weren't necessarily all matched */}
+                    {(message.referenceLinks || message.reference_links)?.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/5">
+                            <div className="flex flex-wrap gap-x-4 gap-y-2">
+                                <div className="flex items-center gap-1.5 no-underline">
+                                    <MdLink size={14} className="text-accent/50" />
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-foreground-muted/60">Sources</span>
+                                </div>
+                                {(message.referenceLinks || message.reference_links).map((link, i) => (
+                                    <a
+                                        key={i}
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-accent hover:text-accent-bright transition-colors underline decoration-accent/20 underline-offset-4 font-medium"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        link{i + 1}.
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Sublte footer for links - only if they exist but weren't necessarily all matched */}
-                {(message.referenceLinks || message.reference_links)?.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/5">
-                        <div className="flex flex-wrap gap-x-4 gap-y-2">
-                             <div className="flex items-center gap-1.5 no-underline">
-                                 <MdLink size={14} className="text-accent/50" />
-                                 <span className="text-[10px] font-bold uppercase tracking-widest text-foreground-muted/60">Sources</span>
-                             </div>
-                             {(message.referenceLinks || message.reference_links).map((link, i) => (
-                                 <a
-                                     key={i}
-                                     href={link.url}
-                                     target="_blank"
-                                     rel="noopener noreferrer"
-                                     className="text-xs text-accent hover:text-accent-bright transition-colors underline decoration-accent/20 underline-offset-4 font-medium"
-                                 >
-                                     link{i + 1}.
-                                 </a>
-                             ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Actions */}
-                <div className="mt-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-
+                {/* Actions Row - revealed on tap (mobile) or hover (desktop) */}
+                <div
+                    className={cn(
+                        "flex flex-wrap items-center gap-y-2 gap-x-1 transition-all duration-200 overflow-hidden",
+                        showMobileActions
+                            ? "opacity-100 max-h-20 mt-3"
+                            : "max-sm:opacity-0 max-sm:max-h-0 max-sm:mt-0",
+                        "sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 sm:mt-3 sm:max-h-20 sm:overflow-visible"
+                    )}
+                >
                     <button
                         onClick={handleCopy}
-                        className="flex items-center space-x-1 rounded-md px-2 py-1 text-xs text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                        className="flex items-center space-x-1 rounded-md px-2 py-1 text-xs text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors max-sm:min-h-[36px]"
                         title="Copy"
                     >
                         {copied ? <MdCheck size={14} /> : <MdContentCopy size={14} />}
@@ -216,7 +282,7 @@ export function MessageBubble({ message }) {
 
                     <button
                         onClick={handleSpeak}
-                        className="flex items-center space-x-1 rounded-md px-2 py-1 text-xs text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                        className="flex items-center space-x-1 rounded-md px-2 py-1 text-xs text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors max-sm:min-h-[36px]"
                         title="Read aloud"
                     >
                         <MdVolumeUp size={14} />
@@ -230,11 +296,11 @@ export function MessageBubble({ message }) {
                     {message.modelName && (
                         <span className={cn(
                             "text-[10px] px-1.5 py-0.5 rounded-full ml-3 border font-medium bg-black/5 dark:bg-white/5",
-                            message.modelName.includes('Flash') ? "text-blue-500 border-blue-500/20" : 
-                            message.modelName.includes('Original') ? "text-zinc-500 border-zinc-500/20" :
-                            "text-purple-500 border-purple-500/20"
+                            message.modelName.includes('Flash') ? "text-blue-500 border-blue-500/20" :
+                                message.modelName.includes('Original') ? "text-zinc-500 border-zinc-500/20" :
+                                    "text-purple-500 border-purple-500/20"
                         )}>
-                            via {message.modelName}
+                            via {message.modelName.replace('Gemini ', '')}
                         </span>
                     )}
 

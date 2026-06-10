@@ -42,12 +42,12 @@ export function HomePage() {
     }, [navigate]);
 
     return (
-        <PageTransition className="flex flex-col space-y-32 pb-24">
+        <PageTransition className="flex flex-col space-y-24 sm:space-y-32 pb-28 md:pb-24">
             {/* Hero Section */}
-            <section className="relative flex min-h-[60vh] sm:min-h-[80vh] flex-col items-center justify-center text-center px-4 sm:px-6">
+            <section className="relative flex min-h-[75svh] sm:min-h-[80vh] flex-col items-center justify-center text-center px-4 sm:px-6">
                 <motion.div
                     style={{ y, opacity }}
-                    className="z-10 flex flex-col items-center space-y-6 sm:space-y-8"
+                    className="z-10 flex flex-col items-center space-y-5 sm:space-y-8"
                 >
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
@@ -63,7 +63,7 @@ export function HomePage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.1 }}
-                        className="max-w-4xl text-3xl font-semibold tracking-tight sm:text-5xl lg:text-7xl xl:text-8xl"
+                        className="max-w-4xl text-3xl font-semibold tracking-tight leading-tight sm:text-5xl lg:text-7xl xl:text-8xl"
                     >
                         <span className="bg-gradient-to-b from-foreground via-foreground/90 to-foreground/70 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
                             {t('home.hero.title1')}
@@ -110,9 +110,9 @@ export function HomePage() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-6 md:auto-rows-[180px]">
+                <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-6 md:auto-rows-[180px]">
                     {/* Hero Card */}
-                    <Card className="col-span-1 md:col-span-4 md:row-span-2 p-8 flex flex-col justify-end group text-foreground dark:text-white border-border-base dark:border-white/5">
+                    <Card className="col-span-2 md:col-span-4 md:row-span-2 p-6 sm:p-8 flex flex-col justify-end group text-foreground dark:text-white border-border-base dark:border-white/5">
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60 z-0 opacity-0 dark:opacity-100 transition-opacity" />
                         <Logo className="h-12 w-12 text-accent mb-4 z-10" />
                         <h3 className="text-2xl font-semibold z-10">{t('home.features.card1.title')}</h3>
@@ -122,8 +122,8 @@ export function HomePage() {
                     </Card>
 
                     {/* Feature 2 */}
-                    <Card className="col-span-1 md:col-span-2 md:row-span-1 p-6 flex flex-col justify-between text-foreground dark:text-white border-border-base dark:border-white/5">
-                        <Zap className="h-8 w-8 text-yellow-500 dark:text-yellow-400" />
+                    <Card className="col-span-1 md:col-span-2 md:row-span-1 p-5 sm:p-6 flex flex-col justify-between text-foreground dark:text-white border-border-base dark:border-white/5">
+                        <Zap className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-500 dark:text-yellow-400" />
                         <div>
                             <h3 className="text-lg font-medium">{t('home.features.card2.title')}</h3>
                             <p className="text-sm text-foreground-muted dark:text-gray-400">{t('home.features.card2.desc')}</p>
@@ -131,8 +131,8 @@ export function HomePage() {
                     </Card>
 
                     {/* Feature 3 */}
-                    <Card className="col-span-1 md:col-span-2 md:row-span-1 p-6 flex flex-col justify-between text-foreground dark:text-white border-border-base dark:border-white/5">
-                        <BrainCircuit className="h-8 w-8 text-purple-500 dark:text-purple-400" />
+                    <Card className="col-span-1 md:col-span-2 md:row-span-1 p-5 sm:p-6 flex flex-col justify-between text-foreground dark:text-white border-border-base dark:border-white/5">
+                        <BrainCircuit className="h-6 w-6 sm:h-8 sm:w-8 text-purple-500 dark:text-purple-400" />
                         <div>
                             <h3 className="text-lg font-medium">{t('home.features.card3.title')}</h3>
                             <p className="text-sm text-foreground-muted dark:text-gray-400">{t('home.features.card3.desc')}</p>
@@ -140,7 +140,7 @@ export function HomePage() {
                     </Card>
 
                     {/* Feature 4 (Wide) */}
-                    <Card className="col-span-1 md:col-span-6 md:row-span-1 p-8 flex items-center justify-between text-foreground dark:text-white border-border-base dark:border-white/5">
+                    <Card className="col-span-2 md:col-span-6 md:row-span-1 p-6 sm:p-8 flex items-center justify-between text-foreground dark:text-white border-border-base dark:border-white/5">
                         <div className="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 md:space-x-8">
                             <div>
                                 <h3 className="text-xl font-semibold">{t('home.features.card4.title')}</h3>
@@ -160,7 +160,7 @@ export function HomePage() {
 
             {/* Features Included Section */}
             <section className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                <div className="mb-16 text-center">
+                <div className="mb-8 sm:mb-16 text-center">
                     <motion.h2
                         initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
@@ -190,7 +190,7 @@ export function HomePage() {
                         viewport={{ once: true }}
                         transition={{ duration: 0.6, delay: 0.2 }}
                     >
-                        <Card className="relative flex flex-col p-8 border-accent/20 dark:border-accent/20 bg-white/40 backdrop-blur-xl shadow-xl dark:bg-accent/[0.02]">
+                        <Card className="relative flex flex-col p-6 sm:p-8 border-accent/20 dark:border-accent/20 bg-white/40 backdrop-blur-xl shadow-xl dark:bg-accent/[0.02]">
                             <div className="mb-6 text-center">
                                 <div className="inline-flex items-center rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-[10px] font-mono font-medium text-green-500 mb-4">
                                     100% FREE
