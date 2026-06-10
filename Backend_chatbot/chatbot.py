@@ -1784,6 +1784,27 @@ SELF-CHECK: Before finishing, scan your answer. For every name, date, and specif
     def clear_history(self):
         """Clear conversation history."""
         self.conversation_history = []
+
+    def set_history(self, history: Optional[List[Dict[str, Any]]] = None):
+        normalized_history = []
+
+        for turn in history or []:
+            question = (turn.get('question') or '').strip()
+            answer = (turn.get('answer') or '').strip()
+
+            if not question or not answer:
+                continue
+
+            normalized_history.append({
+                'question': question,
+                'answer': answer,
+                'sources': turn.get('sources') or [],
+                'expanded_queries': turn.get('expanded_queries') or [],
+                'validation': turn.get('validation') or {},
+            })
+
+        self.conversation_history = normalized_history
+
     def get_history(self):
         return self.conversation_history
 

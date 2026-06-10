@@ -163,6 +163,14 @@ class UnifiedLLMClient:
                         continue
                     print(f"❌ Rate limit persisted after {max_retries} retries")
                     return None
+                if "503" in error_str or "UNAVAILABLE" in error_str or "high demand" in error_str.lower():
+                    if attempt < max_retries:
+                        wait = 3 * (2 ** attempt)
+                        print(f"⏳ Gemini 503 unavailable — retrying in {wait}s ({attempt + 1}/{max_retries})...")
+                        time.sleep(wait)
+                        continue
+                    print(f"❌ Gemini remained unavailable after {max_retries} retries")
+                    return None
                 raise
         return None
 
