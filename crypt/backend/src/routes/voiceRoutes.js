@@ -41,6 +41,14 @@ router.post('/chat/simple', voiceController.chatSimple);
 // @route   POST /api/voice/clear-history
 router.post('/clear-history', voiceController.clearHistory);
 
+// @route   GET /api/voice/metrics/summary
+router.get('/metrics/summary', voiceController.getMetricsSummary);
+
+// @route   POST /api/voice/metrics/event
+// @desc    Frontend-reported failure event (e.g. axios "Network Error")
+// @access  Public
+router.post('/metrics/event', voiceController.recordClientError);
+
 // @route   GET /api/voice/health
 // @desc    Check voice service health
 // @access  Public

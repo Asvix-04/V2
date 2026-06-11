@@ -195,7 +195,7 @@ export function Features() {
               <p className="text-foreground-muted mb-8 max-w-xl mx-auto">
                 Experience the power of graph-based learning with contextual intelligence at your fingertips.
               </p>
-              <Link to="/dashboard">
+              <Link to="/workspace">
                 <Button size="lg" className="h-12 px-8 text-base group">
                   Get Started Now
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />

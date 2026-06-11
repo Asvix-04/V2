@@ -5,9 +5,9 @@ import {
     PieChart, Pie, Cell, Label
 } from 'recharts';
 import { Card } from './ui/Card';
-import { 
-    MessageSquare, Clock, AlertCircle, FileCheck, 
-    ArrowUpRight, ArrowDownRight, Activity, 
+import {
+    MessageSquare, Clock, AlertCircle, FileCheck,
+    ArrowUpRight, ArrowDownRight, Activity,
     ChevronRight, Info, Globe, ShieldCheck, Database
 } from 'lucide-react';
 
@@ -36,7 +36,7 @@ const offTopicData = [
 
 const MetricTooltip = ({ info }) => (
     <div className="group/tooltip relative inline-block z-50">
-        <div className="flex items-center justify-center w-4 h-4 rounded-full bg-white/5 border border-white/10 hover:bg-white/20 hover:border-white/30 transition-all cursor-help active:scale-95">
+        <div className="flex items-center justify-center w-4 h-4 rounded-full bg-black/5 border border-black/10 dark:bg-white/5 dark:border-white/10 hover:bg-black/10 hover:border-black/20 dark:hover:bg-white/20 dark:hover:border-white/30 transition-all cursor-help active:scale-95">
             <span className="text-[10px] font-bold text-foreground-muted group-hover/tooltip:text-foreground">i</span>
         </div>
         <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-black/95 backdrop-blur-2xl border border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0">
@@ -50,17 +50,17 @@ const MetricTooltip = ({ info }) => (
 );
 
 const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, bgGradient, className, info }) => (
-    <Card spotlight={false} className={`p-4 flex flex-col justify-between border-white/5 bg-black/40 backdrop-blur-md relative overflow-visible group min-h-[110px] ${className}`}>
+    <Card spotlight={false} className={`p-4 flex flex-col justify-between border-black/5 dark:border-white/5 relative overflow-visible group min-h-[110px] ${className}`}>
         <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
             <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity duration-500 scale-125`}>
                 <Icon size={40} className={colorClass} />
             </div>
             <div className={`absolute bottom-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-700 bg-gradient-to-r ${bgGradient}`} />
         </div>
-        
+
         <div className="flex items-center justify-between mb-1.5 relative z-10">
             <div className="flex items-center space-x-2.5">
-                <div className={`p-1.5 rounded-lg bg-white/5 border border-white/10 ${colorClass}`}>
+                <div className={`p-1.5 rounded-lg bg-black/5 border border-black/10 dark:bg-white/5 dark:border-white/10 ${colorClass}`}>
                     <Icon size={16} />
                 </div>
                 <span className="text-xs font-medium text-foreground-muted truncate">{label}</span>
@@ -76,44 +76,91 @@ const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, b
                 <span className="text-foreground-muted ml-1 opacity-60">last 7 days</span>
             </div>
         </div>
-        
+
         {/* Subtle Decorative Element */}
         <div className={`absolute bottom-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-700 bg-gradient-to-r ${bgGradient}`} />
     </Card>
 );
 
-const SystemStatusItem = ({ label, subLabel, icon: Icon, status = "100% uptime", segments = 60 }) => (
+const SystemStatusItem = ({ label, subLabel, icon: Icon, status = "100% uptime", segments = 60, successRate = 100 }) => (
     <div className="flex items-center py-2.5">
         <div className="flex flex-col w-40">
             <div className="flex items-center space-x-2">
-                <Icon size={14} className="text-emerald-400" />
+                <Icon size={14} className={successRate < 95 ? "text-rose-400" : "text-emerald-400"} />
                 <span className="text-sm font-medium text-foreground/90">{label}</span>
             </div>
             {subLabel && <span className="text-[10px] text-foreground-muted ml-6">{subLabel}</span>}
         </div>
         <div className="flex-1 flex space-x-[2px] mx-4">
             {Array.from({ length: segments }).map((_, i) => {
-                // Randomly inject some yellow and red segments for visual variety as requested
-                // Seed based on labeling to keep it stable
-                const seed = (label.length + i) % 100;
-                let color = "bg-emerald-500";
-                if (seed > 95) color = "bg-rose-500";
-                else if (seed > 88) color = "bg-amber-400";
-                else if (seed > 82) color = "bg-blue-400";
+                // Determine color based on actual success rate
+                // We add some randomness for a "live" feel, but weighted by success rate
+                const threshold = successRate;
+                const seed = (label.length + i * 13) % 100;
+                const isHealthy = seed < threshold;
+
+                let color = isHealthy ? "bg-emerald-500" : "bg-rose-500";
 
                 return (
-                    <div 
-                        key={i} 
-                        className={`h-4 flex-1 rounded-[1px] ${color} opacity-90 hover:opacity-100 transition-opacity`}
+                    <div
+                        key={i}
+                        className={`h-4 flex-1 rounded-[1px] ${color} opacity-80 hover:opacity-100 transition-opacity`}
                     />
                 );
             })}
         </div>
         <div className="w-24 text-right">
-            <span className="text-[11px] font-medium text-foreground-muted">{status}</span>
+            <span className={`text-[11px] font-medium ${successRate < 95 ? 'text-rose-500' : 'text-foreground-muted'}`}>{status}</span>
         </div>
     </div>
 );
+
+const HighTrafficItem = ({ label, icon: Icon, healthHistory = [], pctChange = 0 }) => {
+    const currentHealth = healthHistory.length > 0 ? healthHistory[healthHistory.length - 1].health : 100;
+    const isDownside = pctChange < 0 || currentHealth < 95;
+    const color = isDownside ? "#f43f5e" : "#10b981"; // Red-500 or Emerald-500
+
+    return (
+        <div className="flex items-center py-4">
+            <div className="flex flex-col w-40">
+                <div className="flex items-center space-x-2">
+                    <Icon size={14} className={isDownside ? "text-rose-400" : "text-emerald-400"} />
+                    <span className="text-sm font-medium text-foreground/90">{label}</span>
+                </div>
+                <div className={`text-[10px] ml-6 mt-1 flex items-center ${isDownside ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {isDownside ? <ArrowDownRight size={10} className="mr-0.5" /> : <ArrowUpRight size={10} className="mr-0.5" />}
+                    <span>{Math.abs(pctChange)}% stability</span>
+                </div>
+            </div>
+            <div className="flex-1 h-12 mx-4 bg-black/5 border border-black/10 dark:bg-white/5 dark:border-white/10 rounded-lg overflow-hidden p-1 group/graph">
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={healthHistory}>
+                        <defs>
+                            <linearGradient id="colorHealth" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={color} stopOpacity={0.4} />
+                                <stop offset="95%" stopColor={color} stopOpacity={0} />
+                            </linearGradient>
+                        </defs>
+                        <Area
+                            type="monotone"
+                            dataKey="health"
+                            stroke={color}
+                            strokeWidth={2}
+                            fillOpacity={1}
+                            fill="url(#colorHealth)"
+                            isAnimationActive={true}
+                        />
+                    </AreaChart>
+                </ResponsiveContainer>
+            </div>
+            <div className="w-24 text-right">
+                <span className={`text-[11px] font-bold ${isDownside ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {healthHistory.length > 0 ? `${healthHistory[healthHistory.length - 1].health}% Health` : "100% Health"}
+                </span>
+            </div>
+        </div>
+    );
+};
 
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -149,7 +196,7 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
                     <span className="text-[10px] text-foreground-muted">{subLabel.primary}</span>
                 </div>
                 <div className="flex items-center space-x-2.5">
-                    <div className="w-2 h-2 rounded-sm bg-white/5" />
+                    <div className="w-2 h-2 rounded-sm bg-black/10 dark:bg-white/5" />
                     <span className="text-[10px] text-foreground-muted">{subLabel.secondary}</span>
                 </div>
             </div>
@@ -169,10 +216,10 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
                         endAngle={-270}
                     >
                         {data.map((entry, index) => (
-                            <Cell 
-                                key={`cell-${index}`} 
-                                fill={entry.color} 
-                                stroke="none" 
+                            <Cell
+                                key={`cell-${index}`}
+                                fill={entry.color}
+                                stroke="none"
                             />
                         ))}
                     </Pie>
@@ -185,31 +232,119 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
     </div>
 );
 
+import chatbotApi from '../lib/chatbotApi';
+
 export function PerformanceStats() {
+    const [metrics, setMetrics] = React.useState(null);
+    const [isLoading, setIsLoading] = React.useState(true);
+    const [timeWindow, setTimeWindow] = React.useState('30d');
+    const [isWindowMenuOpen, setIsWindowMenuOpen] = React.useState(false);
+
+    const windowOptions = [
+        { label: 'Last 24 hours', value: '24h' },
+        { label: 'Last 7 days', value: '7d' },
+        { label: 'Last 30 days', value: '30d' }
+    ];
+
+    React.useEffect(() => {
+        const fetchMetrics = async () => {
+            try {
+                const data = await chatbotApi.getMetricsSummary(timeWindow);
+                setMetrics(data);
+            } catch (err) {
+                console.error("Failed to fetch metrics:", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchMetrics();
+        // Refresh every 30 seconds
+        const interval = setInterval(fetchMetrics, 30000);
+        return () => clearInterval(interval);
+    }, [timeWindow]);
+
+    const displayMetrics = {
+        totalQuestions: metrics?.total_questions?.toLocaleString() || "0",
+        avgResponseTime: metrics?.avg_response_time ? `${metrics.avg_response_time} s` : "0 s",
+        successRate: metrics?.success_rate ? `${metrics.success_rate}%` : "0%",
+        failureRate: metrics?.failure_rate ? `${metrics.failure_rate}%` : "0%",
+        groundingRate: metrics?.grounding_rate || 0,
+        onTopicRate: metrics?.on_topic_rate || 0,
+    };
+
+    const liveSourceData = [
+        { name: 'With Sources', value: displayMetrics.groundingRate, color: '#3B82F6' },
+        { name: 'Without Sources', value: 100 - displayMetrics.groundingRate, color: 'rgba(255, 255, 255, 0.05)' },
+    ];
+
+    const liveOffTopicData = [
+        { name: 'On-Topic', value: displayMetrics.onTopicRate, color: '#6366F1' },
+        { name: 'Off-Topic', value: 100 - displayMetrics.onTopicRate, color: 'rgba(255, 255, 255, 0.05)' },
+    ];
+
+    const liveTrendData = metrics?.history && metrics.history.length > 0
+        ? metrics.history
+        : [
+            { name: 'No Data', aiResponseTime: 0, networkLatency: 0 }
+        ];
+
+    const currentYearRange = `${new Date().toLocaleString('default', { month: 'short' })} ${new Date().getFullYear()}`;
+
     return (
-        <div className="space-y-6 container mx-auto max-w-5xl px-4 pb-12">
-            
+        <div className="space-y-6 w-full pb-4">
+
             {/* ROW 1: PERFORMANCE TREND + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md relative h-full overflow-visible">
+                    <Card spotlight={false} className="p-4 border-black/5 dark:border-white/5 relative h-full overflow-visible">
                         <div className="flex items-center justify-between mb-6">
                             <div>
                                 <div className="flex items-center space-x-2">
                                     <h3 className="text-lg font-bold text-foreground">Performance Trend</h3>
                                     <MetricTooltip info="Comparison of AI engine processing latency versus network transport time over the last 30 days." />
                                 </div>
-                                <p className="text-xs text-foreground-muted">Response Time Over the Last 30 Days</p>
+                                <p className="text-xs text-foreground-muted">Response Time Over the {windowOptions.find(o => o.value === timeWindow)?.label}</p>
                             </div>
-                            <div className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-white/10 transition-colors">
-                                <span className="text-[10px] font-medium text-foreground-muted">Last 30 days</span>
-                                <ChevronRight size={12} className="rotate-90 text-foreground-muted" />
+                            <div className="relative">
+                                <div
+                                    className="bg-black/5 border border-black/10 dark:bg-white/5 dark:border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-black/10 dark:hover:bg-white/10 transition-colors active:scale-95"
+                                    onClick={() => setIsWindowMenuOpen(!isWindowMenuOpen)}
+                                >
+                                    <span className="text-[10px] font-medium text-foreground-muted">
+                                        {windowOptions.find(o => o.value === timeWindow)?.label}
+                                    </span>
+                                    <ChevronRight size={12} className={`transition-transform duration-200 text-foreground-muted ${isWindowMenuOpen ? 'rotate-[-90deg]' : 'rotate-90'}`} />
+                                </div>
+
+                                {isWindowMenuOpen && (
+                                    <>
+                                        <div
+                                            className="fixed inset-0 z-40"
+                                            onClick={() => setIsWindowMenuOpen(false)}
+                                        />
+                                        <div className="absolute right-0 mt-2 w-32 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden z-50 shadow-2xl animate-in fade-in zoom-in duration-200 origin-top-right">
+                                            {windowOptions.map((option) => (
+                                                <button
+                                                    key={option.value}
+                                                    className={`w-full text-left px-3 py-2 text-[10px] transition-colors hover:bg-white/5 ${timeWindow === option.value ? 'text-blue-400 bg-blue-500/5' : 'text-foreground-muted'}`}
+                                                    onClick={() => {
+                                                        setTimeWindow(option.value);
+                                                        setIsWindowMenuOpen(false);
+                                                    }}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
 
                         <div className="h-[200px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                                <AreaChart data={liveTrendData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="colorAI" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4} />
@@ -220,27 +355,27 @@ export function PerformanceStats() {
                                             <stop offset="95%" stopColor="#60A5FA" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#64748b" strokeOpacity={0.15} vertical={false} />
                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={8} />
                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
                                     <Tooltip content={<CustomTooltip />} />
-                                    <Area 
-                                        type="monotone" 
-                                        dataKey="aiResponseTime" 
+                                    <Area
+                                        type="monotone"
+                                        dataKey="aiResponseTime"
                                         name="AI Response Time"
-                                        stroke="#3B82F6" 
-                                        strokeWidth={2} 
-                                        fillOpacity={1} 
-                                        fill="url(#colorAI)" 
+                                        stroke="#3B82F6"
+                                        strokeWidth={2}
+                                        fillOpacity={1}
+                                        fill="url(#colorAI)"
                                     />
-                                    <Area 
-                                        type="monotone" 
-                                        dataKey="networkLatency" 
+                                    <Area
+                                        type="monotone"
+                                        dataKey="networkLatency"
                                         name="Network Latency"
-                                        stroke="#60A5FA" 
-                                        strokeWidth={1} 
-                                        fillOpacity={1} 
-                                        fill="url(#colorNetwork)" 
+                                        stroke="#60A5FA"
+                                        strokeWidth={1}
+                                        fillOpacity={1}
+                                        fill="url(#colorNetwork)"
                                     />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -264,7 +399,7 @@ export function PerformanceStats() {
                         <MetricCard
                             icon={MessageSquare}
                             label="Total Questions Answered"
-                            value="12,540"
+                            value={displayMetrics.totalQuestions}
                             trend="up"
                             trendValue="8.4%"
                             colorClass="text-blue-400"
@@ -277,7 +412,7 @@ export function PerformanceStats() {
                         <MetricCard
                             icon={Clock}
                             label="Avg Response Time"
-                            value="1.84 s"
+                            value={displayMetrics.avgResponseTime}
                             trend="down"
                             trendValue="7.4%"
                             colorClass="text-emerald-400"
@@ -292,48 +427,56 @@ export function PerformanceStats() {
             {/* ROW 2: SYSTEM STATUS + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
+                    <Card spotlight={false} className="p-4 border-black/5 dark:border-white/5 h-full overflow-visible">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center space-x-4">
                                 <div className="flex items-center space-x-2">
                                     <h3 className="text-lg font-bold text-foreground">System Status</h3>
                                     <MetricTooltip info="Real-time health monitor and uptime metrics for core infrastructure components." />
                                 </div>
-                                <div className="text-[10px] text-foreground-muted font-medium bg-white/5 px-2 py-0.5 rounded border border-white/5">
-                                    Dec 2025 - Mar 2026
+                                <div className="text-[10px] text-foreground-muted font-medium bg-black/5 border border-black/5 dark:bg-white/5 dark:border-white/5 px-2 py-0.5 rounded">
+                                    {currentYearRange}
                                 </div>
                             </div>
-                            <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                                <Activity size={10} className="text-emerald-500 animate-pulse" />
-                                <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-wider">Operational</span>
+                            <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full border ${metrics?.status === 'outage' ? 'bg-rose-500/10 border-rose-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+                                <Activity size={10} className={`${metrics?.status === 'outage' ? 'text-rose-500' : 'text-emerald-500'} animate-pulse`} />
+                                <span className={`text-[9px] uppercase font-bold tracking-wider ${metrics?.status === 'outage' ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                    {metrics?.status === 'outage' ? 'Service Outage' : 'Operational'}
+                                </span>
                             </div>
                         </div>
-                        
+
                         <div className="divide-y divide-white/5">
-                            <SystemStatusItem label="API" icon={Globe} />
-                            <SystemStatusItem label="Production" subLabel="7 components" icon={Activity} />
-                            <SystemStatusItem label="Production Systems" subLabel="2 components" icon={Database} />
-                            <SystemStatusItem label="Preview Models" subLabel="9 components" icon={ShieldCheck} />
-                            <SystemStatusItem label="Website" icon={Globe} />
+                            <SystemStatusItem
+                                label="API"
+                                status={`${displayMetrics.successRate} uptime`}
+                                icon={Globe}
+                                successRate={metrics?.success_rate || 100}
+                            />
+                            <SystemStatusItem
+                                label="Production Systems"
+                                subLabel="2 components"
+                                status={metrics?.status === 'outage' ? "Outage" : "Operational"}
+                                icon={Database}
+                                successRate={metrics?.status === 'outage' ? 0 : 100}
+                            />
+                            <HighTrafficItem
+                                label="High Traffic"
+                                icon={Activity}
+                                healthHistory={metrics?.health_history}
+                                pctChange={metrics?.health_pct_change}
+                            />
                         </div>
 
                         {/* Status Legend */}
-                        <div className="flex items-center space-x-6 mt-6 pt-4 border-t border-white/5">
+                        <div className="flex items-center space-x-6 mt-6 pt-4 border-t border-black/5 dark:border-white/5">
                             <div className="flex items-center space-x-2">
                                 <div className="w-2 h-2 rounded-sm bg-emerald-500" />
                                 <span className="text-[10px] text-foreground-muted">Operational</span>
                             </div>
                             <div className="flex items-center space-x-2">
-                                <div className="w-2 h-2 rounded-sm bg-blue-400" />
-                                <span className="text-[10px] text-foreground-muted">Maintenance</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                                <div className="w-2 h-2 rounded-sm bg-amber-400" />
-                                <span className="text-[10px] text-foreground-muted">Partial Outage</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
                                 <div className="w-2 h-2 rounded-sm bg-rose-500" />
-                                <span className="text-[10px] text-foreground-muted">Major Outage</span>
+                                <span className="text-[10px] text-foreground-muted">System Downside / Outage</span>
                             </div>
                         </div>
                     </Card>
@@ -343,7 +486,7 @@ export function PerformanceStats() {
                         <MetricCard
                             icon={ShieldCheck}
                             label="Query Success Rate"
-                            value="92%"
+                            value={displayMetrics.successRate}
                             trend="up"
                             trendValue="5.6%"
                             colorClass="text-indigo-400"
@@ -356,7 +499,7 @@ export function PerformanceStats() {
                         <MetricCard
                             icon={AlertCircle}
                             label="Query Failure Rate"
-                            value="8.2%"
+                            value={displayMetrics.failureRate}
                             trend="down"
                             trendValue="1.2%"
                             colorClass="text-rose-400"
@@ -371,24 +514,24 @@ export function PerformanceStats() {
             {/* ROW 3: SOURCE GROUNDING & OFF-TOPIC DETECTION (Split Cards) */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-1/2">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
-                        <GaugeMetric 
-                            data={sourceData} 
-                            label="Source Grounding" 
+                    <Card spotlight={false} className="p-4 border-black/5 dark:border-white/5 h-full overflow-visible">
+                        <GaugeMetric
+                            data={liveSourceData}
+                            label="Source Grounding"
                             subLabel={{ primary: "With Sources", secondary: "Without Sources" }}
-                            value={82}
+                            value={displayMetrics.groundingRate}
                             color="#3B82F6"
                             info="Measures the accuracy and factual alignment of AI responses relative to the provided source materials."
                         />
                     </Card>
                 </div>
                 <div className="lg:w-1/2">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
-                        <GaugeMetric 
-                            data={offTopicData} 
-                            label="Off-Topic Detection" 
+                    <Card spotlight={false} className="p-4 border-black/5 dark:border-white/5 h-full overflow-visible">
+                        <GaugeMetric
+                            data={liveOffTopicData}
+                            label="Off-Topic Detection"
                             subLabel={{ primary: "On-Topic Queries", secondary: "Off-Topic Queries" }}
-                            value={92}
+                            value={displayMetrics.onTopicRate}
                             color="#6366F1"
                             info="The effectiveness of the AI in identifying and filtering queries that are outside of the specified domain."
                         />

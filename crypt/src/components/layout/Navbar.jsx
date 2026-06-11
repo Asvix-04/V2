@@ -46,7 +46,7 @@ export function Navbar() {
                 {/* Desktop Nav - Centered */}
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden items-center space-x-6 md:flex">
                     <NavLink to="/home" icon={LayoutGrid}>{t('nav.home')}</NavLink>
-                    {isLoggedIn && <NavLink to="/dashboard" icon={GraduationCap}>{t('nav.dashboard')}</NavLink>}
+                    {isLoggedIn && <NavLink to="/workspace" icon={GraduationCap}>{t('nav.dashboard')}</NavLink>}
                     <NavLink to="/chat" icon={MessageSquare}>{t('nav.chat')}</NavLink>
                 </div>
 

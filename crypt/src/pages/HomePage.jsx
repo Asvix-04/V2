@@ -7,7 +7,6 @@ import { Card } from "../components/ui/Card";
 import { PageTransition } from "../components/ui/PageTransition";
 import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star, StarOff } from "lucide-react";
 import { Logo } from "../components/ui/Logo";
-import { PerformanceStats } from "../components/PerformanceStats";
 
 function PricingFeature({ children, highlighted = false }) {
     return (
@@ -215,12 +214,6 @@ export function HomePage() {
                         </Card>
                     </motion.div>
                 </div>
-            </section>
-
-            {/* Performance Metrics Section */}
-            <section className="relative py-12">
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-accent/[0.02] to-transparent pointer-events-none" />
-                <PerformanceStats />
             </section>
         </PageTransition>
     );

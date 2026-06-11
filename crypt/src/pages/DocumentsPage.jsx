@@ -28,7 +28,7 @@ export function DocumentsPage() {
             {/* Header */}
             <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
                 <div className="flex items-center space-x-4">
-                    <Link to="/dashboard?mode=teacher">
+                    <Link to="/workspace?mode=teacher">
                         <Button variant="ghost" size="icon" className="rounded-full">
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
@@ -100,7 +100,7 @@ export function DocumentsPage() {
                     <p className="text-foreground-muted mt-2 max-w-sm">
                         {searchQuery
                             ? `No documents matching "${searchQuery}"`
-                            : "Upload materials in the Dashboard to see them here."}
+                            : "Upload materials in the Workspace to see them here."}
                     </p>
                     {searchQuery && (
                         <Button

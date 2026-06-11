@@ -26,7 +26,7 @@ export function SignupPage() {
             const dataToSend = { ...formData, role: 'student' };
             const { data } = await api.post('/auth/register', dataToSend);
             localStorage.setItem("user", JSON.stringify(data));
-            navigate('/dashboard');
+            navigate('/workspace');
         } catch (err) {
             setError(err.response?.data?.message || "Registration failed");
         } finally {

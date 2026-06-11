@@ -1063,7 +1063,7 @@ export function ChatPage() {
 
                                 <Link
 
-                                    to={isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard")}
+                                    to={isGuest ? "/home" : (isTeacher ? "/workspace?mode=teacher" : "/workspace")}
 
                                     onClick={() => setIsSidebarOpen(false)}
 

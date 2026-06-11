@@ -96,7 +96,9 @@ function AnimatedRoutes() {
       <Route element={<Layout />}>
         <Route path="/" element={<FirstVisitRedirect />} />
         <Route path="/home" element={<Navigate to="/" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/workspace" element={<DashboardPage />} />
+        {/* Keep old /dashboard URL working for any bookmarks/redirects */}
+        <Route path="/dashboard" element={<Navigate to="/workspace" replace />} />
         <Route path="/roadmaps" element={<RoadmapsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/documents" element={<DocumentsPage />} />

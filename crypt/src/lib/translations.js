@@ -2,7 +2,7 @@ export const translations = {
     en: {
         // Navbar
         "nav.home": "Home",
-        "nav.dashboard": "Dashboard",
+        "nav.dashboard": "Workspace",
         "nav.chat": "Chat",
         "nav.teacherMode": "TEACHER MODE",
         "nav.studentMode": "STUDENT MODE",
@@ -11,7 +11,7 @@ export const translations = {
         "nav.profile": "Profile",
 
         // Chat Page
-        "chat.backToDashboard": "Back to Dashboard",
+        "chat.backToDashboard": "Back to Workspace",
         "chat.today": "Today",
         "chat.searchPlaceholder": "Search past conversations...",
         "chat.share": "Share",

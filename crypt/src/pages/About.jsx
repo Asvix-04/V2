@@ -147,9 +147,9 @@ export function About() {
             <p className="text-foreground-muted mb-8 max-w-xl mx-auto">
               Join thousands of students and educators already using DigiLab to enhance their academic experience.
             </p>
-            <Link to="/dashboard">
+            <Link to="/workspace">
               <Button size="lg" className="h-12 px-8 text-base group">
-                Go to Dashboard
+                Go to Workspace
                 <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Button>
             </Link>

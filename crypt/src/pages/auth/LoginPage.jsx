@@ -63,7 +63,7 @@ export function LoginPage() {
         try {
             const { data } = await api.post('/auth/login', { email, password });
             localStorage.setItem("user", JSON.stringify(data));
-            navigate(data.role === 'teacher' ? '/dashboard?mode=teacher' : '/dashboard?mode=student');
+            navigate(data.role === 'teacher' ? '/workspace?mode=teacher' : '/workspace?mode=student');
         } catch (err) {
             setError(err.response?.data?.message || "Invalid password");
         } finally {
@@ -79,7 +79,7 @@ export function LoginPage() {
         try {
             const { data } = await api.post('/auth/verify-otp', { email, otp: otpCode });
             localStorage.setItem("user", JSON.stringify(data));
-            navigate('/dashboard');
+            navigate('/workspace');
         } catch (err) {
             setError(err.response?.data?.message || "Invalid or expired OTP");
         } finally {
@@ -101,7 +101,7 @@ export function LoginPage() {
             const { data } = await api.post('/auth/google', { idToken, mode: 'login' });
 
             localStorage.setItem("user", JSON.stringify(data));
-            navigate('/dashboard');
+            navigate('/workspace');
         } catch (err) {
             setError(err.response?.data?.message || "Google login failed. Please sign up if you don't have an account.");
         } finally {
