@@ -406,6 +406,8 @@ async def chat(request: QuestionRequest):
         return chat_response
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         duration_ms = (time.perf_counter() - start_time) * 1000
         log_request_metrics(
             endpoint="/chat",

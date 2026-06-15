@@ -12,7 +12,11 @@ export const translations = {
 
         // Chat Page
         "chat.backToDashboard": "Back to Workspace",
+        "chat.drafts": "Drafts",
         "chat.today": "Today",
+        "chat.expiresAt": "Expires at",
+        "chat.deleteDraft": "Delete draft",
+        "chat.noDrafts": "No saved drafts.",
         "chat.searchPlaceholder": "Search past conversations...",
         "chat.share": "Share",
         "chat.savePlan": "Save Plan",
@@ -212,7 +216,11 @@ export const translations = {
 
         // Chat Page
         "chat.backToDashboard": "डैशबोर्ड पर वापस जाएं",
+        "chat.drafts": "ड्राफ्ट्स",
         "chat.today": "आज",
+        "chat.expiresAt": "समाप्ति समय",
+        "chat.deleteDraft": "ड्राफ्ट हटाएं",
+        "chat.noDrafts": "कोई सहेजा गया ड्राफ्ट नहीं है।",
         "chat.searchPlaceholder": "पुरानी बातचीत खोजें...",
         "chat.share": "साझा करें",
         "chat.savePlan": "योजना सहेजें",

@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const { initializeFirebase } = require('./config/db');
+const { initializeRedis } = require('./config/redis');
 
 // Load env vars — always resolve relative to this file so it works from any cwd.
 // Keep the standard backend/.env location first, but support the existing local
@@ -19,8 +20,9 @@ dotenv.config({
 // Load routes after dotenv so controllers capture the configured service URLs.
 const voiceRoutes = require('./routes/voiceRoutes');
 
-// Initialize Firebase
+// Initialize Firebase and Redis
 initializeFirebase();
+initializeRedis();
 
 const app = express();
 

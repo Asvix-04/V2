@@ -26,6 +26,34 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10 MB limit similar to frontend text
 });
 
+const deriveTitleFromMessages = (messages = []) => {
+    const firstUserMessage = messages.find((message) => {
+        return message?.role === 'user' && typeof message.content === 'string' && message.content.trim();
+    });
+    if (!firstUserMessage) return 'New Chat';
+    const trimmed = firstUserMessage.content.trim();
+    return trimmed.length > 30 ? `${trimmed.substring(0, 30)}...` : trimmed;
+};
+
+const normalizeConversationTitle = (value = '') => {
+    return typeof value === 'string' ? value.trim() : '';
+};
+
+const serializeConversationMessages = (messages = []) => {
+    try {
+        return JSON.stringify(Array.isArray(messages) ? messages : []);
+    } catch (error) {
+        return '[]';
+    }
+};
+
+const hasSameConversationPayload = (existingSession, messages, title) => {
+    if (!existingSession) return false;
+    return normalizeConversationTitle(existingSession.title || deriveTitleFromMessages(existingSession.messages))
+        === normalizeConversationTitle(title || deriveTitleFromMessages(messages))
+        && serializeConversationMessages(existingSession.messages) === serializeConversationMessages(messages);
+};
+
 // @desc    Upload a file
 // @route   POST /api/chat/upload
 // @access  Private
@@ -51,15 +79,42 @@ router.post('/upload', protect, upload.single('file'), (req, res) => {
 
 const ChatSession = require('../models/ChatSession');
 
+ChatSession.startDraftPurgeWorker();
+
 // @desc    Get all chat sessions for a user
 // @route   GET /api/chat/sessions
 // @access  Private
 router.get('/sessions', protect, async (req, res) => {
     try {
         const sessions = await ChatSession.findByUserId(req.user.id);
-        res.json(sessions);
+        console.log("Sessions length:", sessions.length);
+        if (sessions.length > 0) {
+            console.log("First session constructor name:", sessions[0].constructor.name);
+            console.log("Has toJSON?", typeof sessions[0].toJSON);
+        }
+        res.json(sessions.map((session) => session.toJSON ? session.toJSON() : session));
     } catch (error) {
         console.error('Fetch sessions error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Get paginated messages for a session
+// @route   GET /api/chat/sessions/:id/messages
+// @access  Private
+router.get('/sessions/:id/messages', protect, async (req, res) => {
+    try {
+        const offset = parseInt(req.query.offset) || 0;
+        const limit = parseInt(req.query.limit) || 20;
+        
+        const session = await ChatSession.findByIdWithPagination(req.params.id, req.user.id, offset, limit);
+        if (session) {
+            res.json(session);
+        } else {
+            res.status(404).json({ message: 'Session not found' });
+        }
+    } catch (error) {
+        console.error('Fetch session messages error:', error);
         res.status(500).json({ message: error.message });
     }
 });
@@ -69,37 +124,50 @@ router.get('/sessions', protect, async (req, res) => {
 // @access  Private
 router.post('/sessions', protect, async (req, res) => {
     try {
-        const { sessionId, messages, title, disappearingMode } = req.body;
+        const { sessionId, messages, title, disappearingMode, isDraft, unsentText } = req.body;
         const isDisappearing = disappearingMode === true || disappearingMode === 'true';
+
+        const normalizedMessages = Array.isArray(messages) ? messages : [];
+        const existingSession = sessionId
+            ? await ChatSession.findById(sessionId, req.user.id, { includeDeleted: true })
+            : null;
+        const shouldSaveAsDraft = isDraft === true && (normalizedMessages.length > 1 || (unsentText && unsentText.trim()));
+        const resolvedTitle = title || existingSession?.title || deriveTitleFromMessages(normalizedMessages);
+        const shouldPreserveDraftExpiry = shouldSaveAsDraft
+            && existingSession?.isDraft === true
+            && existingSession?.deleted !== true
+            && hasSameConversationPayload(existingSession, normalizedMessages, resolvedTitle)
+            && existingSession?.unsentText === unsentText;
+        const updatedAt = shouldPreserveDraftExpiry
+            ? (existingSession?.updatedAt || existingSession?.createdAt || new Date())
+            : new Date();
+        const draftExpiresAt = shouldSaveAsDraft
+            ? (shouldPreserveDraftExpiry
+                ? existingSession?.draftExpiresAt || ChatSession.buildDraftExpiry(updatedAt)
+                : ChatSession.buildDraftExpiry(updatedAt))
+            : null;
         const expiresAt = isDisappearing
-            ? new Date(Date.now() + ChatSession.DISAPPEARING_CHAT_TTL_MS)
+            ? (existingSession?.disappearingMode ? existingSession?.expiresAt : new Date(Date.now() + ChatSession.DISAPPEARING_CHAT_TTL_MS))
             : null;
 
-        let session;
-        if (sessionId) {
-            // Find existing to update title if it's the first real question
-            // For now just trust the client's messages and title
-            session = new ChatSession({
-                id: sessionId,
-                userId: req.user.id,
-                messages,
-                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat"),
-                disappearingMode: isDisappearing,
-                expiresAt
-            });
-        } else {
-            // Create new
-            session = new ChatSession({
-                userId: req.user.id,
-                messages,
-                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat"),
-                disappearingMode: isDisappearing,
-                expiresAt
-            });
-        }
+        const session = new ChatSession({
+            id: sessionId || existingSession?.id || null,
+            userId: req.user.id,
+            messages: normalizedMessages,
+            title: resolvedTitle,
+            createdAt: existingSession?.createdAt || updatedAt,
+            updatedAt,
+            deleted: false,
+            deletedAt: null,
+            disappearingMode: isDisappearing,
+            expiresAt,
+            isDraft: shouldSaveAsDraft,
+            draftExpiresAt,
+            unsentText: unsentText || ""
+        });
 
         await session.save();
-        res.json(session);
+        res.json(session.toJSON());
     } catch (error) {
         console.error('Save session error:', error);
         res.status(500).json({ message: error.message });
@@ -142,7 +210,7 @@ router.delete('/sessions/:id', protect, async (req, res) => {
 router.get('/sessions-deleted', protect, async (req, res) => {
     try {
         const sessions = await ChatSession.findByUserId(req.user.id, { onlyDeleted: true });
-        res.json(sessions);
+        res.json(sessions.map((session) => session.toJSON()));
     } catch (error) {
         console.error('Fetch deleted sessions error:', error);
         res.status(500).json({ message: error.message });
@@ -162,6 +230,38 @@ router.post('/sessions/:id/restore', protect, async (req, res) => {
         }
     } catch (error) {
         console.error('Restore session error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Archive a draft into Today history
+// @route   POST /api/chat/sessions/:id/archive
+// @access  Private
+router.post('/sessions/:id/archive', protect, async (req, res) => {
+    try {
+        const session = await ChatSession.archiveById(req.params.id, req.user.id);
+        if (!session) {
+            return res.status(404).json({ message: 'Session not found' });
+        }
+        res.json(session.toJSON());
+    } catch (error) {
+        console.error('Archive session error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Permanently delete a draft
+// @route   DELETE /api/chat/sessions/:id/draft
+// @access  Private
+router.delete('/sessions/:id/draft', protect, async (req, res) => {
+    try {
+        const success = await ChatSession.deleteDraftById(req.params.id, req.user.id);
+        if (!success) {
+            return res.status(404).json({ message: 'Draft not found' });
+        }
+        res.json({ message: 'Draft deleted' });
+    } catch (error) {
+        console.error('Delete draft error:', error);
         res.status(500).json({ message: error.message });
     }
 });
