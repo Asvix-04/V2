@@ -253,12 +253,18 @@ def get_connection():
 # Core Query
 # ─────────────────────────────────────────────────────────────
 
+_REFERENCES_CACHE = None
+
 def get_all_references() -> List[Dict]:
     """
     Fetch all items that have a URL (identifier) from the DB.
     Returns list of dicts with title and url.
     Cached at module level after first call.
     """
+    global _REFERENCES_CACHE
+    if _REFERENCES_CACHE is not None:
+        return _REFERENCES_CACHE
+
     query = """
         SELECT
             r.id AS item_id,
@@ -278,6 +284,7 @@ def get_all_references() -> List[Dict]:
         results = cursor.fetchall()
         cursor.close()
         conn.close()
+        _REFERENCES_CACHE = results
         return results
     except Exception as e:
         print(f"❌ DB error fetching references: {e}")
@@ -395,14 +402,29 @@ def find_reference_links(
 # Health Check
 # ─────────────────────────────────────────────────────────────
 
+import time
+
+_LAST_HEALTH_CHECK_TIME = 0
+_LAST_HEALTH_CHECK_RESULT = False
+
 def check_db_connection() -> bool:
-    """Returns True if DB connection is healthy."""
+    """Returns True if DB connection is healthy. Cached for 60 seconds."""
+    global _LAST_HEALTH_CHECK_TIME, _LAST_HEALTH_CHECK_RESULT
+    current_time = time.time()
+    
+    if current_time - _LAST_HEALTH_CHECK_TIME < 60:
+        return _LAST_HEALTH_CHECK_RESULT
+
     try:
         conn = get_connection()
         conn.close()
+        _LAST_HEALTH_CHECK_RESULT = True
+        _LAST_HEALTH_CHECK_TIME = current_time
         return True
     except Exception as e:
         print(f"❌ DB connection failed: {e}")
+        _LAST_HEALTH_CHECK_RESULT = False
+        _LAST_HEALTH_CHECK_TIME = current_time
         return False
 
 

@@ -5,13 +5,23 @@ import { MdSend, MdAttachFile, MdMic, MdMicOff, MdGraphicEq } from "react-icons/
 
 import api from "../../lib/api";
 
-export const ChatInput = React.forwardRef(({ className, onSend, disabled, ...props }, ref) => {
-    const [value, setValue] = React.useState("");
+export const ChatInput = React.forwardRef(({ className, onSend, disabled, initialValue = "", onChangeText, ...props }, ref) => {
+    const [value, setValue] = React.useState(initialValue);
     const [isListening, setIsListening] = React.useState(false);
     const [isUploading, setIsUploading] = React.useState(false);
     const textareaRef = React.useRef(null);
     const recognitionRef = React.useRef(null);
     const fileInputRef = React.useRef(null);
+
+    React.useEffect(() => {
+        setValue(initialValue);
+    }, [initialValue]);
+
+    React.useEffect(() => {
+        if (onChangeText) {
+            onChangeText(value);
+        }
+    }, [value, onChangeText]);
 
     React.useEffect(() => {
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {

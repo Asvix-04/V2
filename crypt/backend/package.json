@@ -22,6 +22,7 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
+    "redis": "^5.12.1",
     "resend": "^6.9.4"
   },
   "devDependencies": {

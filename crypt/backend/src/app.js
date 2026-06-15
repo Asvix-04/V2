@@ -4,12 +4,14 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const { initializeFirebase } = require('./config/db');
+const { initializeRedis } = require('./config/redis');
 
 // Load env vars — always resolve relative to this file so it works from any cwd
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// Initialize Firebase
+// Initialize Firebase and Redis
 initializeFirebase();
+initializeRedis();
 
 const app = express();
 

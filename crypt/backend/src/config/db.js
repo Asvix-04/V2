@@ -1,6 +1,58 @@
 const admin = require('firebase-admin');
+const fs = require('fs');
+const path = require('path');
 
 let db;
+
+const serviceAccountPath = path.resolve(__dirname, '../../firebase-key.json');
+
+const normalizePrivateKey = (rawKey = '') => {
+    let formattedKey = String(rawKey || '').replace(/\r\n/g, '\n').replace(/\\n/g, '\n');
+    formattedKey = formattedKey.replace(/\\(?!n)/g, '');
+    if (formattedKey && !formattedKey.endsWith('\n')) {
+        formattedKey += '\n';
+    }
+    return formattedKey;
+};
+
+const getServiceAccountFromEnv = () => {
+    const projectId = (process.env.FIREBASE_PROJECT_ID || '').replace(/^["']|["']$/g, '');
+    const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').replace(/^["']|["']$/g, '');
+    const privateKey = normalizePrivateKey(
+        (process.env.FIREBASE_PRIVATE_KEY || process.env.PRIVATE_KEY || '').replace(/^["']|["']$/g, '')
+    );
+
+    if (!projectId || !clientEmail || !privateKey) {
+        return null;
+    }
+
+    return { projectId, clientEmail, privateKey, source: 'environment variables' };
+};
+
+const getServiceAccountFromFile = () => {
+    if (!fs.existsSync(serviceAccountPath)) {
+        return null;
+    }
+
+    try {
+        const raw = fs.readFileSync(serviceAccountPath, 'utf8');
+        const parsed = JSON.parse(raw);
+
+        if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
+            return null;
+        }
+
+        return {
+            projectId: parsed.project_id,
+            clientEmail: parsed.client_email,
+            privateKey: normalizePrivateKey(parsed.private_key),
+            source: 'firebase-key.json'
+        };
+    } catch (error) {
+        console.error(`Failed to read Firebase service account file: ${error.message}`);
+        return null;
+    }
+};
 
 const initializeFirebase = () => {
     try {
@@ -10,40 +62,24 @@ const initializeFirebase = () => {
             return db;
         }
 
-        const privateKey = (process.env.FIREBASE_PRIVATE_KEY || process.env.PRIVATE_KEY || '').replace(/^["']|["']$/g, '');
-        const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').replace(/^["']|["']$/g, '');
-        const projectId = (process.env.FIREBASE_PROJECT_ID || '').replace(/^["']|["']$/g, '');
+        const serviceAccount = getServiceAccountFromEnv() || getServiceAccountFromFile();
 
-        if (!projectId || !clientEmail || !privateKey) {
+        if (!serviceAccount) {
             console.warn('Firebase environment variables missing. Persistence will be disabled.');
             return null;
         }
 
-        const rawKey = (process.env.FIREBASE_PRIVATE_KEY || process.env.PRIVATE_KEY || '').replace(/^["']|["']$/g, '');
-        
-        // 1. Convert literal \n sequences to actual newlines
-        let formattedKey = rawKey.replace(/\\n/g, '\n');
-        
-        // 2. Strip any remaining stray backslashes (common in mangled .env files)
-        // PEM keys should not contain backslashes unless they are for newline escaping
-        formattedKey = formattedKey.replace(/\\/g, '');
-        
-        // 3. Ensure the private key ends with a newline which is required for valid PEM
-        if (formattedKey && !formattedKey.endsWith('\n')) {
-            formattedKey += '\n';
-        }
-
         admin.initializeApp({
             credential: admin.credential.cert({
-                projectId: projectId,
-                clientEmail: clientEmail,
-                privateKey: formattedKey
+                projectId: serviceAccount.projectId,
+                clientEmail: serviceAccount.clientEmail,
+                privateKey: serviceAccount.privateKey
             }),
-            databaseURL: `https://${projectId}.firebaseio.com`
+            databaseURL: `https://${serviceAccount.projectId}.firebaseio.com`
         });
 
         db = admin.firestore();
-        console.log('Firebase initialized successfully');
+        console.log(`Firebase initialized successfully using ${serviceAccount.source}`);
         return db;
 
     } catch (error) {
