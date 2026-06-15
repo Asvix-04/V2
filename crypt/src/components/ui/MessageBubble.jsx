@@ -105,7 +105,7 @@ function formatMessage(text, links = []) {
     });
 }
 
-export function MessageBubble({ message }) {
+export function MessageBubble({ message, isIncognito }) {
     const isUser = message.role === "user";
     const [copied, setCopied] = useState(false);
     const [showMobileActions, setShowMobileActions] = useState(false);
@@ -232,17 +232,20 @@ export function MessageBubble({ message }) {
                         }
                     }}
                 >
-                    <div className="text-[15px] leading-relaxed text-foreground whitespace-pre-wrap">
+                    <div className={cn(
+                        "text-[15px] sm:text-[15.5px] leading-relaxed sm:leading-7 whitespace-pre-wrap",
+                        isIncognito ? "text-zinc-100" : "text-zinc-800 dark:text-zinc-100"
+                    )}>
                         {formatMessage(message.content, message.referenceLinks || message.reference_links)}
                     </div>
 
                     {/* Sublte footer for links - only if they exist but weren't necessarily all matched */}
                     {(message.referenceLinks || message.reference_links)?.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/5">
-                            <div className="flex flex-wrap gap-x-4 gap-y-2">
-                                <div className="flex items-center gap-1.5 no-underline">
-                                    <MdLink size={14} className="text-accent/50" />
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-foreground-muted/60">Sources</span>
+                        <div className="mt-4 pt-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-1.5 no-underline mr-1">
+                                    <MdLink size={14} className={isIncognito ? "text-zinc-400" : "text-zinc-400 dark:text-zinc-500"} />
+                                    <span className={cn("text-[10px] font-bold uppercase tracking-wider", isIncognito ? "text-zinc-400" : "text-zinc-500 dark:text-zinc-400")}>Sources</span>
                                 </div>
                                 {(message.referenceLinks || message.reference_links).map((link, i) => (
                                     <a
@@ -250,10 +253,15 @@ export function MessageBubble({ message }) {
                                         href={link.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-xs text-accent hover:text-accent-bright transition-colors underline decoration-accent/20 underline-offset-4 font-medium"
+                                        className={cn(
+                                            "text-[11px] px-2 py-1 rounded-md transition-colors border font-medium flex items-center gap-1 cursor-pointer",
+                                            isIncognito 
+                                                ? "bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white border-white/5"
+                                                : "bg-zinc-100 dark:bg-white/[0.04] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-white/[0.08] hover:text-zinc-900 dark:hover:text-white border-black/5 dark:border-white/5"
+                                        )}
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        link{i + 1}.
+                                        {i + 1}
                                     </a>
                                 ))}
                             </div>

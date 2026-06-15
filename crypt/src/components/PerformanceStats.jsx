@@ -27,41 +27,46 @@ const trendData = [
 
 const sourceData = [
     { name: 'With Sources', value: 82, color: '#3B82F6' },
-    { name: 'Without Sources', value: 18, color: 'rgba(255, 255, 255, 0.05)' },
+    { name: 'Without Sources', value: 18, color: '#e2e8f0' },
 ];
 
 const offTopicData = [
     { name: 'On-Topic', value: 92, color: '#6366F1' },
-    { name: 'Off-Topic', value: 8, color: 'rgba(255, 255, 255, 0.05)' },
+    { name: 'Off-Topic', value: 8, color: '#e2e8f0' },
 ];
 
 const MetricTooltip = ({ info }) => (
     <div className="group/tooltip relative inline-block z-50">
-        <button type="button" tabIndex={0} className="flex items-center justify-center w-4 h-4 rounded-full bg-white/5 border border-white/10 hover:bg-white/20 hover:border-white/30 focus:bg-white/20 focus:border-white/30 focus:outline-none transition-all cursor-help active:scale-95">
+        <button type="button" tabIndex={0} className="flex items-center justify-center w-4 h-4 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 hover:bg-accent/10 hover:border-accent/30 dark:hover:bg-white/20 dark:hover:border-white/30 focus:outline-none transition-all cursor-help active:scale-95">
             <span className="text-[10px] font-bold text-foreground-muted group-hover/tooltip:text-foreground group-focus-within/tooltip:text-foreground">i</span>
         </button>
-        <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-black/95 backdrop-blur-2xl border border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible group-focus-within/tooltip:opacity-100 group-focus-within/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0 group-focus-within/tooltip:translate-y-0">
-            <p className="text-[11px] leading-relaxed text-white font-medium text-left">
+        <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-white/95 dark:bg-black/95 backdrop-blur-2xl border border-black/10 dark:border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible group-focus-within/tooltip:opacity-100 group-focus-within/tooltip:visible transition-all duration-300 z-[100] shadow-[0_8px_32px_rgba(0,0,0,0.12)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0 group-focus-within/tooltip:translate-y-0">
+            <p className="text-[11px] leading-relaxed text-foreground dark:text-white font-medium text-left">
                 {info}
             </p>
-            <div className="absolute top-[calc(100%-1px)] right-2 border-[6px] border-transparent border-t-white/20" />
-            <div className="absolute top-[calc(100%-2px)] right-2 border-[6px] border-transparent border-t-black" />
+            <div className="absolute top-[calc(100%-1px)] right-2 border-[6px] border-transparent border-t-black/10 dark:border-t-white/20" />
+            <div className="absolute top-[calc(100%-2px)] right-2 border-[6px] border-transparent border-t-white dark:border-t-black" />
         </div>
     </div>
 );
 
 const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, bgGradient, className, info }) => (
-    <Card spotlight={false} className={`p-4 flex flex-col justify-between border-white/5 bg-black/40 backdrop-blur-md relative overflow-visible group min-h-[110px] ${className}`}>
+    <Card spotlight={false} className={`p-4 flex flex-col justify-between
+        border border-slate-200/80 dark:border-white/5
+        bg-white/80 dark:bg-black/40
+        backdrop-blur-md relative overflow-visible group min-h-[110px]
+        hover:border-slate-300 dark:hover:border-white/10
+        hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)] dark:hover:shadow-none
+        transition-all duration-300 ${className}`}>
         <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
-            <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity duration-500 scale-125`}>
+            <div className={`absolute top-0 right-0 p-4 opacity-5 dark:opacity-10 group-hover:opacity-10 dark:group-hover:opacity-20 transition-opacity duration-500 scale-125`}>
                 <Icon size={40} className={colorClass} />
             </div>
-            <div className={`absolute bottom-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-700 bg-gradient-to-r ${bgGradient}`} />
         </div>
 
         <div className="flex items-start justify-between mb-1.5 relative z-10 gap-2">
             <div className="flex items-start space-x-2 min-w-0">
-                <div className={`shrink-0 p-1.5 rounded-lg bg-white/5 border border-white/10 ${colorClass}`}>
+                <div className={`shrink-0 p-1.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/8 dark:border-white/10 ${colorClass}`}>
                     <Icon size={14} />
                 </div>
                 <span className="text-[11px] sm:text-xs font-medium text-foreground-muted leading-tight mt-0.5 break-words">{label}</span>
@@ -78,7 +83,7 @@ const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, b
             </div>
         </div>
 
-        {/* Subtle Decorative Element */}
+        {/* Animated bottom border */}
         <div className={`absolute bottom-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-700 bg-gradient-to-r ${bgGradient}`} />
     </Card>
 );
@@ -119,8 +124,8 @@ const SystemStatusItem = ({ label, subLabel, icon: Icon, status = "100% uptime",
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
         return (
-            <div className="bg-black/90 backdrop-blur-xl border border-white/10 p-3 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
-                <p className="text-[10px] text-foreground-vibrant mb-2 font-medium tracking-wide border-b border-white/5 pb-2">{label}</p>
+            <div className="bg-white/95 dark:bg-black/90 backdrop-blur-xl border border-black/8 dark:border-white/10 p-3 rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.1)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+                <p className="text-[10px] text-foreground-muted mb-2 font-medium tracking-wide border-b border-black/5 dark:border-white/5 pb-2">{label}</p>
                 <div className="space-y-1.5">
                     {payload.map((entry, idx) => (
                         <div key={idx} className="flex items-center justify-between space-x-4">
@@ -150,7 +155,7 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
                     <span className="text-[11px] sm:text-xs text-foreground-muted truncate font-medium">{subLabel.primary}</span>
                 </div>
                 <div className="flex items-center space-x-2.5">
-                    <div className="shrink-0 w-2 h-2 rounded-full bg-white/10" />
+                    <div className="shrink-0 w-2 h-2 rounded-full bg-slate-200 dark:bg-white/10" />
                     <span className="text-[11px] sm:text-xs text-foreground-muted truncate font-medium">{subLabel.secondary}</span>
                 </div>
             </div>
@@ -190,10 +195,24 @@ export function PerformanceStats() {
     return (
         <div className="space-y-6 container mx-auto max-w-5xl px-4 pb-12">
 
+            {/* Section Header */}
+            <div className="text-center mb-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1 text-[11px] font-mono text-blue-600 dark:text-blue-400 mb-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    Live Performance
+                </div>
+                <h2 className="text-2xl font-bold text-foreground tracking-tight">System Analytics</h2>
+                <p className="text-sm text-foreground-muted mt-1">Real-time metrics and performance data</p>
+            </div>
+
             {/* ROW 1: PERFORMANCE TREND + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md relative h-full overflow-visible">
+                    <Card spotlight={false} className="p-4
+                        border border-slate-200/80 dark:border-white/5
+                        bg-white/80 dark:bg-black/40
+                        backdrop-blur-md relative h-full overflow-visible
+                        shadow-sm dark:shadow-none">
                         <div className="flex items-center justify-between mb-6">
                             <div>
                                 <div className="flex items-center space-x-2">
@@ -202,7 +221,7 @@ export function PerformanceStats() {
                                 </div>
                                 <p className="text-xs text-foreground-muted">Response Time Over the Last 30 Days</p>
                             </div>
-                            <div className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-white/10 transition-colors">
+                            <div className="bg-black/5 dark:bg-white/5 border border-black/8 dark:border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-black/8 dark:hover:bg-white/10 transition-colors">
                                 <span className="text-[10px] font-medium text-foreground-muted">Last 30 days</span>
                                 <ChevronRight size={12} className="rotate-90 text-foreground-muted" />
                             </div>
@@ -221,7 +240,7 @@ export function PerformanceStats() {
                                             <stop offset="95%" stopColor="#60A5FA" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" vertical={false} />
                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={8} />
                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
                                     <Tooltip content={<CustomTooltip />} />
@@ -293,24 +312,28 @@ export function PerformanceStats() {
             {/* ROW 2: SYSTEM STATUS + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
+                    <Card spotlight={false} className="p-4
+                        border border-slate-200/80 dark:border-white/5
+                        bg-white/80 dark:bg-black/40
+                        backdrop-blur-md h-full overflow-visible
+                        shadow-sm dark:shadow-none">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center space-x-4">
                                 <div className="flex items-center space-x-2">
                                     <h3 className="text-lg font-bold text-foreground">System Status</h3>
                                     <MetricTooltip info="Real-time health monitor and uptime metrics for core infrastructure components." />
                                 </div>
-                                <div className="text-[10px] text-foreground-muted font-medium bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                                <div className="text-[10px] text-foreground-muted font-medium bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded border border-black/8 dark:border-white/5">
                                     Dec 2025 - Mar 2026
                                 </div>
                             </div>
                             <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                                 <Activity size={10} className="text-emerald-500 animate-pulse" />
-                                <span className="text-[9px] uppercase font-bold text-emerald-500  tracking-wider">Operational</span>
+                                <span className="text-[9px] uppercase font-bold text-emerald-500 tracking-wider">Operational</span>
                             </div>
                         </div>
 
-                        <div className="divide-y divide-white/5">
+                        <div className="divide-y divide-black/5 dark:divide-white/5">
                             <SystemStatusItem label="API" icon={Globe} />
                             <SystemStatusItem label="Production" subLabel="7 components" icon={Activity} />
                             <SystemStatusItem label="Production Systems" subLabel="2 components" icon={Database} />
@@ -319,7 +342,7 @@ export function PerformanceStats() {
                         </div>
 
                         {/* Status Legend */}
-                        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mt-6 pt-4 border-t border-white/5">
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mt-6 pt-4 border-t border-black/5 dark:border-white/5">
                             <div className="flex items-center space-x-2 min-w-[100px]">
                                 <div className="w-2 h-2 rounded-sm bg-emerald-500" />
                                 <span className="text-[10px] text-foreground-muted font-medium">Operational</span>
@@ -372,7 +395,11 @@ export function PerformanceStats() {
             {/* ROW 3: SOURCE GROUNDING & OFF-TOPIC DETECTION (Split Cards) */}
             <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-4 lg:flex lg:flex-row lg:gap-6">
                 <div className="lg:w-1/2">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
+                    <Card spotlight={false} className="p-4
+                        border border-slate-200/80 dark:border-white/5
+                        bg-white/80 dark:bg-black/40
+                        backdrop-blur-md h-full overflow-visible
+                        shadow-sm dark:shadow-none">
                         <GaugeMetric
                             data={sourceData}
                             label="Source Grounding"
@@ -384,7 +411,11 @@ export function PerformanceStats() {
                     </Card>
                 </div>
                 <div className="lg:w-1/2">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
+                    <Card spotlight={false} className="p-4
+                        border border-slate-200/80 dark:border-white/5
+                        bg-white/80 dark:bg-black/40
+                        backdrop-blur-md h-full overflow-visible
+                        shadow-sm dark:shadow-none">
                         <GaugeMetric
                             data={offTopicData}
                             label="Off-Topic Detection"

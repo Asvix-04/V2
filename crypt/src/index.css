@@ -5,15 +5,15 @@
 @layer base {
   :root {
     /* Light Mode Tokens (Default) */
-    --background-deep: 250 250 252;
-    /* #FAFAFC - Very slightly off-white */
+    --background-deep: 248 249 255;
+    /* #F8F9FF - Soft cool white */
     --background-base: 255 255 255;
     /* #FFFFFF - Pure white */
-    --background-elevated: 245 245 248;
-    /* #F5F5F8 - Light gray surface */
+    --background-elevated: 243 244 250;
+    /* #F3F4FA - Light lavender surface */
 
-    --foreground-base: 23 23 23;
-    /* #171717 - Near black */
+    --foreground-base: 15 15 20;
+    /* #0F0F14 - Near black with blue tint */
     --foreground-muted: 100 116 139;
     /* #64748B - Slate 500 */
     --foreground-subtle: 148 163 184;
@@ -34,6 +34,12 @@
     /* #5E6AD2 - Indigo */
     --accent-bright: 79 70 229;
     /* #4F46E5 - Indigo 600 */
+
+    /* Neumorphism shadow colors for light mode */
+    --shadow-dark: 163 177 198;
+    /* #A3B1C6 */
+    --shadow-light: 255 255 255;
+    /* #FFFFFF */
 
     --radius: 0.5rem;
   }
@@ -75,4 +81,33 @@ body {
   background: rgba(var(--surface-base), 0.05);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(var(--border-base), 0.1);
+}
+
+/* Light mode metric cards override */
+:root .light-metric-card {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+/* Gradient text animation */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient {
+  animation: gradient-shift 4s ease infinite;
+  background-size: 200% 200%;
+}
+
+/* Light mode hero glow pulse */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.08); }
+}
+
+.light-glow-blob {
+  animation: glow-pulse 6s ease-in-out infinite;
 }
