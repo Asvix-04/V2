@@ -11,15 +11,18 @@ Merged version combining:
 from utils import MAX_AUDIO_BYTES, RateLimiter, s2s_limiter
 import base64
 import binascii
+import json
 import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
 from chatbot import PDFChatbot
+from llm_client import AVAILABLE_MODELS
 from sarvam_client import SarvamClient, LANGUAGE_DISPLAY
 from metrics_logger import log_request_metrics, get_metrics_summary
 try:
@@ -53,6 +56,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time = (time.perf_counter() - start_time) * 1000
+    response.headers["X-Process-Time"] = str(process_time)
+
+    # Generic logging for non-chat endpoints (health, docs, etc.)
+    # Chat endpoint does its own detailed logging below.
+    if not request.url.path.startswith("/chat"):
+        log_request_metrics(
+            endpoint=request.url.path,
+            status_code=response.status_code,
+            response_time_ms=process_time,
+        )
+    return response
+
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
@@ -89,6 +111,16 @@ class SelectionRequest(BaseModel):
     selected_text: str        # The text the user highlighted
     full_bot_message: str     # The full bot answer it came from
 
+class HistoryTurn(BaseModel):
+    question: str
+    answer: str
+    sources: List[Dict[str, Any]] = []
+    expanded_queries: List[str] = []
+    validation: Dict[str, Any] = {}
+
+class HistorySyncRequest(BaseModel):
+    history: List[HistoryTurn] = []
+
 class ReferenceLink(BaseModel):
     title: str
     url: str
@@ -101,7 +133,7 @@ class ChatResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     reference_links: List[ReferenceLink] = []
-    follow_up_questions: Optional[Dict[str, Any]] = None
+    follow_up_questions: Optional[Any] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -114,6 +146,7 @@ class HealthResponse(BaseModel):
 class TextToTextRequest(BaseModel):
     question: str
     language_code: Optional[str] = None         # user's language (e.g. "hi-IN")
+    model: Optional[str] = None
     use_history: Optional[bool] = True
     user_id: Optional[str] = None
 
@@ -129,21 +162,24 @@ class TextToTextResponse(BaseModel):
 
 
 class SpeechToSpeechRequest(BaseModel):
-    audio_base64: str
+    audio_base64: Optional[str] = None
+    text: Optional[str] = None
     mime_type: Optional[str] = "audio/wav"
     use_history: Optional[bool] = True
     response_language_code: Optional[str] = None
     user_id: Optional[str] = None
+    model: Optional[str] = None
 
 class SpeechToSpeechResponse(BaseModel):
     transcript: str
-    detected_language: str
-    response_language: str
     answer: str
-    sources: List[Dict[str, Any]]
-    expanded_queries: List[str]
-    validation: Optional[Dict[str, Any]] = None
     audio_base64: str
+    language: str
+    detected_language: Optional[str] = None
+    response_language: Optional[str] = None
+    sources: List[Dict[str, Any]] = []
+    expanded_queries: List[str] = []
+    validation: Optional[Dict[str, Any]] = None
 
 # ─────────────────────────────────────────────────────────────
 # Startup
@@ -193,6 +229,29 @@ def build_metadata(result: dict, ref_links: list) -> dict:
             for s in result["sources"][:3]
         ],
     }
+
+def _switch_model_if_requested(model: Optional[str]) -> None:
+    if not model or chatbot is None or not hasattr(chatbot, "switch_model"):
+        return
+
+    normalized_model = model.strip().lower()
+    model_map = {
+        "gemini 2.5 flash": "1",
+        "gemini-2.5-flash": "1",
+        "gemini 2.5 pro": "2",
+        "gemini-2.5-pro": "2",
+        "deepseek v3.2": "3",
+        "deepseek-chat": "3",
+    }
+    model_key = model_map.get(normalized_model)
+
+    if not model_key:
+        return
+
+    next_config = AVAILABLE_MODELS[model_key]
+    current_model_id = getattr(getattr(chatbot, "model_config", None), "id", None)
+    if current_model_id != next_config.id:
+        chatbot.switch_model(next_config)
 
 def _decode_audio_b64(audio_b64: str) -> bytes:
     if not audio_b64 or not audio_b64.strip():
@@ -276,13 +335,10 @@ async def health_check():
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: QuestionRequest):
+def _build_chat_response(request: QuestionRequest) -> Dict[str, Any]:
     """
-    Send a question to the chatbot.
-
-    Returns the answer, sources, validation metadata, AND reference links
-    pulled from the MySQL database matched to the topic of the answer.
+    Build a complete chat response. Used by both JSON and opt-in SSE routes
+    so the normal endpoint remains the reliable fallback.
     """
     if chatbot is None:
         raise HTTPException(status_code=503, detail="Chatbot not initialized")
@@ -294,12 +350,13 @@ async def chat(request: QuestionRequest):
 
     try:
         # ── 1. Get chatbot answer ──
+        _switch_model_if_requested(request.model)
+
         # Check if the chatbot object has ask_question_with_follow_ups, 
         # otherwise fallback to ask_question
         if hasattr(chatbot, 'ask_question_with_follow_ups'):
             result = chatbot.ask_question_with_follow_ups(
                 question=request.question.strip(),
-                model=request.model,
                 use_history=request.use_history if request.use_history is not None else True,
             )
         else:
@@ -351,11 +408,37 @@ async def chat(request: QuestionRequest):
             model=request.model or "1",
             on_topic=is_on_topic,
             has_sources=has_sources,
-            user_id=request.user_id or "guest"
         )
 
         return chat_response
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
+
+
+@app.post("/chat")
+async def chat(request: QuestionRequest, raw_request: Request):
+    """
+    Send a question to the chatbot.
+
+    Returns JSON by default. With ?stream=true, returns Server-Sent Events so
+    the frontend can render incrementally and safely fall back if unsupported.
+    """
+    wants_stream = raw_request.query_params.get("stream", "").lower() == "true"
+
+    if wants_stream:
+        def event_stream():
+            try:
+                response = _build_chat_response(request)
+                yield f"data: {json.dumps({'delta': response.get('answer', '')})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'response': response})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': f'Error processing question: {str(e)}'})}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    try:
+        return _build_chat_response(request)
     except Exception as e:
         duration_ms = (time.perf_counter() - start_time) * 1000
         log_request_metrics(
@@ -386,6 +469,8 @@ async def chat_simple(request: QuestionRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
+        _switch_model_if_requested(request.model)
+
         result = chatbot.ask_question(
             question=request.question.strip(),
             use_history=request.use_history if request.use_history is not None else True,
@@ -457,6 +542,22 @@ async def get_history():
         raise HTTPException(status_code=500, detail=f"Error retrieving history: {str(e)}")
 
 
+@app.post("/history/sync")
+async def sync_history(request: HistorySyncRequest):
+    """Replace the in-memory conversation history with client-provided turns."""
+    if chatbot is None:
+        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+
+    try:
+        chatbot.set_history([turn.model_dump() for turn in request.history])
+        return {
+            "status": "success",
+            "count": len(chatbot.get_history()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error syncing history: {str(e)}")
+
+
 @app.post("/text-to-text", response_model=TextToTextResponse)
 async def text_to_text(request: TextToTextRequest):
     """Text pipeline: question (any language) → English → RAG → translate back."""
@@ -485,7 +586,10 @@ async def text_to_text(request: TextToTextRequest):
                 source_language_code=language_code,
             )
 
-        # Step 2: RAG pipeline
+    # Step 2: RAG pipeline
+    try:
+        _switch_model_if_requested(request.model)
+
         result = chatbot.ask_question(
             question=english_question,
             use_history=request.use_history if request.use_history is not None else True,
@@ -541,9 +645,14 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
     if sarvam_client is None:
         raise HTTPException(status_code=503, detail="Speech service not initialized")
 
-    try:
+    decode_ms = 0
+    stt_ms = 0
+    if request.text and request.text.strip():
+        transcript = request.text.strip()
+        detected_language = request.response_language_code or sarvam_client.detect_language(transcript)
+    else:
         decode_start = time.perf_counter()
-        audio_bytes = _decode_audio_b64(request.audio_base64)
+        audio_bytes = _decode_audio_b64(request.audio_base64 or "")
         decode_ms = round((time.perf_counter() - decode_start) * 1000, 2)
 
         # ── Audio size check ──
@@ -551,17 +660,23 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
             raise HTTPException(status_code=413, detail="Audio too long. Max ~30 seconds allowed.")
 
         # Step 1: Transcribe
-        stt_start = time.perf_counter()
-        transcript, detected_language = sarvam_client.speech_to_text_bytes(
-            audio_bytes=audio_bytes,
-            mime_type=request.mime_type or "audio/wav",
-        )
-        stt_ms = round((time.perf_counter() - stt_start) * 1000, 2)
+        try:
+            stt_start = time.perf_counter()
+            transcript, detected_language = sarvam_client.speech_to_text_bytes(
+                audio_bytes=audio_bytes,
+                mime_type=request.mime_type or "audio/wav",
+            )
+            stt_ms = round((time.perf_counter() - stt_start) * 1000, 2)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
         if not transcript.strip():
             raise HTTPException(status_code=400, detail="No speech detected in audio")
 
-        # Step 2: Get chat answer
+    # Step 2: Get chat answer
+    try:
+        _switch_model_if_requested(request.model)
+
         chat_start = time.perf_counter()
         result = chatbot.ask_question(
             question=transcript.strip(),
@@ -610,16 +725,17 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
             "max_output_tokens": 1000,
         })
 
-        return {
-            "transcript": transcript,
-            "detected_language": detected_language,
-            "response_language": response_language,
-            "answer": answer,
-            "sources": _compact_sources(result.get("sources", [])),
-            "expanded_queries": result.get("expanded_queries", []),
-            "validation": result.get("validation"),
-            "audio_base64": audio_b64,
-        }
+    return {
+        "transcript": transcript,
+        "answer": answer,
+        "audio_base64": audio_b64,
+        "language": response_language,
+        "detected_language": detected_language,
+        "response_language": response_language,
+        "sources": _compact_sources(result.get("sources", [])),
+        "expanded_queries": result.get("expanded_queries", []),
+        "validation": result.get("validation"),
+    }
 
     except Exception as e:
         log_request_metrics(

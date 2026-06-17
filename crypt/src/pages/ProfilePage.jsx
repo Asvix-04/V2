@@ -128,6 +128,37 @@ export function ProfilePage() {
 
     const fetchUserData = async () => {
         setIsFetching(true);
+
+        const storedUser = (() => {
+            try {
+                return JSON.parse(localStorage.getItem("user") || "null");
+            } catch {
+                return null;
+            }
+        })();
+
+        const authToken = storedUser?.token;
+
+        if (!authToken) {
+            setUserData(storedUser);
+            setFormData((prev) => ({
+                ...prev,
+                name: storedUser?.name || prev.name,
+                email: storedUser?.email || prev.email || "guest@example.com",
+                preferredName: storedUser?.preferredName || prev.preferredName,
+                age: storedUser?.age || prev.age,
+                gender: storedUser?.gender || prev.gender,
+                location: storedUser?.location || prev.location,
+                primaryLanguage: storedUser?.primaryLanguage || prev.primaryLanguage || "en",
+                profilePhoto: storedUser?.profilePhoto || prev.profilePhoto,
+                preferences: {
+                    tone: storedUser?.preferences?.tone || prev.preferences?.tone || "neutral"
+                }
+            }));
+            setIsFetching(false);
+            return;
+        }
+
         try {
             const { data } = await api.get('/auth/me');
             setUserData(data);

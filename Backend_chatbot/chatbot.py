@@ -11,6 +11,7 @@ All features from every version are preserved and active.
 
 from typing import List, Dict, Any
 from dataclasses import dataclass
+from dataclasses import dataclass
 from urllib.parse import quote
 import os, json, re, time
 from dotenv import load_dotenv
@@ -729,207 +730,6 @@ class PDFChatbot:
         return (
             "[LENGTH: JUDGE — Answer as long as the question genuinely requires. "
             "Do not pad. Do not repeat points. Stop when the question is fully answered.]"
-        )
-
-    # ─────────────────────────────────────────────────────────
-    # Response intent inference  (v8 — style adaptation)
-    # ─────────────────────────────────────────────────────────
-
-    def _infer_response_intent(self, user_question: str, recent_context: str = "") -> ResponseIntent:
-        """LLM-first inference of structural intent. Falls back to regex on failure."""
-        prompt = (
-            f"Recent conversation:\n{recent_context or '(none)'}\n\n"
-            f"Student message:\n{user_question}\n\n"
-            "Return ONLY valid JSON with these four fields:\n"
-            '{\n'
-            '  "followup_mode": "none|expand|simplify|reformat",\n'
-            '  "avoid_repetition": true/false,\n'
-            '  "tone_signal": "auto|simple|formal|exam",\n'
-            '  "format_signal": "auto|bullets|numbered|table|prose"\n'
-            '}\n\n'
-            "- followup_mode: \"none\" for new questions, \"expand\" if student wants more depth, "
-            "\"simplify\" if student did not understand, \"reformat\" if student wants different structure.\n"
-            "- avoid_repetition: true only when the student is reacting to a previous answer.\n"
-            "- tone_signal: \"simple\" for casual/ELI5/simple-language requests, \"exam\" for exam prep, "
-            "\"formal\" for academic requests, \"auto\" otherwise.\n"
-            "- format_signal: \"auto\" if student did not specify a format. "
-            "\"bullets\" if student explicitly asked for bullet points. "
-            "\"numbered\" if student asked for numbered list, steps, or ordering. "
-            "\"table\" if student asked for a table, grid, or comparison layout. "
-            "\"prose\" if student asked for plain text, paragraph, or no lists.\n\n"
-            "Do not answer the student. Output only the JSON."
-        )
-        intent = None
-        try:
-            result_text = self._call_llm(
-                prompt=prompt,
-                system_instruction="Respond with ONLY a JSON object. No markdown, no explanation.",
-                temperature=0.0,
-                max_output_tokens=100,
-                max_retries=1,
-                timeout=8,
-            )
-            if result_text:
-                intent = self._parse_intent_json(result_text)
-        except Exception:
-            pass
-        if intent is None:
-            intent = self._fallback_response_intent(user_question)
-
-        # Deterministic override: "difference between / compare / vs" questions
-        # use the HYBRID comparison layout (short intro + table + optional notes),
-        # ChatGPT-style. Only applied when the student hasn't already requested a
-        # specific format (so an explicit "in prose" or "just a table" still wins).
-        if intent.format_signal == "auto" and self._is_comparison_question(user_question):
-            intent.format_signal = "comparison"
-
-        return intent
-
-    def _is_comparison_question(self, question: str) -> bool:
-        """True when the question asks to contrast two or more things (table-friendly)."""
-        q = (question or "").lower()
-        patterns = [
-            r"\bdifference[s]?\s+between\b",
-            r"\bdifference[s]?\s+among\b",
-            r"\bdistinction[s]?\s+between\b",
-            r"\bcompare\b",
-            r"\bcomparison\b",
-            r"\bdistinguish\b",
-            r"\bdifferentiate\b",
-            r"\bversus\b",
-            r"\bvs\.?\b",
-            r"\bpros and cons\b",
-        ]
-        return any(re.search(p, q) for p in patterns)
-
-    def _fallback_response_intent(self, user_question: str) -> ResponseIntent:
-        """Regex safety net — covers only the most common cases."""
-        q = (user_question or "").lower()
-        intent = ResponseIntent()
-
-        if re.search(r"\b(more detail|in detail|elaborate|go deeper|expand|explain.{0,10}more)\b", q):
-            intent.followup_mode = "expand"
-            intent.avoid_repetition = True
-
-        if re.search(r"\b(did(?:n.?t| not) understand|confused|simpler|simple terms|eli5|like i.?m 5)\b", q):
-            intent.followup_mode = "simplify"
-            intent.tone_signal = "simple"
-
-        if re.search(r"\b(concise|short|brief|summarize|summary|make it shorter)\b", q):
-            intent.followup_mode = "reformat"
-
-        if re.search(r"\b(exam|ignou|answer format|structured answer)\b", q):
-            intent.tone_signal = "exam"
-
-        if re.search(r"\b(bullet|bullets|bullet points|point form)\b", q):
-            intent.format_signal = "bullets"
-        if re.search(r"\b(numbered|number the|step by step|steps|numbering)\b", q):
-            intent.format_signal = "numbered"
-        if re.search(r"\b(table|tabular|in a table|columns|comparison table)\b", q):
-            intent.format_signal = "table"
-        if re.search(r"\b(prose|paragraph|plain text|no bullets|no list)\b", q):
-            intent.format_signal = "prose"
-
-        if intent.followup_mode != "none":
-            intent.avoid_repetition = True
-
-        return intent
-
-    def _parse_intent_json(self, text: str) -> ResponseIntent:
-        """Parse LLM JSON into ResponseIntent, falling back to regex on failure."""
-        text = (text or "").strip()
-        text = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.MULTILINE)
-        text = re.sub(r'\n?\s*```\s*$', '', text, flags=re.MULTILINE)
-        text = text.strip()
-
-        json_match = re.search(r'\{[^{}]*\}', text)
-        if json_match:
-            try:
-                data = json.loads(json_match.group(0))
-                valid_modes = {"none", "expand", "simplify", "reformat"}
-                valid_tones = {"auto", "simple", "formal", "exam"}
-                valid_formats = {"auto", "bullets", "numbered", "table", "prose", "comparison"}
-                return ResponseIntent(
-                    followup_mode=data.get("followup_mode", "none") if data.get("followup_mode") in valid_modes else "none",
-                    avoid_repetition=bool(data.get("avoid_repetition", False)),
-                    tone_signal=data.get("tone_signal", "auto") if data.get("tone_signal") in valid_tones else "auto",
-                    format_signal=data.get("format_signal", "auto") if data.get("format_signal") in valid_formats else "auto",
-                )
-            except (json.JSONDecodeError, TypeError):
-                pass
-        return self._fallback_response_intent(text)
-
-    def _build_length_instruction(self, user_question: str, intent: ResponseIntent) -> str:
-        """Intent-aware length: overrides for expand/simplify/reformat, else uses existing regex logic."""
-        if intent.followup_mode == "expand":
-            return (
-                "[LENGTH: LONG — Give a detailed answer. Expand beyond the previous summary. "
-                "Include supporting points from the course material.]"
-            )
-        if intent.followup_mode == "simplify":
-            return "[LENGTH: MEDIUM — Explain clearly. Prefer short sentences and simple words.]"
-        if intent.followup_mode == "reformat":
-            return (
-                "[LENGTH: SHORT — Condense to the essential points. "
-                "Give a direct, concise answer.]"
-            )
-        return self._detect_length_instruction(user_question)
-
-    def _build_format_instruction(self, user_question: str, intent: ResponseIntent) -> str:
-        """Returns a [FORMAT: ...] tag. AUTO lets the LLM choose based on system prompt principles."""
-        fmt = intent.format_signal
-        if fmt == "bullets":
-            return "[FORMAT: BULLETS — Use bullet points for the main content.]"
-        if fmt == "numbered":
-            return "[FORMAT: NUMBERED — Use a numbered list. Each point on its own line.]"
-        if fmt == "table":
-            return (
-                "[FORMAT: TABLE — Output a COMPACT Markdown table. Follow this EXACT shape:\n\n"
-                "| Header A | Header B | Header C |\n"
-                "|---|---|---|\n"
-                "| short cell | short cell | short cell |\n"
-                "| short cell | short cell | short cell |\n"
-                "| short cell | short cell | short cell |\n\n"
-                "STRICT RULES:\n"
-                "1. Separator row has EXACTLY 3 dashes per column. Never more. Never pad.\n"
-                "2. Do NOT add spaces inside cells to align columns visually. Single space on each side of the pipe is the maximum.\n"
-                "3. Keep every cell to ONE short phrase or ONE sentence — never a paragraph.\n"
-                "4. Emit the FULL table (header + separator + at least 3 data rows) in one block. Do not stop after the separator row.\n"
-                "5. After the table, you may add a 1-2 sentence intro or conclusion if needed.]"
-            )
-        if fmt == "comparison":
-            return (
-                "[FORMAT: COMPARISON — Structure the answer in THIS EXACT ORDER:\n"
-                "1. DIRECT ANSWER: Open with 1-2 sentences stating the single most important "
-                "difference (the core distinction). Bold the key terms with **term**.\n"
-                "2. EXAMPLES (only if the [LENGTH] tag is MEDIUM or LONG): add 2-4 bullet points, "
-                "one short example or defining trait per item being compared. Skip this step entirely for SHORT.\n"
-                "3. COMPARISON TABLE (always): a Markdown table comparing the items across "
-                "3-5 of the MOST relevant attributes. Use this EXACT shape:\n\n"
-                "| Feature | <Item A> | <Item B> |\n"
-                "|---|---|---|\n"
-                "| <attribute> | <descriptive sentence about Item A on this attribute> | <descriptive sentence about Item B on this attribute> |\n"
-                "| <attribute> | <descriptive sentence> | <descriptive sentence> |\n"
-                "| <attribute> | <descriptive sentence> | <descriptive sentence> |\n\n"
-                "4. RELATED NOTE (only if the [LENGTH] tag is LONG): end with ONE sentence on a closely "
-                "related concept or caveat.\n\n"
-                "TABLE CONTENT RULES (IMPORTANT — produce informative cells, not bare labels):\n"
-                "- Each cell MUST be ONE complete descriptive sentence of roughly 12-25 words "
-                "that actually explains the item's behaviour on that attribute — not a 2-3 word label.\n"
-                "- BAD example (too sparse): 'No intent to deceive'\n"
-                "- GOOD example: 'The spreader has no intent to deceive — they typically believe the information is true and share it in good faith.'\n"
-                "- Bold the single most important term in each cell with **term** so readers can scan quickly.\n"
-                "- Keep cells to ONE sentence — never multiple sentences or paragraphs (so the table stays scannable).\n"
-                "- TABLE STRUCTURE RULES:\n"
-                "  * Separator row: EXACTLY 3 dashes per column. Never pad with extra dashes or spaces.\n"
-                "  * Single space on each side of every pipe.\n"
-                "  * Emit the FULL table (header + separator + at least 3 rows) in one block.]"
-            )
-        if fmt == "prose":
-            return "[FORMAT: PROSE — Use plain paragraphs only. No lists, no tables.]"
-        return (
-            "[FORMAT: AUTO — Choose the format that best serves this specific content. "
-            "See formatting principles in your system prompt.]"
         )
 
     # ─────────────────────────────────────────────────────────
@@ -1798,6 +1598,27 @@ SELF-CHECK: Before finishing, scan your answer. For every name, date, and specif
     def clear_history(self):
         """Clear conversation history."""
         self.conversation_history = []
+
+    def set_history(self, history: Optional[List[Dict[str, Any]]] = None):
+        normalized_history = []
+
+        for turn in history or []:
+            question = (turn.get('question') or '').strip()
+            answer = (turn.get('answer') or '').strip()
+
+            if not question or not answer:
+                continue
+
+            normalized_history.append({
+                'question': question,
+                'answer': answer,
+                'sources': turn.get('sources') or [],
+                'expanded_queries': turn.get('expanded_queries') or [],
+                'validation': turn.get('validation') or {},
+            })
+
+        self.conversation_history = normalized_history
+
     def get_history(self):
         return self.conversation_history
 

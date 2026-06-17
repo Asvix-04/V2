@@ -62,7 +62,7 @@ class BM25Index:
 class LLMReformulator:
     def __init__(self):
         self.client = None; self.types = None; self.ready = False
-        self.model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         try:
             from google import genai; from google.genai import types
             api_key = os.getenv("GEMINI_API_KEY")

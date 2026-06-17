@@ -4,12 +4,54 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { MdPerson, MdSmartToy, MdVolumeUp, MdVolumeOff, MdContentCopy, MdCheck, MdLink, MdEdit, MdRefresh } from "react-icons/md";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // Escape regex special characters
 function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Logic to process text and find link matches
+function processText(text, links) {
+    if (!links || links.length === 0) return [text];
+
+    // Build a map of phrases to match. 
+    const linkEntries = [];
+    links.forEach((l, index) => {
+        if (!l) return;
+        const url = l.url;
+        const linkId = index + 1;
+        let mainTitle = l.title;
+
+        // If title is missing, try to extract keywords from URL path
+        if (!mainTitle || mainTitle.trim() === "" || mainTitle.trim().toLowerCase() === "reference") {
+            try {
+                const urlObj = new URL(url);
+                const pathParts = urlObj.pathname.split('/').filter(p => p.length > 3);
+                if (pathParts.length > 0) {
+                    mainTitle = pathParts[pathParts.length - 1].replace(/[-_]/g, ' ');
+                }
+            } catch {
+                // Ignore malformed reference URLs.
+            }
+        }
+        
+        const displayTitle = mainTitle || "Resource";
+        linkEntries.push({ phrase: displayTitle, url: url, id: linkId });
+
+        // Add suffix after common separators
+        const subParts = displayTitle.split(/[:\-–—]/);
+        if (subParts.length > 1) {
+            const suffix = subParts[subParts.length - 1].trim();
+            if (suffix.length > 3) linkEntries.push({ phrase: suffix, url: url, id: linkId });
+        }
+
+        // Add phrases without common prefixes like "Unit X", "Chapter X"
+        const prefixMatch = displayTitle.match(/^(?:Unit|Chapter|Section|Part)\s+\d+[:\s-]*(.*)/i);
+        if (prefixMatch && prefixMatch[1] && prefixMatch[1].trim().length > 3) {
+            linkEntries.push({ phrase: prefixMatch[1].trim(), url: url, id: linkId });
+        }
 // Derive a display title for a reference link (falls back to URL path keywords)
 function deriveTitle(link) {
     let title = (link.title || "").trim();
@@ -104,24 +146,157 @@ const mdComponents = {
     ),
 };
 
-export function MessageBubble({ message }) {
-    const isUser = message.role === "user";
-    const [copied, setCopied] = useState(false);
+function playAudioBase64(base64, { onAudio } = {}) {
+    return new Promise((resolve, reject) => {
+        let url = null;
+        try {
+            const byteCharacters = atob(base64);
+            const bytes = new Uint8Array(byteCharacters.length);
 
-    const handleSpeak = () => {
+            for (let index = 0; index < byteCharacters.length; index += 1) {
+                bytes[index] = byteCharacters.charCodeAt(index);
+            }
+
+            const blob = new Blob([bytes], { type: "audio/wav" });
+            url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            onAudio?.(audio);
+
+            audio.onended = () => {
+                URL.revokeObjectURL(url);
+                resolve();
+            };
+            audio.onerror = (error) => {
+                URL.revokeObjectURL(url);
+                reject(error);
+            };
+            audio.play().catch((error) => {
+                if (url) URL.revokeObjectURL(url);
+                reject(error);
+            });
+        } catch (error) {
+            if (url) URL.revokeObjectURL(url);
+            reject(error);
+        }
+    });
+}
+
+export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit, onEditCancel, onRetry }) {
+    const isUser = message.role === "user";
+    const voiceAudio = message.audioBase64 || message.audio_base64;
+    const [copied, setCopied] = useState(false);
+    const [editValue, setEditValue] = useState(message.content || "");
+    const [isReading, setIsReading] = useState(false);
+    const editTextareaRef = useRef(null);
+    const utteranceRef = useRef(null);
+    const audioRef = useRef(null);
+    const autoReadStartedRef = useRef(false);
+    const readingRunRef = useRef(0);
+
+    // When entering edit mode, reset textarea content and focus
+    useEffect(() => {
+        if (isEditing && isUser) {
+            queueMicrotask(() => setEditValue(message.content || ""));
+            requestAnimationFrame(() => {
+                if (editTextareaRef.current) {
+                    editTextareaRef.current.focus();
+                    const len = editTextareaRef.current.value.length;
+                    editTextareaRef.current.setSelectionRange(len, len);
+                }
+            });
+        }
+    }, [isEditing, isUser, message.content]);
+
+    const stopReading = useCallback(() => {
+        readingRunRef.current += 1;
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current = null;
+        }
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(message.content);
-            window.speechSynthesis.speak(utterance);
         }
-    };
+        utteranceRef.current = null;
+        setIsReading(false);
+    }, []);
+
+    const startReading = useCallback(() => {
+        const runId = readingRunRef.current + 1;
+        readingRunRef.current = runId;
+
+        if (voiceAudio) {
+            setIsReading(true);
+            playAudioBase64(voiceAudio, {
+                onAudio: (audio) => {
+                    audioRef.current = audio;
+                },
+            }).catch(() => {}).finally(() => {
+                if (readingRunRef.current !== runId) {
+                    return;
+                }
+                audioRef.current = null;
+                setIsReading(false);
+            });
+            return;
+        }
+
+        if ('speechSynthesis' in window && message.content) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(message.content);
+            utterance.onend = () => {
+                if (readingRunRef.current !== runId) {
+                    return;
+                }
+                utteranceRef.current = null;
+                setIsReading(false);
+            };
+            utterance.onerror = () => {
+                if (readingRunRef.current !== runId) {
+                    return;
+                }
+                utteranceRef.current = null;
+                setIsReading(false);
+            };
+            utteranceRef.current = utterance;
+            setIsReading(true);
+            window.speechSynthesis.speak(utterance);
+            window.speechSynthesis.resume();
+        }
+    }, [message.content, voiceAudio]);
+
+    const handleSpeak = useCallback(() => {
+        if (isReading) {
+            stopReading();
+            return;
+        }
+
+        startReading();
+    }, [isReading, startReading, stopReading]);
+
+    useEffect(() => {
+        autoReadStartedRef.current = false;
+    }, [message.id]);
+
+    useEffect(() => {
+        if (!isUser && message.autoReadAloud && !message.isStreaming && message.content && !autoReadStartedRef.current) {
+            autoReadStartedRef.current = true;
+            const frame = window.requestAnimationFrame(() => {
+                startReading();
+            });
+            return () => window.cancelAnimationFrame(frame);
+        }
+    }, [isUser, message.autoReadAloud, message.content, message.isStreaming, startReading]);
+
+    useEffect(() => () => stopReading(), [stopReading]);
 
     const handleCopy = async () => {
         try {
             await navigator.clipboard.writeText(message.content);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch (err) {}
+        } catch {
+            // Clipboard can be unavailable in restricted browser contexts.
+        }
     };
 
     // Detect quoted message pattern
@@ -129,28 +304,87 @@ export function MessageBubble({ message }) {
 
     // USER MESSAGE
     if (isUser) {
+        // ── Inline Edit Mode (Claude.ai style) ──────────────────────────
+        if (isEditing && onEditSubmit) {
+            return (
+                <div
+                    className="flex w-full justify-end space-x-2 px-4"
+                >
+                    <div className="flex w-full max-w-[75%] flex-col gap-2">
+                        <textarea
+                            ref={editTextareaRef}
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    if (editValue.trim()) onEditSubmit(editValue.trim());
+                                }
+                                if (e.key === 'Escape') {
+                                    onEditCancel?.();
+                                }
+                            }}
+                            className="w-full resize-none rounded-2xl rounded-tr-sm border border-accent/40 bg-accent/10 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-accent/50 dark:bg-accent/10 dark:text-white"
+                            rows={Math.max(2, (editValue.match(/\n/g) || []).length + 1)}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => onEditCancel?.()}
+                                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-foreground-muted transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => { if (editValue.trim()) onEditSubmit(editValue.trim()); }}
+                                disabled={!editValue.trim()}
+                                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Confirm Edit
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-black/5 bg-gray-100 dark:border-white/10 dark:bg-white/10">
+                        <MdPerson size={14} className="text-foreground" />
+                    </div>
+                </div>
+            );
+        }
+
+        // ── Normal display ───────────────────────────────────────────────
         return (
-            <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+            <div
                 className="flex w-full justify-end space-x-2 px-4 group"
             >
-                <div className="max-w-[70%] rounded-2xl rounded-tr-sm bg-accent text-white px-4 py-2 text-sm leading-relaxed shadow-sm">
+                <div className="flex max-w-[70%] flex-col items-end gap-1">
+                    <div className="w-full rounded-2xl rounded-tr-sm bg-accent px-4 py-2 text-sm leading-relaxed text-white shadow-sm">
 
-                    {quoteMatch ? (
-                        <div className="space-y-2">
-                            <div className="rounded-lg border-l-4 border-white/40 bg-white/10 px-3 py-2 text-xs italic">
-                                "{quoteMatch[1]}"
+                        {quoteMatch ? (
+                            <div className="space-y-2">
+                                <div className="rounded-lg border-l-4 border-white/40 bg-white/10 px-3 py-2 text-xs italic">
+                                    "{quoteMatch[1]}"
+                                </div>
+                                <div>{quoteMatch[2]}</div>
                             </div>
-                            <div>{quoteMatch[2]}</div>
-                        </div>
-                    ) : (
-                        message.content
-                    )}
+                        ) : (
+                            message.content
+                        )}
+                    </div>
 
-                    <div className="max-h-0 overflow-hidden opacity-0 group-hover:max-h-6 group-hover:opacity-100 group-hover:mt-1 transition-all duration-200">
-                        <span className="text-[10px] opacity-60 text-accent-100">
-                            {message.timestamp}
+                    <div className="flex items-center gap-2 opacity-100 transition-opacity">
+                        {onEdit && (
+                            <button
+                                onClick={onEdit}
+                                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-foreground-muted transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5"
+                                title="Edit message"
+                                aria-label="Edit message"
+                            >
+                                <MdEdit size={14} />
+                            </button>
+                        )}
+
+                        <span className="text-[10px] text-accent/70">
+                            {message.isEdited ? 'Edited · ' : ''}{message.timestamp}
                         </span>
                     </div>
                 </div>
@@ -158,7 +392,7 @@ export function MessageBubble({ message }) {
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 border border-black/5 dark:bg-white/10 dark:border-white/10">
                     <MdPerson size={14} className="text-foreground" />
                 </div>
-            </motion.div>
+            </div>
         );
     }
 
@@ -167,9 +401,7 @@ export function MessageBubble({ message }) {
     const markdownContent = injectReferenceLinks(message.content, refLinks);
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+        <div
             className="flex w-full justify-start space-x-3 px-4 group"
         >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10 border border-accent/20">
@@ -207,7 +439,7 @@ export function MessageBubble({ message }) {
                 )}
 
                 {/* Actions */}
-                <div className="mt-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-foreground-muted">
 
                     <button
                         onClick={handleCopy}
@@ -221,10 +453,10 @@ export function MessageBubble({ message }) {
                     <button
                         onClick={handleSpeak}
                         className="flex items-center space-x-1 rounded-md px-2 py-1 text-xs text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                        title="Read aloud"
+                        title={isReading ? "Stop reading" : "Read aloud"}
                     >
-                        <MdVolumeUp size={14} />
-                        <span>Read aloud</span>
+                        {isReading ? <MdVolumeOff size={14} /> : <MdVolumeUp size={14} />}
+                        <span>{isReading ? 'Stop reading' : 'Read aloud'}</span>
                     </button>
 
                     <span className="text-[10px] text-foreground-muted opacity-60 ml-2">
@@ -244,6 +476,6 @@ export function MessageBubble({ message }) {
 
                 </div>
             </div>
-        </motion.div>
+        </div>
     );
 }

@@ -7,8 +7,14 @@ Supports model switching at runtime without restarting the bot.
 from __future__ import annotations
 from dataclasses import dataclass
 import os
+import sys
 import time
 import concurrent.futures
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 
 @dataclass
@@ -156,6 +162,14 @@ class UnifiedLLMClient:
                         time.sleep(wait)
                         continue
                     print(f"❌ Rate limit persisted after {max_retries} retries")
+                    return None
+                if "503" in error_str or "UNAVAILABLE" in error_str or "high demand" in error_str.lower():
+                    if attempt < max_retries:
+                        wait = 3 * (2 ** attempt)
+                        print(f"⏳ Gemini 503 unavailable — retrying in {wait}s ({attempt + 1}/{max_retries})...")
+                        time.sleep(wait)
+                        continue
+                    print(f"❌ Gemini remained unavailable after {max_retries} retries")
                     return None
                 raise
         return None

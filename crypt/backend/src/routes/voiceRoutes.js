@@ -49,6 +49,9 @@ router.get('/metrics/summary', voiceController.getMetricsSummary);
 // @access  Public
 router.post('/metrics/event', voiceController.recordClientError);
 
+// @route   POST /api/voice/history/sync
+router.post('/history/sync', voiceController.syncHistory);
+
 // @route   GET /api/voice/health
 // @desc    Check voice service health
 // @access  Public

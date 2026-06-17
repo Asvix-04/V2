@@ -5,8 +5,19 @@ const cors = require('cors');
 const helmet = require('helmet');
 const { initializeFirebase } = require('./config/db');
 
-// Load env vars — always resolve relative to this file so it works from any cwd
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Load env vars relative to this file so startup works whether env lives in
+// crypt/backend/.env or the existing crypt/backend/src/.env.
+const envCandidates = [
+    path.resolve(__dirname, '../.env'),
+    path.resolve(__dirname, '.env')
+];
+
+for (const envPath of envCandidates) {
+    const result = dotenv.config({ path: envPath, override: false });
+    if (!result.error) {
+        break;
+    }
+}
 
 // Initialize Firebase
 initializeFirebase();
@@ -14,8 +25,8 @@ initializeFirebase();
 const app = express();
 
 // Middleware
-app.use(express.json());       // Parse JSON body
-app.use(express.urlencoded({ extended: false })); // Parse URL-encoded body
+app.use(express.json({ limit: '50mb' }));       // Parse JSON body (large limit for audio base64)
+app.use(express.urlencoded({ limit: '50mb', extended: false })); // Parse URL-encoded body
 app.use(cors());               // Enable CORS
 app.use(helmet({
     crossOriginOpenerPolicy: false
@@ -35,6 +46,22 @@ app.use('/uploads', express.static('uploads'));
 // Base Route
 app.get('/', (req, res) => {
     res.send('DigiLab API is running...');
+});
+
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', service: 'DigiLab API' });
+});
+
+app.get('/api/status', (req, res) => {
+    res.json({ status: 'ok', service: 'DigiLab API' });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', service: 'DigiLab API' });
+});
+
+app.get('/status', (req, res) => {
+    res.json({ status: 'ok', service: 'DigiLab API' });
 });
 
 // Error Handler
