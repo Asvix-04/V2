@@ -1,11 +1,9 @@
 import { cn } from "../../lib/utils";
-import { MdPerson, MdSmartToy, MdVolumeUp, MdContentCopy, MdCheck, MdLink } from "react-icons/md";
+import { MdPerson, MdSmartToy, MdVolumeUp, MdVolumeOff, MdContentCopy, MdCheck, MdLink, MdEdit, MdRefresh } from "react-icons/md";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { MdPerson, MdSmartToy, MdVolumeUp, MdVolumeOff, MdContentCopy, MdCheck, MdLink, MdEdit, MdRefresh } from "react-icons/md";
-import { useState, useEffect, useRef, useCallback } from "react";
 
 // Escape regex special characters
 function escapeRegExp(string) {
@@ -52,6 +50,12 @@ function processText(text, links) {
         if (prefixMatch && prefixMatch[1] && prefixMatch[1].trim().length > 3) {
             linkEntries.push({ phrase: prefixMatch[1].trim(), url: url, id: linkId });
         }
+    });
+
+    // For now, return the original text as a single segment.
+    return [text];
+}
+
 // Derive a display title for a reference link (falls back to URL path keywords)
 function deriveTitle(link) {
     let title = (link.title || "").trim();

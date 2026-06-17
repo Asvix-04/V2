@@ -568,7 +568,6 @@ async def text_to_text(request: TextToTextRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    try:
         if request.language_code:
             language_code = _normalize_lang_for_tts(request.language_code)
         else:
@@ -628,6 +627,8 @@ async def text_to_text(request: TextToTextRequest):
             user_id=request.user_id or "guest"
         )
         raise HTTPException(status_code=500, detail=f"Error processing text: {str(e)}")
+
+    
 
 
 @app.post("/speech-to-speech", response_model=SpeechToSpeechResponse)
@@ -725,17 +726,17 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
             "max_output_tokens": 1000,
         })
 
-    return {
-        "transcript": transcript,
-        "answer": answer,
-        "audio_base64": audio_b64,
-        "language": response_language,
-        "detected_language": detected_language,
-        "response_language": response_language,
-        "sources": _compact_sources(result.get("sources", [])),
-        "expanded_queries": result.get("expanded_queries", []),
-        "validation": result.get("validation"),
-    }
+        return {
+            "transcript": transcript,
+            "answer": answer,
+            "audio_base64": audio_b64,
+            "language": response_language,
+            "detected_language": detected_language,
+            "response_language": response_language,
+            "sources": _compact_sources(result.get("sources", [])),
+            "expanded_queries": result.get("expanded_queries", []),
+            "validation": result.get("validation"),
+        }
 
     except Exception as e:
         log_request_metrics(
