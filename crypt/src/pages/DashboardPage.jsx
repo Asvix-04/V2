@@ -6,7 +6,7 @@ import { Input } from "../components/ui/Input";
 import { FileUpload } from "../components/ui/FileUpload";
 import { PageTransition } from "../components/ui/PageTransition";
 import { useDocuments } from "../context/DocumentContext";
-import { FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map, RotateCcw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, Layout, Lightbulb, MessageSquare, Plus, Search, Settings, ArrowRight, Map, RotateCcw, Trash2, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Logo } from "../components/ui/Logo";
 import GlobeChatIcon from "../components/icons/GlobeChatIcon";
 import api from "../lib/api";
@@ -22,6 +22,7 @@ export function DashboardPage() {
     const recentDocs = documents.slice(0, 3);
 
     const [sessions, setSessions] = useState([]);
+    const [starredSessions, setStarredSessions] = useState([]);
     const [deletedSessions, setDeletedSessions] = useState([]);
     const [isLoadingSessions, setIsLoadingSessions] = useState(true);
     const [isLoadingDeleted, setIsLoadingDeleted] = useState(true);
@@ -33,6 +34,14 @@ export function DashboardPage() {
                 const res = await api.get('/chat/sessions');
                 if (res.data) {
                     setSessions(res.data.slice(0, 3)); // Only show top 3
+                    
+                    try {
+                        const starredIds = JSON.parse(localStorage.getItem('starredChats') || '[]');
+                        const starred = res.data.filter(s => starredIds.includes(s.id));
+                        setStarredSessions(starred.slice(0, 3));
+                    } catch (e) {
+                        setStarredSessions([]);
+                    }
                 }
             } catch (err) {
                 console.error("Failed to fetch sessions for dashboard:", err);
@@ -97,7 +106,10 @@ export function DashboardPage() {
                     </p>
                 </div>
                 <div className="flex w-full flex-col space-y-3 md:w-auto md:flex-row md:space-x-4 md:space-y-0">
-                    <Input placeholder="Search topics..." className="w-full md:w-64" />
+                    <Input 
+                        placeholder="Search topics..." 
+                        className="w-full md:w-64 rounded-full transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 hover:border-accent/40 focus-visible:shadow-md focus-visible:-translate-y-0.5" 
+                    />
                     {isTeacher && (
                         <Link to="/chat?mode=classroom-plan" className="w-full md:w-auto">
                             <Button className="w-full">
@@ -156,6 +168,32 @@ export function DashboardPage() {
                                 ) : (
                                     <li className="text-sm text-foreground-muted p-2 italic">
                                         {isTeacher ? "No recent activity" : "No recent chats"}
+                                    </li>
+                                )}
+                            </ul>
+                        </Card>
+                    </div>
+
+                    <div className="order-7 col-span-2 md:order-none md:col-span-1 mt-6 md:mt-0">
+                        <Card className="p-4 border-border-base dark:border-white/5">
+                            <h4 className="mb-4 text-sm font-medium text-foreground-muted uppercase tracking-wider">Starred Chats</h4>
+                            <ul className="space-y-3">
+                                {isLoadingSessions ? (
+                                    <li className="text-sm text-foreground-muted p-2">Loading starred...</li>
+                                ) : starredSessions.length > 0 ? (
+                                    starredSessions.map((session) => (
+                                        <Link to={`/chat?sessionId=${session.id}`} key={session.id}>
+                                            <li className="flex items-center space-x-3 text-sm group cursor-pointer hover:bg-accent/10 dark:hover:bg-white/5 p-2 rounded-md transition-colors">
+                                                <Star className="h-4 w-4 text-yellow-500 group-hover:text-yellow-600 transition-colors shrink-0" />
+                                                <span className="text-foreground group-hover:text-foreground dark:group-hover:text-white transition-colors truncate">
+                                                    {session.title || "Chat Session"}
+                                                </span>
+                                            </li>
+                                        </Link>
+                                    ))
+                                ) : (
+                                    <li className="text-sm text-foreground-muted p-2 italic">
+                                        No starred chats
                                     </li>
                                 )}
                             </ul>

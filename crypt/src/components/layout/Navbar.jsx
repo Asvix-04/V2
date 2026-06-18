@@ -19,17 +19,26 @@ export function Navbar() {
 
 
     const NavLink = ({ to, icon: Icon, children }) => {
-        const isActive = location.pathname === to;
+        const isActive = to === '/home' || to === '/' 
+            ? location.pathname === '/' || location.pathname === '/home'
+            : location.pathname.startsWith(to);
         return (
             <Link
                 to={to}
                 className={cn(
-                    "flex items-center space-x-2 text-sm font-medium transition-colors hover:text-accent-bright",
-                    isActive ? "text-accent" : "text-foreground-muted"
+                    "relative flex items-center space-x-2 text-sm font-medium transition-colors h-16 px-1",
+                    isActive ? "text-indigo-600 dark:text-accent" : "text-slate-600 dark:text-foreground-muted hover:text-indigo-900 dark:hover:text-white"
                 )}
             >
-                <Icon className="h-4 w-4" />
+                <Icon className={cn("h-4 w-4 transition-colors", isActive ? "text-indigo-600 dark:text-accent" : "text-slate-400 dark:text-foreground-muted")} />
                 <span>{children}</span>
+                {isActive && (
+                    <motion.div
+                        layoutId="navbar-active-indicator"
+                        className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-600 dark:bg-accent rounded-t-full"
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    />
+                )}
             </Link>
         );
     };
@@ -66,7 +75,7 @@ export function Navbar() {
 
     return (
         <>
-            <nav className="fixed top-0 z-50 w-full border-b border-border-base dark:border-white/5 bg-background-base/80 backdrop-blur-xl">
+            <nav className="fixed top-0 z-50 w-full border-b border-slate-200/50 dark:border-white/5 bg-white/60 dark:bg-[#0A0A0B]/80 backdrop-blur-md bg-gradient-to-r from-indigo-50/40 via-white/40 to-purple-50/40 dark:from-transparent dark:via-transparent dark:to-transparent shadow-[0_1px_2px_rgba(0,0,0,0.01),0_8px_32px_rgba(0,0,0,0.02)] dark:shadow-none">
                 <div className="container relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
                     <Link to="/home" className="flex items-center space-x-2">
                         <Logo className="h-8 w-8" style={{ color: '#5c67f2' }} />

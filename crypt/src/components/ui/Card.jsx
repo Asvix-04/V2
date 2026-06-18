@@ -38,7 +38,7 @@ const Card = React.forwardRef(({ className, children, spotlight = true, ...props
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             className={cn(
-                "relative transition-all duration-300",
+                "relative transition-all duration-300 overflow-hidden",
                 // Light Mode — clean elevated card, lift on hover
                 "rounded-[28px] bg-background-base border border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_32px_rgba(94,106,210,0.12),0_2px_8px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 hover:border-slate-300/80",
                 // Dark Mode (Linear / Glass) — unchanged

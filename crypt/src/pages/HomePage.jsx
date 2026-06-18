@@ -141,9 +141,8 @@ export function HomePage() {
                         </span>
                         <br />
                         <span
-                            className="bg-clip-text text-transparent"
+                            className="bg-clip-text text-transparent bg-gradient-to-br from-indigo-800 via-purple-800 to-indigo-900 dark:from-[#5E6AD2] dark:via-[#8b5cf6] dark:to-[#4F46E5]"
                             style={{
-                                backgroundImage: "linear-gradient(135deg, #5E6AD2 0%, #8b5cf6 40%, #4F46E5 70%, #5E6AD2 100%)",
                                 backgroundSize: "200% 200%",
                                 animation: "gradient-shift 4s ease infinite",
                             }}
@@ -271,25 +270,23 @@ export function HomePage() {
                             text-foreground dark:text-white
                             border border-slate-200/80 dark:border-white/5
                             bg-gradient-to-br from-white to-slate-50/80 dark:from-white/[0.08] dark:to-white/[0.02]
-                            hover:border-accent/30 dark:hover:border-white/10
-                            hover:shadow-[0_8px_40px_rgba(94,106,210,0.12)]
-                            transition-all duration-500 overflow-hidden">
+                            hover:border-indigo-400/60 dark:hover:border-white/10
+                            hover:shadow-[0_12px_48px_rgba(94,106,210,0.25)] dark:hover:shadow-[0_8px_40px_rgba(94,106,210,0.12)]
+                            transition-all duration-500 overflow-hidden group-hover:-translate-y-1">
 
-                            {/* Light mode gradient sheen on hover */}
-                            <div className="block dark:hidden absolute inset-0 bg-gradient-to-br from-accent/4 via-transparent to-purple-500/4 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-[32px]" />
                             {/* Dark mode overlay */}
                             <div className="hidden dark:block absolute inset-0 bg-gradient-to-b from-transparent to-black/60 z-0 opacity-0 dark:opacity-100 transition-opacity" />
 
-                            <Logo className="h-12 w-12 text-accent mb-4 z-10 group-hover:scale-110 transition-transform duration-300" />
-                            <h3 className="text-2xl font-bold z-10 group-hover:text-accent transition-colors duration-300">
+                            <Logo className="h-12 w-12 text-accent mb-4 z-10 group-hover:scale-110 group-hover:drop-shadow-[0_0_12px_rgba(94,106,210,0.5)] transition-all duration-300" />
+                            <h3 className="text-2xl font-bold z-10 group-hover:text-indigo-900 dark:group-hover:text-accent transition-colors duration-300">
                                 {t('home.features.card1.title')}
                             </h3>
-                            <p className="mt-2 text-foreground-muted dark:text-gray-300 max-w-md z-10 group-hover:text-foreground dark:group-hover:text-white transition-colors duration-300">
+                            <p className="mt-2 text-foreground-muted dark:text-gray-300 max-w-md z-10 group-hover:text-slate-800 dark:group-hover:text-white transition-colors duration-300">
                                 {t('home.features.card1.desc')}
                             </p>
 
-                            {/* Animated bottom border on hover */}
-                            <div className="block dark:hidden absolute bottom-0 left-0 h-[2px] w-0 group-hover:w-full bg-gradient-to-r from-accent via-purple-400 to-accent transition-all duration-700 rounded-full" />
+                            {/* Responsive decorative accent line */}
+                            <div className="block dark:hidden mt-8 sm:mt-0 sm:absolute sm:bottom-0 sm:left-0 h-[3px] sm:h-[2px] w-12 sm:w-0 group-hover:w-24 sm:group-hover:w-full bg-gradient-to-r from-accent via-purple-400 to-accent transition-all duration-700 rounded-full" />
                         </Card>
                     </motion.div>
 
@@ -305,20 +302,17 @@ export function HomePage() {
                             text-foreground dark:text-white
                             border border-slate-200/80 dark:border-white/5
                             bg-gradient-to-br from-white to-amber-50/30 dark:from-white/[0.08] dark:to-white/[0.02]
-                            hover:border-amber-300/50 dark:hover:border-white/10
-                            hover:shadow-[0_6px_28px_rgba(245,158,11,0.10)]
-                            transition-all duration-400 overflow-hidden">
-                            <motion.div
-                                whileHover={{ rotate: [0, -10, 10, 0], scale: 1.15 }}
-                                transition={{ duration: 0.4 }}
-                            >
-                                <Zap className="h-7 w-7 text-amber-500 dark:text-yellow-400 group-hover:drop-shadow-[0_0_8px_rgba(245,158,11,0.6)] transition-all duration-300" />
+                            hover:border-amber-400/80 dark:hover:border-white/10
+                            hover:shadow-[0_12px_36px_rgba(245,158,11,0.20)] dark:hover:shadow-[0_6px_28px_rgba(245,158,11,0.10)]
+                            transition-all duration-400 overflow-hidden group-hover:-translate-y-1">
+                            <motion.div>
+                                <Zap className="h-7 w-7 text-amber-500 dark:text-yellow-400 group-hover:drop-shadow-[0_0_12px_rgba(245,158,11,0.8)] transition-all duration-300" />
                             </motion.div>
                             <div>
-                                <h3 className="text-base font-semibold group-hover:text-amber-600 dark:group-hover:text-yellow-400 transition-colors duration-300">
+                                <h3 className="text-base font-semibold group-hover:text-amber-800 dark:group-hover:text-yellow-400 transition-colors duration-300">
                                     {t('home.features.card2.title')}
                                 </h3>
-                                <p className="text-sm text-foreground-muted mt-1">{t('home.features.card2.desc')}</p>
+                                <p className="text-sm text-foreground-muted mt-1 group-hover:text-slate-800 dark:group-hover:text-white transition-colors duration-300">{t('home.features.card2.desc')}</p>
                             </div>
                         </Card>
                     </motion.div>
@@ -335,20 +329,17 @@ export function HomePage() {
                             text-foreground dark:text-white
                             border border-slate-200/80 dark:border-white/5
                             bg-gradient-to-br from-white to-purple-50/30 dark:from-white/[0.08] dark:to-white/[0.02]
-                            hover:border-purple-300/50 dark:hover:border-white/10
-                            hover:shadow-[0_6px_28px_rgba(139,92,246,0.10)]
-                            transition-all duration-400 overflow-hidden">
-                            <motion.div
-                                whileHover={{ scale: 1.15, rotate: 5 }}
-                                transition={{ duration: 0.35 }}
-                            >
-                                <BrainCircuit className="h-7 w-7 text-purple-500 dark:text-purple-400 group-hover:drop-shadow-[0_0_8px_rgba(139,92,246,0.6)] transition-all duration-300" />
+                            hover:border-purple-400/80 dark:hover:border-white/10
+                            hover:shadow-[0_12px_36px_rgba(139,92,246,0.20)] dark:hover:shadow-[0_6px_28px_rgba(139,92,246,0.10)]
+                            transition-all duration-400 overflow-hidden group-hover:-translate-y-1">
+                            <motion.div>
+                                <BrainCircuit className="h-7 w-7 text-purple-500 dark:text-purple-400 group-hover:drop-shadow-[0_0_12px_rgba(139,92,246,0.8)] transition-all duration-300" />
                             </motion.div>
                             <div>
-                                <h3 className="text-base font-semibold group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors duration-300">
+                                <h3 className="text-base font-semibold group-hover:text-purple-800 dark:group-hover:text-purple-400 transition-colors duration-300">
                                     {t('home.features.card3.title')}
                                 </h3>
-                                <p className="text-sm text-foreground-muted mt-1">{t('home.features.card3.desc')}</p>
+                                <p className="text-sm text-foreground-muted mt-1 group-hover:text-slate-800 dark:group-hover:text-white transition-colors duration-300">{t('home.features.card3.desc')}</p>
                             </div>
                         </Card>
                     </motion.div>
@@ -365,15 +356,15 @@ export function HomePage() {
                             text-foreground dark:text-white
                             border border-slate-200/80 dark:border-white/5
                             bg-gradient-to-r from-white via-slate-50/50 to-white dark:from-white/[0.08] dark:to-white/[0.02]
-                            hover:border-emerald-300/50 dark:hover:border-white/10
-                            hover:shadow-[0_4px_24px_rgba(16,185,129,0.08)]
-                            transition-all duration-400 overflow-hidden">
+                            hover:border-emerald-400/80 dark:hover:border-white/10
+                            hover:shadow-[0_12px_36px_rgba(16,185,129,0.15)] dark:hover:shadow-[0_4px_24px_rgba(16,185,129,0.08)]
+                            transition-all duration-400 overflow-hidden group-hover:-translate-y-1">
                             <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
                                 <div>
-                                    <h3 className="text-lg font-semibold group-hover:text-emerald-600 transition-colors duration-300">
+                                    <h3 className="text-lg font-semibold group-hover:text-emerald-800 dark:group-hover:text-emerald-400 transition-colors duration-300">
                                         {t('home.features.card4.title')}
                                     </h3>
-                                    <p className="text-sm text-foreground-muted">{t('home.features.card4.desc')}</p>
+                                    <p className="text-sm text-foreground-muted group-hover:text-slate-800 dark:group-hover:text-white transition-colors duration-300">{t('home.features.card4.desc')}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
