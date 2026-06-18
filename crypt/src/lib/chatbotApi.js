@@ -31,7 +31,7 @@ chatbotClient.interceptors.request.use(
 export const chatbotApi = {
     checkHealth: async () => {
         try {
-            const response = await chatbotClient.get('/health');
+            const response = await chatbotClient.get('/health', { timeout: 10000 });
             return response.data;
         } catch (error) {
             console.error('Chatbot health check failed:', error);

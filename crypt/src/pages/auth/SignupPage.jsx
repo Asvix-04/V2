@@ -23,7 +23,12 @@ export function SignupPage() {
         setLoading(true);
         setError(null);
         try {
-            const dataToSend = { ...formData, role: 'student' };
+            const dataToSend = {
+                name: formData.name.trim(),
+                email: formData.email.trim().toLowerCase(),
+                password: formData.password,
+                role: 'student'
+            };
             const { data } = await api.post('/auth/register', dataToSend);
             localStorage.setItem("user", JSON.stringify(data));
             navigate('/dashboard');
