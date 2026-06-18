@@ -38,8 +38,10 @@ const MODELS = [
 ];
 
 const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;
+const ONE_MINUTE_MS = 60 * 1000;
 const LOCAL_CHAT_SESSIONS_KEY = "digilabLocalChatSessions";
 const LOCAL_ACTIVE_CHAT_KEY = "digilabActiveChatSession";
+const CHAT_EXPIRY_PREFIX = "chat_expiry_";
 const MAX_LOCAL_CHAT_SESSIONS = 50;
 
 const getLocalChatOwner = () => {
@@ -52,9 +54,84 @@ const getLocalChatOwner = () => {
 };
 
 const isExpiredSession = (session) => {
-    if (!session?.expiresAt) return false;
-    const expiresAt = new Date(session.expiresAt).getTime();
+    const expiresAt = getSessionExpiryMs(session);
     return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+};
+
+const getChatExpiryKey = (chatId) => `${CHAT_EXPIRY_PREFIX}${chatId}`;
+
+const readChatExpiryMs = (chatId) => {
+    if (!chatId) return null;
+    try {
+        const value = localStorage.getItem(getChatExpiryKey(chatId));
+        if (!value) return null;
+        const expiryMs = Number(value);
+        if (!Number.isFinite(expiryMs) || expiryMs <= Date.now()) {
+            localStorage.removeItem(getChatExpiryKey(chatId));
+            return null;
+        }
+        return expiryMs;
+    } catch {
+        return null;
+    }
+};
+
+const writeChatExpiryMs = (chatId, expiryMs) => {
+    if (!chatId || !Number.isFinite(expiryMs)) return;
+    try {
+        localStorage.setItem(getChatExpiryKey(chatId), String(expiryMs));
+    } catch {
+        // Ignore storage failures.
+    }
+};
+
+const removeChatExpiry = (chatId) => {
+    if (!chatId) return;
+    try {
+        localStorage.removeItem(getChatExpiryKey(chatId));
+    } catch {
+        // Ignore storage failures.
+    }
+};
+
+const getStoredSessionExpiryMs = (session) => {
+    if (!session?.expiresAt) return null;
+    const expiryMs = new Date(session.expiresAt).getTime();
+    return Number.isFinite(expiryMs) && expiryMs > Date.now() ? expiryMs : null;
+};
+
+const getSessionExpiryMs = (session) => {
+    return readChatExpiryMs(session?.id);
+};
+
+const withStoredExpiry = (session) => {
+    if (!session?.id) return session;
+    const storedExpiryMs = readChatExpiryMs(session.id);
+    if (storedExpiryMs) {
+        return {
+            ...session,
+            disappearingMode: true,
+            expiresAt: new Date(storedExpiryMs).toISOString()
+        };
+    }
+
+    return {
+        ...session,
+        disappearingMode: false,
+        expiresAt: null
+    };
+};
+
+const persistSessionExpiry = (session) => {
+    if (!session?.id) return session;
+    const existingExpiryMs = getStoredSessionExpiryMs(session);
+    if (session.disappearingMode && existingExpiryMs) {
+        writeChatExpiryMs(session.id, existingExpiryMs);
+    } else if (!session.disappearingMode) {
+        removeChatExpiry(session.id);
+    }
+
+    return withStoredExpiry(session);
 };
 
 const sortSessionsByActivity = (items) => [...items].sort((a, b) => {
@@ -66,7 +143,7 @@ const sortSessionsByActivity = (items) => [...items].sort((a, b) => {
 const readLocalChatSessions = (owner = getLocalChatOwner()) => {
     try {
         const store = JSON.parse(localStorage.getItem(LOCAL_CHAT_SESSIONS_KEY) || "{}");
-        const sessions = Array.isArray(store[owner]) ? store[owner].filter(s => !isExpiredSession(s)) : [];
+        const sessions = Array.isArray(store[owner]) ? store[owner].map(withStoredExpiry).filter(s => !isExpiredSession(s)) : [];
         store[owner] = sessions;
         localStorage.setItem(LOCAL_CHAT_SESSIONS_KEY, JSON.stringify(store));
         return sortSessionsByActivity(sessions);
@@ -78,7 +155,7 @@ const readLocalChatSessions = (owner = getLocalChatOwner()) => {
 const writeLocalChatSessions = (sessions, owner = getLocalChatOwner()) => {
     try {
         const store = JSON.parse(localStorage.getItem(LOCAL_CHAT_SESSIONS_KEY) || "{}");
-        store[owner] = sortSessionsByActivity(sessions.filter(s => !isExpiredSession(s))).slice(0, MAX_LOCAL_CHAT_SESSIONS);
+        store[owner] = sortSessionsByActivity(sessions.map(withStoredExpiry).filter(s => !isExpiredSession(s))).slice(0, MAX_LOCAL_CHAT_SESSIONS);
         localStorage.setItem(LOCAL_CHAT_SESSIONS_KEY, JSON.stringify(store));
     } catch {
         // Local history is best-effort only.
@@ -86,13 +163,15 @@ const writeLocalChatSessions = (sessions, owner = getLocalChatOwner()) => {
 };
 
 const upsertLocalChatSession = (session, owner = getLocalChatOwner()) => {
-    const sessions = readLocalChatSessions(owner).filter(s => s.id !== session.id);
-    const next = [session, ...sessions];
+    const normalizedSession = persistSessionExpiry(session);
+    const sessions = readLocalChatSessions(owner).filter(s => s.id !== normalizedSession.id);
+    const next = [normalizedSession, ...sessions];
     writeLocalChatSessions(next, owner);
     return sortSessionsByActivity(next);
 };
 
 const removeLocalChatSession = (sessionId, owner = getLocalChatOwner()) => {
+    removeChatExpiry(sessionId);
     writeLocalChatSessions(readLocalChatSessions(owner).filter(s => s.id !== sessionId), owner);
 };
 
@@ -121,10 +200,12 @@ const isLocalOnlySessionId = (sessionId) => {
 };
 
 const mergeChatSessions = (remoteSessions = [], localSessions = [], includeSyncedLocal = false) => {
-    const remoteIds = new Set(remoteSessions.map(session => session.id));
+    const hydratedRemoteSessions = remoteSessions.map(withStoredExpiry);
+    const hydratedLocalSessions = localSessions.map(withStoredExpiry);
+    const remoteIds = new Set(hydratedRemoteSessions.map(session => session.id));
     return sortSessionsByActivity([
-        ...remoteSessions.filter(session => !isExpiredSession(session)),
-        ...localSessions.filter(session => {
+        ...hydratedRemoteSessions.filter(session => !isExpiredSession(session)),
+        ...hydratedLocalSessions.filter(session => {
             return !remoteIds.has(session.id)
                 && !isExpiredSession(session)
                 && (includeSyncedLocal || session.localFallback || isLocalOnlySessionId(session.id));
@@ -132,15 +213,17 @@ const mergeChatSessions = (remoteSessions = [], localSessions = [], includeSynce
     ]);
 };
 
-const getDisappearingExpiryLabel = (session) => {
-    if (!session?.disappearingMode || !session.expiresAt) return null;
-    const diffMs = new Date(session.expiresAt).getTime() - Date.now();
+const getDisappearingExpiryLabel = (session, now = Date.now()) => {
+    const expiryMs = getSessionExpiryMs(session);
+    if (!expiryMs) return null;
+    const diffMs = expiryMs - now;
     if (!Number.isFinite(diffMs)) return null;
     if (diffMs <= 0) return "Expired";
-    const hours = Math.floor(diffMs / (60 * 60 * 1000));
-    const minutes = Math.ceil((diffMs % (60 * 60 * 1000)) / (60 * 1000));
-    if (hours > 0) return `Disappears in ${hours}h ${minutes}m`;
-    return `Disappears in ${minutes}m`;
+    const totalMinutes = Math.ceil(diffMs / ONE_MINUTE_MS);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0) return `Disappears in ${hours}h ${minutes}min`;
+    return `Disappears in ${minutes}min`;
 };
 
 
@@ -368,6 +451,7 @@ export function ChatPage() {
     const [selectedLanguage, setSelectedLanguage] = React.useState(null); // null = English (default)
     const [isTranslating, setIsTranslating] = React.useState(false);
     const [isLangDropdownOpen, setIsLangDropdownOpen] = React.useState(false);
+    const [countdownNow, setCountdownNow] = React.useState(Date.now());
 
     const TRANSLATE_LANGUAGES = [
         { code: null,    label: "English",    flag: "🇬🇧" },
@@ -406,10 +490,105 @@ export function ChatPage() {
         localStorage.setItem('disappearingMode', String(isDisappearingMode));
     }, [isDisappearingMode]);
 
+    React.useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            setCountdownNow(Date.now());
+        }, ONE_MINUTE_MS);
+
+        return () => window.clearInterval(intervalId);
+    }, []);
+
+    React.useEffect(() => {
+        setSessions(prev => {
+            const next = sortSessionsByActivity(prev.map(withStoredExpiry).filter(s => !isExpiredSession(s)));
+            if (next.length !== prev.length) {
+                writeLocalChatSessions(next);
+            }
+            return next;
+        });
+    }, [countdownNow]);
+
     const toggleStar = (id, e) => {
         e.stopPropagation();
         setStarredChats(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
     };
+
+    const syncDisappearingSession = React.useCallback((session) => {
+        if (isGuest || isIncognito || isLocalOnlySessionId(session.id)) return;
+
+        api.post('/chat/sessions', {
+            sessionId: session.id,
+            messages: session.messages,
+            title: session.title,
+            disappearingMode: Boolean(session.disappearingMode)
+        }).catch(err => {
+            console.error("Failed to sync disappearing mode:", err);
+        });
+    }, [isGuest, isIncognito]);
+
+    const handleDisappearingToggle = React.useCallback(() => {
+        const enabled = !isDisappearingMode;
+        const now = Date.now();
+        const expiryMs = now + DISAPPEARING_CHAT_TTL_MS;
+        const currentSnapshotId = messages.length > 1 ? (currentSessionId || `local-${now}`) : currentSessionId;
+
+        setIsDisappearingMode(enabled);
+        setCountdownNow(now);
+
+        setSessions(prev => {
+            let next = prev.map(session => {
+                if (enabled) {
+                    writeChatExpiryMs(session.id, expiryMs);
+                    return {
+                        ...session,
+                        disappearingMode: true,
+                        expiresAt: new Date(expiryMs).toISOString()
+                    };
+                }
+
+                removeChatExpiry(session.id);
+                return {
+                    ...session,
+                    disappearingMode: false,
+                    expiresAt: null
+                };
+            });
+
+            if (messages.length > 1) {
+                const existing = next.find(session => session.id === currentSnapshotId);
+                const sessionId = currentSnapshotId;
+                const currentSession = {
+                    ...(existing || {}),
+                    id: sessionId,
+                    title: existing?.title || messages[1]?.content?.substring(0, 30) + "..." || "Chat session",
+                    messages: [...messages],
+                    timestamp: existing?.timestamp || new Date(now).toISOString(),
+                    updatedAt: new Date(now).toISOString(),
+                    localFallback: existing?.localFallback || isLocalOnlySessionId(sessionId),
+                    disappearingMode: enabled,
+                    expiresAt: enabled ? new Date(expiryMs).toISOString() : null
+                };
+
+                if (enabled) {
+                    writeChatExpiryMs(sessionId, expiryMs);
+                } else {
+                    removeChatExpiry(sessionId);
+                }
+
+                next = [currentSession, ...next.filter(session => session.id !== sessionId)];
+            }
+
+            const sorted = sortSessionsByActivity(next.map(withStoredExpiry).filter(session => !isExpiredSession(session)));
+            writeLocalChatSessions(sorted);
+            sorted.forEach(syncDisappearingSession);
+            return sorted;
+        });
+
+        if (currentSnapshotId) {
+            setCurrentSessionId(currentSnapshotId);
+            setActiveChatSession(currentSnapshotId);
+        }
+    }, [currentSessionId, isDisappearingMode, messages, syncDisappearingSession]);
     // ─────────────────────────────────────────────────────────────────
 
 
@@ -649,6 +828,8 @@ export function ChatPage() {
             }
 
             setMessages([INITIAL_MESSAGE]);
+
+            sessions.forEach(session => removeChatExpiry(session.id));
 
             setSessions([]);
 
@@ -1362,7 +1543,7 @@ export function ChatPage() {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => setIsDisappearingMode(!isDisappearingMode)}
+                                        onClick={handleDisappearingToggle}
                                         className={cn(
                                             "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
                                             isDisappearingMode ? "bg-orange-500" : "bg-zinc-300 dark:bg-zinc-700"
@@ -1415,7 +1596,7 @@ export function ChatPage() {
                                                 return 0;
                                             })
                                             .map((session) => {
-                                                const disappearingLabel = getDisappearingExpiryLabel(session);
+                                                const disappearingLabel = getDisappearingExpiryLabel(session, countdownNow);
                                                 return (
                                             <button
                                                 key={session.id}
