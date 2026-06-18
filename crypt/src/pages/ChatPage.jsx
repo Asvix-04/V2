@@ -1505,7 +1505,7 @@ export function ChatPage() {
                                         handleNewChat();
                                         if (window.innerWidth < 1024) setIsSidebarOpen(false);
                                     }}
-                                    className="w-full flex items-center justify-start gap-2 bg-gradient-to-r from-blue-50 to-indigo-50/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:from-blue-100 hover:to-indigo-100/50 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-900/50 rounded-lg px-4 py-2 font-medium transition-all duration-200 min-h-[44px] shadow-sm hover:shadow-md"
+                                    className="w-full flex items-center justify-start gap-2 bg-gradient-to-r from-blue-50 to-indigo-50/50 dark:from-white/5 dark:to-white/5 dark:bg-none text-blue-600 dark:text-white hover:from-blue-100 hover:to-indigo-100/50 dark:hover:from-white/10 dark:hover:to-white/10 border border-blue-200/80 dark:border-white/10 rounded-lg px-4 py-2 font-medium transition-all duration-200 min-h-[44px] shadow-sm hover:shadow-md"
                                 >
                                     <Plus className="h-4 w-4" />
                                     New Chat
