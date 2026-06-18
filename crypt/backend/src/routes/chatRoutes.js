@@ -69,7 +69,11 @@ router.get('/sessions', protect, async (req, res) => {
 // @access  Private
 router.post('/sessions', protect, async (req, res) => {
     try {
-        const { sessionId, messages, title } = req.body;
+        const { sessionId, messages, title, disappearingMode } = req.body;
+        const isDisappearing = disappearingMode === true || disappearingMode === 'true';
+        const expiresAt = isDisappearing
+            ? new Date(Date.now() + ChatSession.DISAPPEARING_CHAT_TTL_MS)
+            : null;
 
         let session;
         if (sessionId) {
@@ -79,14 +83,18 @@ router.post('/sessions', protect, async (req, res) => {
                 id: sessionId,
                 userId: req.user.id,
                 messages,
-                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat")
+                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat"),
+                disappearingMode: isDisappearing,
+                expiresAt
             });
         } else {
             // Create new
             session = new ChatSession({
                 userId: req.user.id,
                 messages,
-                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat")
+                title: title || (messages && messages[1] ? messages[1].content.substring(0, 30) + "..." : "New Chat"),
+                disappearingMode: isDisappearing,
+                expiresAt
             });
         }
 

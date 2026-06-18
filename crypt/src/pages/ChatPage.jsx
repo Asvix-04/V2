@@ -37,6 +37,8 @@ const MODELS = [
     { id: "Gemini 2.5 Pro", name: "Gemini 2.5 Pro", description: "Advanced reasoning for high-stakes problems.", icon: Zap, color: "text-purple-500" }
 ];
 
+const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;
+
 
 
 const INITIAL_MESSAGE = {
@@ -568,7 +570,11 @@ export function ChatPage() {
 
                 messages: [...messages],
 
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+
+                disappearingMode: isDisappearingMode,
+
+                expiresAt: isDisappearingMode ? new Date(Date.now() + DISAPPEARING_CHAT_TTL_MS).toISOString() : null
 
             };
 
@@ -733,7 +739,9 @@ export function ChatPage() {
 
                         messages: updatedMessages,
 
-                        title: sessionTitle
+                        title: sessionTitle,
+
+                        disappearingMode: isDisappearingMode
 
                     });
 
@@ -751,7 +759,7 @@ export function ChatPage() {
 
 
 
-                        if (!currentSessionId) {
+                        if (!currentSessionId || res.data.id !== currentSessionId) {
 
                             setCurrentSessionId(res.data.id);
 
@@ -797,7 +805,9 @@ export function ChatPage() {
 
                     sessionId: currentSessionId,
 
-                    messages: updatedWithErr
+                    messages: updatedWithErr,
+
+                    disappearingMode: isDisappearingMode
 
                 }).catch(() => { });
 
@@ -841,7 +851,8 @@ export function ChatPage() {
                 const res = await api.post('/chat/sessions', {
                     sessionId: currentSessionId,
                     messages: [...messages, userMsg, assistantMsg],
-                    title: sessionTitle
+                    title: sessionTitle,
+                    disappearingMode: isDisappearingMode
                 });
 
                 if (res.data) {
@@ -849,7 +860,7 @@ export function ChatPage() {
                         const filtered = prev.filter(s => s.id !== res.data.id);
                         return [res.data, ...filtered];
                     });
-                    if (!currentSessionId) setCurrentSessionId(res.data.id);
+                    if (!currentSessionId || res.data.id !== currentSessionId) setCurrentSessionId(res.data.id);
                 }
             } catch (dbErr) {
                 console.error("Failed to save voice chat to DB:", dbErr);
@@ -885,10 +896,15 @@ export function ChatPage() {
                     const sessionTitle = currentSessionId
                         ? sessions.find(s => s.id === currentSessionId)?.title
                         : text.substring(0, 30) + "...";
-                    const res = await api.post('/chat/sessions', { sessionId: currentSessionId, messages: updatedMessages, title: sessionTitle });
+                    const res = await api.post('/chat/sessions', {
+                        sessionId: currentSessionId,
+                        messages: updatedMessages,
+                        title: sessionTitle,
+                        disappearingMode: isDisappearingMode
+                    });
                     if (res.data) {
                         setSessions(prev => { const filtered = prev.filter(s => s.id !== res.data.id); return [res.data, ...filtered]; });
-                        if (!currentSessionId) setCurrentSessionId(res.data.id);
+                        if (!currentSessionId || res.data.id !== currentSessionId) setCurrentSessionId(res.data.id);
                     }
                 } catch (dbErr) { console.error("Failed to save translated chat to DB:", dbErr); }
             }
