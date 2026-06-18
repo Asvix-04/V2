@@ -94,6 +94,16 @@ const removeChatExpiry = (chatId) => {
     }
 };
 
+const removeAllChatExpiries = () => {
+    try {
+        Object.keys(localStorage)
+            .filter(key => key.startsWith(CHAT_EXPIRY_PREFIX))
+            .forEach(key => localStorage.removeItem(key));
+    } catch {
+        // Ignore storage failures.
+    }
+};
+
 const getStoredSessionExpiryMs = (session) => {
     if (!session?.expiresAt) return null;
     const expiryMs = new Date(session.expiresAt).getTime();
@@ -120,6 +130,29 @@ const withStoredExpiry = (session) => {
         disappearingMode: false,
         expiresAt: null
     };
+};
+
+const applyDisappearingModeToSessions = (sessions, enabled, now = Date.now()) => {
+    if (!enabled) {
+        sessions.forEach(session => removeChatExpiry(session.id));
+        return sortSessionsByActivity(sessions.map(session => ({
+            ...session,
+            disappearingMode: false,
+            expiresAt: null
+        })).filter(session => !isExpiredSession(session)));
+    }
+
+    const defaultExpiryMs = now + DISAPPEARING_CHAT_TTL_MS;
+    return sortSessionsByActivity(sessions.map(session => {
+        const expiryMs = readChatExpiryMs(session.id) || defaultExpiryMs;
+        writeChatExpiryMs(session.id, expiryMs);
+
+        return {
+            ...session,
+            disappearingMode: true,
+            expiresAt: new Date(expiryMs).toISOString()
+        };
+    }).filter(session => !isExpiredSession(session)));
 };
 
 const persistSessionExpiry = (session) => {
@@ -500,13 +533,13 @@ export function ChatPage() {
 
     React.useEffect(() => {
         setSessions(prev => {
-            const next = sortSessionsByActivity(prev.map(withStoredExpiry).filter(s => !isExpiredSession(s)));
+            const next = applyDisappearingModeToSessions(prev.map(withStoredExpiry), isDisappearingMode);
             if (next.length !== prev.length) {
                 writeLocalChatSessions(next);
             }
             return next;
         });
-    }, [countdownNow]);
+    }, [countdownNow, isDisappearingMode]);
 
     const toggleStar = (id, e) => {
         e.stopPropagation();
@@ -533,7 +566,12 @@ export function ChatPage() {
         const currentSnapshotId = messages.length > 1 ? (currentSessionId || `local-${now}`) : currentSessionId;
 
         setIsDisappearingMode(enabled);
+        localStorage.setItem('disappearingMode', String(enabled));
         setCountdownNow(now);
+
+        if (!enabled) {
+            removeAllChatExpiries();
+        }
 
         setSessions(prev => {
             let next = prev.map(session => {
@@ -578,7 +616,7 @@ export function ChatPage() {
                 next = [currentSession, ...next.filter(session => session.id !== sessionId)];
             }
 
-            const sorted = sortSessionsByActivity(next.map(withStoredExpiry).filter(session => !isExpiredSession(session)));
+            const sorted = applyDisappearingModeToSessions(next, enabled, now);
             writeLocalChatSessions(sorted);
             sorted.forEach(syncDisappearingSession);
             return sorted;
@@ -703,26 +741,35 @@ export function ChatPage() {
 
             if (!isGuest) {
 
-                const localSessions = readLocalChatSessions();
+                if (!isDisappearingMode) {
+                    removeAllChatExpiries();
+                }
+
+                const localSessions = applyDisappearingModeToSessions(readLocalChatSessions(), isDisappearingMode);
 
                 if (localSessions.length > 0) {
                     setSessions(localSessions);
+                    writeLocalChatSessions(localSessions);
                 }
 
                 try {
 
                     const res = await api.get('/chat/sessions');
 
-                    const mergedSessions = mergeChatSessions(res.data || [], localSessions);
+                    const mergedSessions = applyDisappearingModeToSessions(
+                        mergeChatSessions(res.data || [], localSessions),
+                        isDisappearingMode
+                    );
 
                     if (mergedSessions.length > 0) {
 
                         setSessions(mergedSessions);
+                        writeLocalChatSessions(mergedSessions);
 
 
 
                         const sessionId = searchParams.get("sessionId");
-                        const activeSessionId = sessionId || getActiveChatSession();
+                        const activeSessionId = sessionId || getActiveChatSession() || mergedSessions[0]?.id;
 
                         if (activeSessionId) {
 
@@ -744,7 +791,7 @@ export function ChatPage() {
 
                     console.error("Failed to fetch sessions from DB:", err);
 
-                    const activeSessionId = searchParams.get("sessionId") || getActiveChatSession();
+                    const activeSessionId = searchParams.get("sessionId") || getActiveChatSession() || localSessions[0]?.id;
                     const found = localSessions.find(s => s.id === activeSessionId);
                     if (found) {
                         setCurrentSessionId(found.id);
@@ -759,7 +806,7 @@ export function ChatPage() {
 
         initChat();
 
-    }, [isGuest]);
+    }, [isGuest, isDisappearingMode]);
 
 
 
@@ -829,7 +876,7 @@ export function ChatPage() {
 
             setMessages([INITIAL_MESSAGE]);
 
-            sessions.forEach(session => removeChatExpiry(session.id));
+            removeAllChatExpiries();
 
             setSessions([]);
 
