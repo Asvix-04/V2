@@ -4,6 +4,7 @@
 env.txt 
 __pycache__/ 
 *.pyc 
+*.log
 env
 .env
 data

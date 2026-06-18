@@ -5,8 +5,15 @@ const cors = require('cors');
 const helmet = require('helmet');
 const { initializeFirebase } = require('./config/db');
 
-// Load env vars — always resolve relative to this file so it works from any cwd
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Load env vars — always resolve relative to this file so it works from any cwd.
+// Keep the standard backend/.env location first, but support the existing local
+// backend/src/.env file so local dev does not silently start without credentials.
+dotenv.config({
+    path: [
+        path.resolve(__dirname, '../.env'),
+        path.resolve(__dirname, '.env')
+    ]
+});
 
 // Initialize Firebase
 initializeFirebase();

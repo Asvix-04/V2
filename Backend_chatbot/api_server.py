@@ -11,6 +11,7 @@ Merged version combining:
 from utils import MAX_AUDIO_BYTES, RateLimiter, s2s_limiter
 import base64
 import binascii
+import sys
 import time
 from datetime import datetime
 from collections import defaultdict
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
 from chatbot import PDFChatbot
+from llm_client import AVAILABLE_MODELS
 from sarvam_client import SarvamClient, LANGUAGE_DISPLAY
 try:
     from Db import find_reference_links, check_db_connection
@@ -33,7 +35,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except AttributeError:
+    pass
+
 S2S_TIMING_LOG_FILE = "s2s_timing_log.txt"
+
+MODEL_ALIASES = {
+    "gemini 2.5 flash": "1",
+    "gemini-2.5-flash": "1",
+    "gemini 2.5 pro": "2",
+    "gemini-2.5-pro": "2",
+    "deepseek v3.2": "3",
+    "deepseek-chat": "3",
+}
 
 # ─────────────────────────────────────────────────────────────
 # App Setup
@@ -82,7 +99,7 @@ class ChatResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     reference_links: List[ReferenceLink] = []
-    follow_up_questions: Optional[List[str]] = None
+    follow_up_questions: Optional[Any] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -140,16 +157,16 @@ async def startup_event():
 
     try:
         sarvam_client = SarvamClient()
-        print("✅ Sarvam speech client initialized successfully")
+        print("Sarvam speech client initialized successfully")
     except Exception as e:
         sarvam_client = None
-        print(f"⚠️  Sarvam speech client unavailable: {e}")
+        print(f"Sarvam speech client unavailable: {e}")
 
     db_ok = check_db_connection()
     if db_ok:
-        print("✅ MySQL DB connected successfully")
+        print("MySQL DB connected successfully")
     else:
-        print("⚠️  MySQL DB connection failed — reference links will be unavailable")
+        print("MySQL DB connection failed - reference links will be unavailable")
 
 # ─────────────────────────────────────────────────────────────
 # Helpers
@@ -172,6 +189,32 @@ def build_metadata(result: dict, ref_links: list) -> dict:
             for s in result["sources"][:3]
         ],
     }
+
+def apply_requested_model(model_name: Optional[str]) -> None:
+    """Accept frontend model labels without passing them into chatbot methods."""
+    if not model_name or chatbot is None:
+        return
+
+    normalized = model_name.strip().lower()
+    model_key = MODEL_ALIASES.get(normalized)
+
+    if not model_key:
+        for key, config in AVAILABLE_MODELS.items():
+            if normalized in {
+                key.lower(),
+                config.id.lower(),
+                config.display_name.lower(),
+            }:
+                model_key = key
+                break
+
+    if not model_key:
+        return
+
+    next_config = AVAILABLE_MODELS[model_key]
+    current_config = getattr(chatbot, "model_config", None)
+    if getattr(current_config, "id", None) != next_config.id:
+        chatbot.switch_model(next_config)
 
 def _decode_audio_b64(audio_b64: str) -> bytes:
     if not audio_b64 or not audio_b64.strip():
@@ -269,13 +312,14 @@ async def chat(request: QuestionRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     try:
+        apply_requested_model(request.model)
+
         # ── 1. Get chatbot answer ──
         # Check if the chatbot object has ask_question_with_follow_ups, 
         # otherwise fallback to ask_question
         if hasattr(chatbot, 'ask_question_with_follow_ups'):
             result = chatbot.ask_question_with_follow_ups(
                 question=request.question.strip(),
-                model=request.model,
                 use_history=request.use_history if request.use_history is not None else True,
             )
         else:
@@ -574,15 +618,16 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
 
 if __name__ == "__main__":
     if not os.path.exists("data/processed/txt_processed.flag"):
-        print("\n❌ TXT file not processed yet!")
+        print("\nTXT file not processed yet!")
         print("Please run: python process_txt_pipeline.py")
         exit(1)
 
     print("\n" + "=" * 60)
-    print("🚀 Starting Media Literacy Chatbot API Server")
+    print("Starting Media Literacy Chatbot API Server")
     print("=" * 60)
-    print("📡 API:  http://localhost:8000")
-    print("📚 Docs: http://localhost:8000/docs")
+    print("API:  http://localhost:8000")
+    print("Docs: http://localhost:8000/docs")
     print("=" * 60 + "\n")
 
-    uvicorn.run("api_server:app", host="localhost", port=8000, reload=True, log_level="info")
+    reload_enabled = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
+    uvicorn.run("api_server:app", host="localhost", port=8000, reload=reload_enabled, log_level="info")
