@@ -185,7 +185,7 @@ function playAudioBase64(base64, { onAudio } = {}) {
     });
 }
 
-export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit, onEditCancel, onRetry }) {
+export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit, onEditCancel, onRetry, isIncognito = false }) {
     const isUser = message.role === "user";
     const voiceAudio = message.audioBase64 || message.audio_base64;
     const [copied, setCopied] = useState(false);
@@ -357,11 +357,18 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
 
         // ── Normal display ───────────────────────────────────────────────
         return (
-            <div
-                className="flex w-full justify-end space-x-2 px-4 group"
+            <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex w-full justify-end max-sm:px-0 sm:px-4 group mb-6"
             >
-                <div className="flex max-w-[70%] flex-col items-end gap-1">
-                    <div className="w-full rounded-2xl rounded-tr-sm bg-accent px-4 py-2 text-sm leading-relaxed text-white shadow-sm">
+                <div className="flex max-sm:max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] flex-col items-end gap-1">
+                    <div className={cn(
+                        "w-full rounded-[24px] px-5 py-3.5 text-[15px] leading-relaxed text-white shadow-sm",
+                        isIncognito
+                            ? "bg-[#1e2a3a]/90 border border-white/10 backdrop-blur-xl"
+                            : "bg-accent max-sm:bg-accent/75 max-sm:backdrop-blur-xl max-sm:border max-sm:border-white/10"
+                    )}>
 
                         {quoteMatch ? (
                             <div className="space-y-2">
@@ -396,7 +403,7 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 border border-black/5 dark:bg-white/10 dark:border-white/10">
                     <MdPerson size={14} className="text-foreground" />
                 </div>
-            </div>
+            </motion.div>
         );
     }
 
@@ -405,15 +412,20 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
     const markdownContent = injectReferenceLinks(message.content, refLinks);
 
     return (
-        <div
-            className="flex w-full justify-start space-x-3 px-4 group"
+        <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex w-full justify-start space-x-3 max-sm:pl-3 max-sm:pr-1 sm:px-4 group mb-8"
         >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10 border border-accent/20">
                 <MdSmartToy size={18} className="text-accent" />
             </div>
 
             <div className="w-full min-w-0">
-                <div className="text-sm leading-relaxed text-foreground break-words">
+                <div className={cn(
+                    "text-[15px] sm:text-[15.5px] leading-relaxed sm:leading-7 break-words",
+                    isIncognito ? "text-zinc-100" : "text-foreground"
+                )}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                         {markdownContent}
                     </ReactMarkdown>
@@ -433,7 +445,12 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                                     href={link.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs text-accent hover:text-accent-bright transition-colors underline decoration-accent/20 underline-offset-4 font-medium"
+                                    className={cn(
+                                        "text-xs transition-colors underline underline-offset-4 font-medium",
+                                        isIncognito
+                                            ? "text-zinc-300 hover:text-white decoration-zinc-500/40"
+                                            : "text-accent hover:text-accent-bright decoration-accent/20"
+                                    )}
                                 >
                                     link{i + 1}.
                                 </a>
@@ -463,6 +480,18 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                         <span>{isReading ? 'Stop reading' : 'Read aloud'}</span>
                     </button>
 
+                    {onRetry && (
+                        <button
+                            onClick={onRetry}
+                            className="flex items-center space-x-1 rounded-md px-2 py-1 text-xs text-foreground-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                            title="Retry"
+                            aria-label="Retry message"
+                        >
+                            <MdRefresh size={14} />
+                            <span>Retry</span>
+                        </button>
+                    )}
+
                     <span className="text-[10px] text-foreground-muted opacity-60 ml-2">
                         {message.timestamp}
                     </span>
@@ -480,6 +509,6 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
 
                 </div>
             </div>
-        </div>
+        </motion.div>
     );
 }

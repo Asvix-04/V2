@@ -732,6 +732,81 @@ class PDFChatbot:
             "Do not pad. Do not repeat points. Stop when the question is fully answered.]"
         )
 
+    def _infer_response_intent(self, user_question: str, recent_context: str = "") -> ResponseIntent:
+        """Infer follow-up, tone, and format hints without another LLM call."""
+        q = (user_question or "").lower().strip()
+        has_context = bool((recent_context or "").strip()) or bool(self.conversation_history)
+
+        followup_mode = "none"
+        if has_context and self._is_likely_followup(user_question):
+            followup_mode = "expand"
+
+        if has_context and re.search(r"\b(simple|simpler|easy|easier|plain|beginner|eli5)\b", q):
+            followup_mode = "simplify"
+        elif has_context and re.search(r"\b(table|bullet|points?|list|format|chart)\b", q):
+            followup_mode = "reformat"
+        elif has_context and re.search(r"\b(more|detail|elaborate|expand|example|examples|again|further)\b", q):
+            followup_mode = "expand"
+
+        avoid_repetition = followup_mode != "none" or bool(
+            re.search(r"\b(don't repeat|do not repeat|avoid repetition|another way|different way|more detail|tell me more)\b", q)
+        )
+
+        tone_signal = "auto"
+        if re.search(r"\b(simple|simpler|easy|easier|plain|beginner|eli5)\b", q):
+            tone_signal = "simple"
+        elif re.search(r"\b(exam|ignou|assignment|formal|academic|notes?|answer writing)\b", q):
+            tone_signal = "exam"
+        elif re.search(r"\b(formal|professional)\b", q):
+            tone_signal = "formal"
+
+        format_signal = "auto"
+        if re.search(r"\b(table|tabular|compare|comparison|differentiate|difference|distinguish)\b", q):
+            format_signal = "table"
+        elif re.search(r"\b(steps?|stages?|process|sequence|procedure|numbered)\b", q):
+            format_signal = "numbered"
+        elif re.search(r"\b(bullets?|points?|list|features|characteristics|types|advantages|disadvantages)\b", q):
+            format_signal = "bullets"
+        elif re.search(r"\b(paragraph|prose|short note|brief note)\b", q):
+            format_signal = "prose"
+
+        return ResponseIntent(
+            followup_mode=followup_mode,
+            avoid_repetition=avoid_repetition,
+            tone_signal=tone_signal,
+            format_signal=format_signal,
+        )
+
+    def _build_length_instruction(self, user_question: str, response_intent: ResponseIntent) -> str:
+        """Return the existing dynamic length tag, adjusted only for clear follow-up intent."""
+        if response_intent.followup_mode == "expand":
+            return (
+                "[LENGTH: LONG — Expand on the previous answer with additional useful detail. "
+                "Avoid repeating the same wording. Keep the answer grounded in the course material.]"
+            )
+        if response_intent.followup_mode == "simplify":
+            return (
+                "[LENGTH: MEDIUM — Re-explain the idea clearly in simple language. "
+                "Use short paragraphs and avoid unnecessary technical density.]"
+            )
+        return self._detect_length_instruction(user_question)
+
+    def _build_format_instruction(self, user_question: str, response_intent: ResponseIntent) -> str:
+        """Return a compact structure hint for the synthesis prompt."""
+        format_signal = response_intent.format_signal
+        if format_signal == "table":
+            return "[FORMAT: TABLE — Use a concise markdown table when the material supports comparison.]"
+        if format_signal == "numbered":
+            return "[FORMAT: NUMBERED LIST — Use numbered steps or stages where order matters.]"
+        if format_signal == "bullets":
+            return "[FORMAT: BULLET POINTS — Use bullets for parallel points, features, types, or advantages.]"
+        if format_signal == "prose":
+            return "[FORMAT: PROSE — Use clear paragraphs, not a table or list unless essential.]"
+        return (
+            "[FORMAT: AUTO — Choose the clearest structure: prose for definitions, bullets for parallel points, "
+            "numbered lists for sequences, and tables for comparisons.]"
+        )
+
     # ─────────────────────────────────────────────────────────
     # Main question handler
     # ─────────────────────────────────────────────────────────

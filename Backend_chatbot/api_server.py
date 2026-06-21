@@ -75,24 +75,6 @@ async def add_process_time_header(request: Request, call_next):
         )
     return response
 
-
-@app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
-    start_time = time.perf_counter()
-    response = await call_next(request)
-    process_time = (time.perf_counter() - start_time) * 1000
-    response.headers["X-Process-Time"] = str(process_time)
-    
-    # Generic logging for non-chat endpoints (health, docs, etc.)
-    # Chat endpoint will do its own detailed logging
-    if not request.url.path.startswith("/chat"):
-        log_request_metrics(
-            endpoint=request.url.path,
-            status_code=response.status_code,
-            response_time_ms=process_time
-        )
-    return response
-
 chatbot = None
 sarvam_client = None
 
@@ -424,6 +406,7 @@ async def chat(request: QuestionRequest, raw_request: Request):
     Returns JSON by default. With ?stream=true, returns Server-Sent Events so
     the frontend can render incrementally and safely fall back if unsupported.
     """
+    start_time = time.perf_counter()
     wants_stream = raw_request.query_params.get("stream", "").lower() == "true"
 
     if wants_stream:
@@ -568,22 +551,25 @@ async def text_to_text(request: TextToTextRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-        if request.language_code:
-            language_code = _normalize_lang_for_tts(request.language_code)
-        else:
-            language_code = sarvam_client.detect_language(request.question)
+    if request.language_code:
+        language_code = _normalize_lang_for_tts(request.language_code)
+    else:
+        language_code = sarvam_client.detect_language(request.question)
 
-        question = request.question.strip()
+    question = request.question.strip()
 
-        # Step 1: Translate question to English (skip if already English)
-        if language_code == "en-IN":
-            english_question = question
-        else:
+    # Step 1: Translate question to English (skip if already English)
+    if language_code == "en-IN":
+        english_question = question
+    else:
+        try:
             english_question = sarvam_client.translate(
                 text=question,
                 target_language_code="en-IN",
                 source_language_code=language_code,
             )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
     # Step 2: RAG pipeline
     try:
@@ -593,32 +579,6 @@ async def text_to_text(request: TextToTextRequest):
             question=english_question,
             use_history=request.use_history if request.use_history is not None else True,
         )
-
-        english_answer = result.get("answer", "")
-        if not english_answer.strip():
-            raise HTTPException(status_code=500, detail="Generated answer is empty")
-
-        # Step 3: Translate answer back to user's language (skip if English)
-        if language_code == "en-IN":
-            translated_answer = english_answer
-        else:
-            translated_answer = sarvam_client.translate(
-                text=english_answer,
-                target_language_code=language_code,
-                source_language_code="en-IN",
-            )
-
-        return {
-            "original_question": request.question,
-            "detected_language": language_code,
-            "detected_language_name": LANGUAGE_DISPLAY.get(language_code, "Unknown"),
-            "english_question": english_question,
-            "answer": translated_answer,
-            "sources": _compact_sources(result.get("sources", [])),
-            "expanded_queries": result.get("expanded_queries", []),
-            "validation": result.get("validation"),
-        }
-
     except Exception as e:
         log_request_metrics(
             endpoint="/text-to-text",
@@ -626,9 +586,35 @@ async def text_to_text(request: TextToTextRequest):
             response_time_ms=0,
             user_id=request.user_id or "guest"
         )
-        raise HTTPException(status_code=500, detail=f"Error processing text: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
 
-    
+    english_answer = result.get("answer", "")
+    if not english_answer.strip():
+        raise HTTPException(status_code=500, detail="Generated answer is empty")
+
+    # Step 3: Translate answer back to user's language (skip if English)
+    if language_code == "en-IN":
+        translated_answer = english_answer
+    else:
+        try:
+            translated_answer = sarvam_client.translate(
+                text=english_answer,
+                target_language_code=language_code,
+                source_language_code="en-IN",
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Answer translation failed: {str(e)}")
+
+    return {
+        "original_question": request.question,
+        "detected_language": language_code,
+        "detected_language_name": LANGUAGE_DISPLAY.get(language_code, "Unknown"),
+        "english_question": english_question,
+        "answer": translated_answer,
+        "sources": _compact_sources(result.get("sources", [])),
+        "expanded_queries": result.get("expanded_queries", []),
+        "validation": result.get("validation"),
+    }
 
 
 @app.post("/speech-to-speech", response_model=SpeechToSpeechResponse)

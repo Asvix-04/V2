@@ -17,6 +17,7 @@ export const ChatInput = React.forwardRef(({
     voiceControlRef,
     onTranscriptSend,
     responseLanguage = null,
+    isIncognito = false,
     ...props
 }, ref) => {
     const [internalValue, setInternalValue] = React.useState("");
@@ -93,10 +94,12 @@ export const ChatInput = React.forwardRef(({
             onSubmit={handleSubmit}
             className={cn(
                 "relative flex items-end w-full py-2 px-3 sm:py-1.5 sm:px-2.5 rounded-full sm:rounded-[2.5rem] transition-all duration-500",
-                // Light Mode
-                "bg-white/90 backdrop-blur-xl border border-black/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:shadow-[0_8px_30px_rgba(94,106,210,0.12)] focus-within:border-accent/40",
-                // Dark Mode
-                "dark:bg-[#1b1b22]/80 dark:backdrop-blur-2xl dark:border-white/5 dark:shadow-none dark:focus-within:bg-[#20202a]/90 dark:focus-within:border-white/10",
+                isIncognito
+                    ? "bg-[#1e2a3a]/90 backdrop-blur-xl border border-white/10 shadow-none focus-within:border-accent/40"
+                    : [
+                        "bg-white/90 backdrop-blur-xl border border-black/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:shadow-[0_8px_30px_rgba(94,106,210,0.12)] focus-within:border-accent/40",
+                        "dark:bg-[#1b1b22]/80 dark:backdrop-blur-2xl dark:border-white/5 dark:shadow-none dark:focus-within:bg-[#20202a]/90 dark:focus-within:border-white/10",
+                    ],
                 className
             )}
         >
@@ -133,11 +136,16 @@ export const ChatInput = React.forwardRef(({
                 <textarea
                     ref={ref || textareaRef}
                     value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Type a message..."
-                    rows={1}
-                    className="flex-1 w-full bg-transparent border-0 px-2 py-2.5 text-sm sm:text-[15px] text-foreground focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none resize-none max-h-32 placeholder:text-gray-400 dark:placeholder:text-foreground-subtle"
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                    placeholder={props.placeholder || "Type a message..."}
+                rows={1}
+                    className={cn(
+                        "flex-1 w-full bg-transparent border-0 px-2 py-2.5 text-sm sm:text-[15px] focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none resize-none max-h-32",
+                        isIncognito
+                            ? "text-slate-100 placeholder:text-slate-500"
+                            : "text-foreground placeholder:text-gray-400 dark:placeholder:text-foreground-subtle"
+                    )}
                     style={{ minHeight: "20px" }}
                     readOnly={isLLMActive}
                     disabled={disabled}

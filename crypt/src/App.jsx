@@ -1,6 +1,6 @@
 import * as React from "react";
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
+import { useState } from "react";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 
 import { Layout } from "./layouts/Layout";
@@ -54,26 +54,24 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Redirect first-time visitors to /chat, then show HomePage on subsequent visits
+// Redirect first-time visitors to /chat, then show HomePage on subsequent visits.
+// Using <Navigate> instead of useEffect+navigate so the redirect is synchronous —
+// no intermediate render frame where the outlet is empty and the footer collapses.
 function FirstVisitRedirect() {
-  const navigate = useNavigate();
   const [isFirstVisit] = useState(() => !localStorage.getItem("hasVisitedBefore"));
 
-  useEffect(() => {
-    if (isFirstVisit) {
-      localStorage.setItem("hasVisitedBefore", "true");
-      navigate("/chat", { replace: true });
-    }
-  }, [isFirstVisit, navigate]);
+  if (isFirstVisit) {
+    localStorage.setItem("hasVisitedBefore", "true");
+    return <Navigate to="/chat" replace />;
+  }
 
-  if (isFirstVisit) return null;
   return <HomePage />;
 }
 
 // Scroll to top on every route change
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => {
+  React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [pathname]);
   return null;

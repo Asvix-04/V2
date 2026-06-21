@@ -406,7 +406,7 @@ export function ChatPage() {
     const isTeacher = user?.role === "teacher";
 
     const isGuest = !user;
-    const dashboardPath = isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard");
+    const dashboardPath = isGuest ? "/home" : (isTeacher ? "/workspace?mode=teacher" : "/workspace");
 
 
 
@@ -3047,6 +3047,7 @@ export function ChatPage() {
                                             onStop={handleStopLLM}
                                             voiceControlRef={voiceInputRef}
                                             responseLanguage={selectedLanguage}
+                                            isIncognito={isIncognito}
 
                                         />
 
@@ -3090,6 +3091,7 @@ export function ChatPage() {
                                                         <MessageBubble
 
                                                             message={msg}
+                                                            isIncognito={isIncognito}
 
                                                             onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
 
@@ -3169,6 +3171,7 @@ export function ChatPage() {
                                                 onStop={handleStopLLM}
                                                 voiceControlRef={voiceInputRef}
                                                 responseLanguage={selectedLanguage}
+                                                isIncognito={isIncognito}
 
                                             />
 
@@ -3371,6 +3374,7 @@ export function ChatPage() {
                                             onStop={handleStopLLM}
                                             voiceControlRef={voiceInputRef}
                                             responseLanguage={selectedLanguage}
+                                            isIncognito={isIncognito}
 
                                         />
 
@@ -3437,6 +3441,7 @@ export function ChatPage() {
                                                         <MessageBubble
 
                                                             message={msg}
+                                                            isIncognito={isIncognito}
 
                                                             onEdit={msg.role === "user" ? () => beginEditingMessage(idx) : undefined}
 
@@ -3662,6 +3667,7 @@ export function ChatPage() {
                                                 onStop={handleStopLLM}
                                                 voiceControlRef={voiceInputRef}
                                                 responseLanguage={selectedLanguage}
+                                                isIncognito={isIncognito}
 
                                             />
 
