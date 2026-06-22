@@ -20,11 +20,11 @@ import { MessageBubble } from "../components/ui/MessageBubble";
 
 import { PageTransition } from "../components/ui/PageTransition";
 
-import { 
-    ArrowLeft, BookOpen, ChevronRight, FileText, Layout, Lightbulb, 
+import {
+    ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, FileText, Layout, Lightbulb,
     MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map, 
     Trash2, AlertCircle, Loader2, Wifi, WifiOff, Plus, User as UserIcon, X,
-    CornerDownRight, Sparkles, Zap, ChevronDown, Star
+    CornerDownRight, Sparkles, Zap, ChevronDown, Star, Menu
 } from "lucide-react";
 import { MdSearch } from "react-icons/md";
 
@@ -85,6 +85,10 @@ const GREETING_SENTENCES = [
 
 const ACTIVE_DRAFT_STORAGE_PREFIX = "digilab-active-draft:";
 const PENDING_DRAFT_STORAGE_PREFIX = "digilab-pending-draft:";
+const DISAPPEARING_MODE_STORAGE_KEY = "disappearingMode";
+const DISAPPEARING_EXPIRY_STORAGE_PREFIX = "chat_expiry_";
+const DISAPPEARING_TTL_MS = 24 * 60 * 60 * 1000;
+const ONE_MINUTE_MS = 60 * 1000;
 
 const CHAT_SESSION_SOURCE = {
     DRAFTS: "drafts",
@@ -200,6 +204,131 @@ const sortSessionsForSidebar = (items, starredChats) => {
 
         return getSessionSortValue(b) - getSessionSortValue(a);
     });
+};
+
+const getDisappearingExpiryStorageKey = (chatId) => `${DISAPPEARING_EXPIRY_STORAGE_PREFIX}${chatId}`;
+
+const parseDisappearingExpiry = (value) => {
+    const expiry = Number(value);
+    return Number.isFinite(expiry) && expiry > 0 ? expiry : null;
+};
+
+const readStoredDisappearingExpiries = () => {
+    const expiries = {};
+
+    try {
+        for (let index = 0; index < localStorage.length; index += 1) {
+            const key = localStorage.key(index);
+
+            if (!key?.startsWith(DISAPPEARING_EXPIRY_STORAGE_PREFIX)) {
+                continue;
+            }
+
+            const chatId = key.slice(DISAPPEARING_EXPIRY_STORAGE_PREFIX.length);
+            const expiry = parseDisappearingExpiry(localStorage.getItem(key));
+
+            if (chatId && expiry) {
+                expiries[chatId] = expiry;
+            }
+        }
+    } catch (error) {
+        console.error("Failed to read disappearing chat expiries:", error);
+    }
+
+    return expiries;
+};
+
+const writeStoredDisappearingExpiry = (chatId, expiry) => {
+    if (!chatId || !expiry) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(getDisappearingExpiryStorageKey(chatId), String(expiry));
+    } catch (error) {
+        console.error("Failed to save disappearing chat expiry:", error);
+    }
+};
+
+const readStoredDisappearingExpiry = (chatId) => {
+    if (!chatId) {
+        return null;
+    }
+
+    try {
+        return parseDisappearingExpiry(localStorage.getItem(getDisappearingExpiryStorageKey(chatId)));
+    } catch (error) {
+        console.error("Failed to read disappearing chat expiry:", error);
+        return null;
+    }
+};
+
+const removeStoredDisappearingExpiry = (chatId) => {
+    if (!chatId) {
+        return;
+    }
+
+    try {
+        localStorage.removeItem(getDisappearingExpiryStorageKey(chatId));
+    } catch (error) {
+        console.error("Failed to remove disappearing chat expiry:", error);
+    }
+};
+
+const clearStoredDisappearingExpiries = () => {
+    try {
+        const keys = [];
+
+        for (let index = 0; index < localStorage.length; index += 1) {
+            const key = localStorage.key(index);
+
+            if (key?.startsWith(DISAPPEARING_EXPIRY_STORAGE_PREFIX)) {
+                keys.push(key);
+            }
+        }
+
+        keys.forEach((key) => localStorage.removeItem(key));
+    } catch (error) {
+        console.error("Failed to clear disappearing chat expiries:", error);
+    }
+};
+
+const removeExpiredDisappearingExpiries = (expiries, now = Date.now()) => {
+    const activeExpiries = {};
+    const expiredIds = [];
+
+    Object.entries(expiries || {}).forEach(([chatId, expiry]) => {
+        const parsedExpiry = parseDisappearingExpiry(expiry);
+
+        if (!parsedExpiry || parsedExpiry <= now) {
+            expiredIds.push(chatId);
+            return;
+        }
+
+        activeExpiries[chatId] = parsedExpiry;
+    });
+
+    return { activeExpiries, expiredIds };
+};
+
+const formatDisappearingCountdown = (expiry, now = Date.now()) => {
+    const parsedExpiry = parseDisappearingExpiry(expiry);
+
+    if (!parsedExpiry) {
+        return "";
+    }
+
+    const remainingMs = parsedExpiry - now;
+
+    if (remainingMs <= 0) {
+        return "now";
+    }
+
+    const totalMinutes = Math.ceil(remainingMs / ONE_MINUTE_MS);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    return `${hours}h ${minutes}min`;
 };
 
 const formatDraftExpiryTime = (value) => {
@@ -353,6 +482,218 @@ const QuotedTextPreview = ({ quotedText, onClear }) => (
 
 );
 
+const ConversationNavigator = ({ messages = [] }) => {
+    const [activeIndex, setActiveIndex] = React.useState(0);
+    const [isHovered, setIsHovered] = React.useState(false);
+    const [isMobilePanelOpen, setIsMobilePanelOpen] = React.useState(false);
+    const [tooltipData, setTooltipData] = React.useState({ text: null, x: 0, y: 0 });
+
+    const userMessages = React.useMemo(() => (
+        messages
+            .map((message, index) => ({
+                ...message,
+                originalIdx: index,
+                domId: getMessageDomId(message, index),
+            }))
+            .filter((message) => message.role === "user" && typeof message.content === "string" && message.content.trim())
+    ), [messages]);
+
+    React.useEffect(() => {
+        if (userMessages.length < 2) {
+            return undefined;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            let maxRatio = 0;
+            let activeId = null;
+
+            entries.forEach((entry) => {
+                if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
+                    maxRatio = entry.intersectionRatio;
+                    activeId = entry.target.getAttribute("data-message-index");
+                }
+            });
+
+            if (activeId !== null) {
+                setActiveIndex(Number(activeId));
+            }
+        }, {
+            root: null,
+            rootMargin: "-20% 0px -60% 0px",
+            threshold: [0, 0.25, 0.5, 0.75, 1],
+        });
+
+        const elements = document.querySelectorAll("[data-message-index]");
+        elements.forEach((element) => observer.observe(element));
+
+        return () => observer.disconnect();
+    }, [messages.length, userMessages.length]);
+
+    if (userMessages.length < 2) {
+        return null;
+    }
+
+    let activeUserMarkerIdx = 0;
+    for (let index = userMessages.length - 1; index >= 0; index -= 1) {
+        if (userMessages[index].originalIdx <= activeIndex) {
+            activeUserMarkerIdx = index;
+            break;
+        }
+    }
+
+    const handleNavigate = (message) => {
+        const element = document.getElementById(`chat-message-${message.domId}`);
+
+        if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+            element.classList.add("bg-zinc-100", "dark:bg-white/5", "rounded-2xl");
+            window.setTimeout(() => {
+                element.classList.remove("bg-zinc-100", "dark:bg-white/5", "rounded-2xl");
+            }, 1400);
+        }
+
+        setIsHovered(false);
+        setIsMobilePanelOpen(false);
+        setTooltipData({ text: null, x: 0, y: 0 });
+    };
+
+    const renderMessageButton = (message, index, className) => (
+        <button
+            key={message.domId}
+            onClick={() => handleNavigate(message)}
+            onMouseMove={(event) => setTooltipData({ text: message.content, x: event.clientX, y: event.clientY })}
+            onMouseLeave={() => setTooltipData({ text: null, x: 0, y: 0 })}
+            className={cn(
+                className,
+                activeUserMarkerIdx === index
+                    ? "bg-zinc-100 text-zinc-900 dark:bg-white/10 dark:text-zinc-100"
+                    : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-100"
+            )}
+        >
+            <span className="block w-full truncate">
+                {message.content}
+            </span>
+        </button>
+    );
+
+    return (
+        <>
+            <AnimatePresence>
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed right-4 top-1/2 z-50 hidden -translate-y-1/2 items-center lg:flex"
+                    onMouseEnter={() => setIsHovered(true)}
+                    onMouseLeave={() => {
+                        setIsHovered(false);
+                        setTooltipData({ text: null, x: 0, y: 0 });
+                    }}
+                >
+                    {tooltipData.text && (
+                        <div
+                            className="fixed z-[100] max-w-[280px] rounded-lg border border-black/10 bg-zinc-900 px-2.5 py-1.5 text-xs text-white shadow-xl backdrop-blur-sm dark:border-white/10 dark:bg-black"
+                            style={{ left: tooltipData.x - 16, top: tooltipData.y + 16, transform: "translateX(-100%)" }}
+                        >
+                            {tooltipData.text}
+                        </div>
+                    )}
+
+                    <AnimatePresence>
+                        {isHovered && (
+                            <motion.div
+                                initial={{ opacity: 0, x: 10, filter: "blur(4px)" }}
+                                animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                                exit={{ opacity: 0, x: 10, filter: "blur(4px)" }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute right-8 mr-4 w-[240px] overflow-hidden rounded-xl border border-zinc-100 bg-white shadow-sm dark:border-white/5 dark:bg-zinc-900"
+                            >
+                                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-white to-transparent dark:from-zinc-900" />
+                                <div className="max-h-[350px] overflow-y-auto overflow-x-hidden p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                    <div className="flex flex-col gap-0.5">
+                                        {userMessages.map((message, index) => renderMessageButton(
+                                            message,
+                                            index,
+                                            "h-8 rounded-lg px-3 text-left text-xs font-medium transition-all"
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-white to-transparent dark:from-zinc-900" />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <div className="flex w-8 cursor-pointer flex-col items-center gap-1.5 px-2 py-4">
+                        {userMessages.map((message, index) => (
+                            <button
+                                key={message.domId}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleNavigate(message);
+                                }}
+                                className={cn(
+                                    "shrink-0 rounded-full transition-all duration-300",
+                                    activeUserMarkerIdx === index
+                                        ? "h-4 w-2 bg-zinc-600 dark:bg-zinc-400"
+                                        : "h-2.5 w-1 bg-zinc-300 hover:h-3.5 hover:bg-zinc-400 dark:bg-white/20 dark:hover:bg-white/40"
+                                )}
+                                aria-label="Jump to question"
+                            />
+                        ))}
+                    </div>
+                </motion.div>
+            </AnimatePresence>
+
+            <div className="lg:hidden">
+                {!isMobilePanelOpen && (
+                    <button
+                        onClick={() => setIsMobilePanelOpen(true)}
+                        className="fixed right-0 top-1/2 z-40 flex min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center transition-opacity"
+                        aria-label="Open chat navigator"
+                    >
+                        <ChevronLeft className="h-5 w-5 text-zinc-500 drop-shadow-md dark:text-zinc-400" />
+                    </button>
+                )}
+
+                <AnimatePresence>
+                    {isMobilePanelOpen && (
+                        <>
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                onClick={() => setIsMobilePanelOpen(false)}
+                                className="fixed inset-0 z-40 bg-black/20"
+                            />
+                            <motion.div
+                                initial={{ scale: 0.95, opacity: 0, x: "-50%", y: "-50%" }}
+                                animate={{ scale: 1, opacity: 1, x: "-50%", y: "-50%" }}
+                                exit={{ scale: 0.95, opacity: 0, x: "-50%", y: "-50%" }}
+                                transition={{ duration: 0.2, ease: "easeOut" }}
+                                className="fixed left-1/2 top-1/2 z-50 flex max-h-[60vh] w-[260px] flex-col overflow-hidden rounded-xl border border-zinc-100 bg-white shadow-2xl dark:border-white/5 dark:bg-zinc-900"
+                            >
+                                <div className="border-b border-zinc-100 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:border-white/5">
+                                    Chat selector
+                                </div>
+                                <div className="flex-1 overflow-y-auto overscroll-contain p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                    <div className="flex flex-col gap-1">
+                                        {userMessages.map((message, index) => renderMessageButton(
+                                            message,
+                                            index,
+                                            "flex min-h-[44px] items-center rounded-xl px-4 text-left text-sm font-medium transition-colors"
+                                        ))}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>
+            </div>
+        </>
+    );
+};
+
 export function ChatPage() {
 
     const { t } = useLanguage();
@@ -465,6 +806,8 @@ export function ChatPage() {
     const [selectedLanguage, setSelectedLanguage] = React.useState(null); // null = English (default)
     const [isTranslating, setIsTranslating] = React.useState(false);
     const [isLangDropdownOpen, setIsLangDropdownOpen] = React.useState(false);
+    const [isMobileFooterExpanded, setIsMobileFooterExpanded] = React.useState(false);
+    const [isTyping, setIsTyping] = React.useState(false);
     const [composerValue, setComposerValue] = React.useState("");
     const [editingMessageId, setEditingMessageId] = React.useState(null);
     const lastSendAtRef = React.useRef(0);
@@ -497,6 +840,35 @@ export function ChatPage() {
         localStorage.setItem("selectedModelId", selectedModel.id);
     }, [selectedModel]);
 
+    React.useEffect(() => {
+        let typingTimeout;
+
+        const handleFocusIn = (event) => {
+            if (event.target?.tagName === "INPUT" || event.target?.tagName === "TEXTAREA") {
+                setIsTyping(true);
+                setIsMobileFooterExpanded(false);
+                window.clearTimeout(typingTimeout);
+            }
+        };
+
+        const handleFocusOut = (event) => {
+            if (event.target?.tagName === "INPUT" || event.target?.tagName === "TEXTAREA") {
+                typingTimeout = window.setTimeout(() => {
+                    setIsTyping(false);
+                }, 1200);
+            }
+        };
+
+        document.addEventListener("focusin", handleFocusIn);
+        document.addEventListener("focusout", handleFocusOut);
+
+        return () => {
+            document.removeEventListener("focusin", handleFocusIn);
+            document.removeEventListener("focusout", handleFocusOut);
+            window.clearTimeout(typingTimeout);
+        };
+    }, []);
+
     const messagesEndRef = React.useRef(null);
     const chatInputRef = React.useRef(null);
     const isLoadingRef = React.useRef(false);
@@ -508,6 +880,7 @@ export function ChatPage() {
     const suppressAbortStoppedRef = React.useRef(false);
     const pendingAbandonedDraftIdRef = React.useRef(null);
     const skipLocalBackupRestoreRef = React.useRef(false);
+    const expiredDisappearingSessionIdsRef = React.useRef(new Set());
     const [followUpQuestions, setFollowUpQuestions] = React.useState([]);
 
     // ── Star & Disappearing Messages (Sagar's features) ──────────────
@@ -515,15 +888,17 @@ export function ChatPage() {
         try { return JSON.parse(localStorage.getItem('starredChats') || '[]'); } catch { return []; }
     });
     const [isDisappearingMode, setIsDisappearingMode] = React.useState(() => {
-        try { return localStorage.getItem('disappearingMode') === 'true'; } catch { return false; }
+        try { return localStorage.getItem(DISAPPEARING_MODE_STORAGE_KEY) === 'true'; } catch { return false; }
     });
+    const [disappearingExpiries, setDisappearingExpiries] = React.useState(() => readStoredDisappearingExpiries());
+    const [countdownNow, setCountdownNow] = React.useState(() => Date.now());
 
     React.useEffect(() => {
         localStorage.setItem('starredChats', JSON.stringify(starredChats));
     }, [starredChats]);
 
     React.useEffect(() => {
-        localStorage.setItem('disappearingMode', String(isDisappearingMode));
+        localStorage.setItem(DISAPPEARING_MODE_STORAGE_KEY, String(isDisappearingMode));
     }, [isDisappearingMode]);
 
     React.useEffect(() => {
@@ -729,6 +1104,36 @@ export function ChatPage() {
         return sessions.find((session) => session.id === sessionId) || null;
     };
 
+    const hydrateDisappearingExpiriesFromStorage = () => {
+        const hydrated = removeExpiredDisappearingExpiries(readStoredDisappearingExpiries());
+        hydrated.expiredIds.forEach((id) => expiredDisappearingSessionIdsRef.current.add(id));
+        setDisappearingExpiries(hydrated.activeExpiries);
+        setCountdownNow(Date.now());
+        return hydrated;
+    };
+
+    const ensureDisappearingExpiryForSession = (sessionId) => {
+        if (!isDisappearingMode || !sessionId) {
+            return null;
+        }
+
+        const now = Date.now();
+        const storedExpiry = readStoredDisappearingExpiry(sessionId);
+        const currentExpiry = parseDisappearingExpiry(disappearingExpiries[sessionId]);
+        const expiry = storedExpiry && storedExpiry > now
+            ? storedExpiry
+            : currentExpiry && currentExpiry > now
+                ? currentExpiry
+                : now + DISAPPEARING_TTL_MS;
+
+        writeStoredDisappearingExpiry(sessionId, expiry);
+        setDisappearingExpiries((prev) => (
+            prev[sessionId] === expiry ? prev : { ...prev, [sessionId]: expiry }
+        ));
+        setCountdownNow(now);
+        return expiry;
+    };
+
     const snapshotMatchesSession = (snapshot, session = getSessionRecord(snapshot?.sessionId)) => {
         if (!snapshot || !session) {
             return false;
@@ -859,6 +1264,8 @@ export function ChatPage() {
             const filtered = prev.filter((session) => session.id !== nextSession.id);
             return [nextSession, ...filtered];
         });
+
+        ensureDisappearingExpiryForSession(nextSession?.id);
     };
 
     const makeTodaySession = (session, nextMessages, title) => ({
@@ -930,6 +1337,16 @@ export function ChatPage() {
     const loadConversation = async (session, preferredSource = null) => {
         if (!session) {
             return;
+        }
+
+        if (isDisappearingMode) {
+            const { activeExpiries, expiredIds } = hydrateDisappearingExpiriesFromStorage();
+            const activeExpiry = parseDisappearingExpiry(activeExpiries[session.id]);
+
+            if (expiredIds.includes(session.id) || (activeExpiry && activeExpiry <= Date.now())) {
+                expireDisappearingSessions([session.id]);
+                return;
+            }
         }
 
         const nextMessages = Array.isArray(session.messages) && session.messages.length > 0
@@ -1004,7 +1421,31 @@ export function ChatPage() {
                 }
             }
 
+            const fallbackSessionId = !sessionId && savedSession.id
+                ? `local-${user?.id || "guest"}`
+                : null;
+            const fallbackExpiry = fallbackSessionId
+                ? parseDisappearingExpiry(disappearingExpiries[fallbackSessionId])
+                    || readStoredDisappearingExpiry(fallbackSessionId)
+                : null;
+
             upsertSessionInState(savedSession);
+
+            if (fallbackSessionId && fallbackSessionId !== savedSession.id) {
+                if (fallbackExpiry && fallbackExpiry > Date.now()) {
+                    writeStoredDisappearingExpiry(savedSession.id, fallbackExpiry);
+                    removeStoredDisappearingExpiry(fallbackSessionId);
+                    setDisappearingExpiries((prev) => {
+                        const next = { ...prev, [savedSession.id]: fallbackExpiry };
+                        delete next[fallbackSessionId];
+                        return next;
+                    });
+                } else {
+                    removeDisappearingExpiryState([fallbackSessionId]);
+                }
+
+                setSessions((prev) => prev.filter((session) => session.id !== fallbackSessionId));
+            }
 
             if (!sessionId && savedSession.id) {
                 setCurrentSessionId(savedSession.id);
@@ -1066,6 +1507,193 @@ export function ChatPage() {
         setDraftMenuSessionId(null);
         clearPendingDraftSnapshot();
         resetComposerState();
+    };
+
+    const getCurrentConversationSession = () => {
+        if (messages.length <= 1) {
+            return null;
+        }
+
+        const fallbackSessionId = currentSessionId || `local-${user?.id || "guest"}`;
+        const existingSession = sessions.find((session) => session.id === fallbackSessionId);
+        const now = new Date().toISOString();
+
+        return {
+            ...existingSession,
+            id: fallbackSessionId,
+            title: existingSession?.title || getConversationTitle(messages, fallbackSessionId),
+            messages,
+            isDraft: existingSession?.isDraft === true,
+            draftExpiresAt: existingSession?.draftExpiresAt || null,
+            updatedAt: existingSession?.updatedAt || now,
+            source: existingSession?.source || CHAT_SESSION_SOURCE.TODAY,
+        };
+    };
+
+    const getSessionsIncludingCurrentConversation = () => {
+        const currentConversationSession = getCurrentConversationSession();
+
+        if (!currentConversationSession) {
+            return sessions;
+        }
+
+        const hasCurrentSession = sessions.some((session) => session.id === currentConversationSession.id);
+
+        if (hasCurrentSession) {
+            return sessions.map((session) => (
+                session.id === currentConversationSession.id ? currentConversationSession : session
+            ));
+        }
+
+        return [currentConversationSession, ...sessions];
+    };
+
+    const removeDisappearingExpiryState = (sessionIds, { removeStorage = true } = {}) => {
+        const ids = Array.isArray(sessionIds) ? sessionIds.filter(Boolean) : [];
+
+        if (!ids.length) {
+            return;
+        }
+
+        if (removeStorage) {
+            ids.forEach(removeStoredDisappearingExpiry);
+        }
+
+        setDisappearingExpiries((prev) => {
+            let changed = false;
+            const next = { ...prev };
+
+            ids.forEach((id) => {
+                if (id in next) {
+                    delete next[id];
+                    changed = true;
+                }
+            });
+
+            return changed ? next : prev;
+        });
+    };
+
+    const deleteDisappearingSessionFromServer = async (session) => {
+        if (isGuest || !session?.id || session.id.startsWith("local-")) {
+            return false;
+        }
+
+        try {
+            if (session.isDraft) {
+                await api.delete(`/chat/sessions/${session.id}/draft`);
+            } else {
+                await api.delete(`/chat/sessions/${session.id}`);
+            }
+
+            removeStoredDisappearingExpiry(session.id);
+            expiredDisappearingSessionIdsRef.current.delete(session.id);
+            return true;
+        } catch (err) {
+            console.error("Failed to delete expired disappearing chat:", err);
+            return false;
+        }
+    };
+
+    const expireDisappearingSessions = (sessionIds) => {
+        const ids = Array.isArray(sessionIds) ? sessionIds.filter(Boolean) : [];
+
+        if (!ids.length) {
+            return;
+        }
+
+        ids.forEach((id) => expiredDisappearingSessionIdsRef.current.add(id));
+        const expiringSessions = sessions.filter((session) => ids.includes(session.id));
+        const localExpiredIds = ids.filter((id) => id.startsWith("local-"));
+
+        removeDisappearingExpiryState(ids, { removeStorage: false });
+        localExpiredIds.forEach((id) => {
+            removeStoredDisappearingExpiry(id);
+            expiredDisappearingSessionIdsRef.current.delete(id);
+        });
+        setSessions((prev) => prev.filter((session) => !ids.includes(session.id)));
+        setStarredChats((prev) => prev.filter((id) => !ids.includes(id)));
+        ids.forEach(clearStoredDraft);
+        clearPendingDraftSnapshot();
+        setCountdownNow(Date.now());
+
+        const activeSessionId = currentSessionId || (messages.length > 1 ? `local-${user?.id || "guest"}` : null);
+
+        try {
+            const rawBackup = localStorage.getItem(localChatBackupKey);
+            const backup = rawBackup ? JSON.parse(rawBackup) : null;
+            const backupSessionId = backup?.currentSessionId || `local-${user?.id || "guest"}`;
+
+            if (backupSessionId && ids.includes(backupSessionId)) {
+                localStorage.removeItem(localChatBackupKey);
+            }
+        } catch {
+            localStorage.removeItem(localChatBackupKey);
+        }
+
+        if (activeSessionId && ids.includes(activeSessionId)) {
+            resetChatSurface();
+        }
+
+        expiringSessions.forEach((session) => {
+            deleteDisappearingSessionFromServer(session);
+        });
+    };
+
+    const handleToggleDisappearingMode = () => {
+        const nextMode = !isDisappearingMode;
+        const now = Date.now();
+
+        setCountdownNow(now);
+        setIsDisappearingMode(nextMode);
+
+        if (!nextMode) {
+            clearStoredDisappearingExpiries();
+            expiredDisappearingSessionIdsRef.current.clear();
+            setDisappearingExpiries({});
+            return;
+        }
+
+        const expiry = now + DISAPPEARING_TTL_MS;
+        const nextSessions = getSessionsIncludingCurrentConversation();
+        const nextExpiries = {};
+
+        clearStoredDisappearingExpiries();
+        expiredDisappearingSessionIdsRef.current.clear();
+
+        nextSessions.forEach((session) => {
+            if (!session?.id) {
+                return;
+            }
+
+            nextExpiries[session.id] = expiry;
+            writeStoredDisappearingExpiry(session.id, expiry);
+        });
+
+        setSessions(nextSessions);
+        setDisappearingExpiries(nextExpiries);
+    };
+
+    const getDisappearingCountdownLabel = (sessionId) => {
+        if (!isDisappearingMode || !sessionId) {
+            return "";
+        }
+
+        return formatDisappearingCountdown(disappearingExpiries[sessionId], countdownNow);
+    };
+
+    const renderDisappearingCountdown = (sessionId) => {
+        const label = getDisappearingCountdownLabel(sessionId);
+
+        if (!label) {
+            return null;
+        }
+
+        return (
+            <span className="mt-1 block text-[11px] font-semibold text-orange-500 dark:text-orange-400">
+                {label === "now" ? "Disappearing now" : `Disappears in ${label}`}
+            </span>
+        );
     };
 
     const navigateAfterSavingDraft = async (path) => {
@@ -1191,12 +1819,38 @@ export function ChatPage() {
 
                     const res = await api.get('/chat/sessions');
                     const fetchedSessions = Array.isArray(res.data) ? res.data : [];
-                    setSessions(fetchedSessions);
+                    const { activeExpiries, expiredIds } = isDisappearingMode
+                        ? removeExpiredDisappearingExpiries(readStoredDisappearingExpiries())
+                        : { activeExpiries: {}, expiredIds: [] };
+                    const expiredSessionIds = [
+                        ...new Set([
+                            ...expiredIds,
+                            ...Array.from(expiredDisappearingSessionIdsRef.current),
+                        ]),
+                    ];
+                    const activeFetchedSessions = fetchedSessions.filter((session) => !expiredSessionIds.includes(session.id));
 
-                    const restoredDraft = await flushPendingDraftSnapshot(fetchedSessions);
+                    if (isDisappearingMode) {
+                        setDisappearingExpiries(activeExpiries);
+                    }
+
+                    setSessions(activeFetchedSessions);
+
+                    expiredSessionIds.forEach((sessionId) => {
+                        const expiredSession = fetchedSessions.find((session) => session.id === sessionId);
+
+                        if (expiredSession) {
+                            deleteDisappearingSessionFromServer(expiredSession);
+                        } else {
+                            removeStoredDisappearingExpiry(sessionId);
+                            expiredDisappearingSessionIdsRef.current.delete(sessionId);
+                        }
+                    });
+
+                    const restoredDraft = await flushPendingDraftSnapshot(activeFetchedSessions);
                     const hydratedSessions = restoredDraft?.session
-                        ? [restoredDraft.session, ...fetchedSessions.filter((session) => session.id !== restoredDraft.session.id)]
-                        : fetchedSessions;
+                        ? [restoredDraft.session, ...activeFetchedSessions.filter((session) => session.id !== restoredDraft.session.id)]
+                        : activeFetchedSessions;
 
                     setSessions(hydratedSessions);
 
@@ -1320,6 +1974,7 @@ export function ChatPage() {
         }
 
         const sessionId = currentSessionId || `local-${user?.id || "guest"}`;
+        ensureDisappearingExpiryForSession(sessionId);
         setSessions((prev) => {
             if (prev.some((session) => session.id === sessionId)) {
                 return prev;
@@ -1391,6 +2046,7 @@ export function ChatPage() {
             }
             setSessions(prev => prev.filter(s => s.id !== sessionId));
             setStarredChats(prev => prev.filter(id => id !== sessionId));
+            removeDisappearingExpiryState([sessionId]);
             clearStoredDraft(sessionId);
             clearPendingDraftSnapshot();
             if (currentSessionId === sessionId) {
@@ -1417,6 +2073,7 @@ export function ChatPage() {
 
             setSessions((prev) => prev.filter((session) => session.id !== sessionId));
             setStarredChats((prev) => prev.filter((id) => id !== sessionId));
+            removeDisappearingExpiryState([sessionId]);
             clearStoredDraft(sessionId);
             clearPendingDraftSnapshot();
             setDraftMenuSessionId(null);
@@ -1452,6 +2109,8 @@ export function ChatPage() {
             setMessages([INITIAL_MESSAGE]);
 
             setSessions([]);
+            clearStoredDisappearingExpiries();
+            setDisappearingExpiries({});
 
             setCurrentSessionId(null);
             setCurrentSessionSource(null);
@@ -2433,6 +3092,97 @@ export function ChatPage() {
     ]);
 
     React.useEffect(() => {
+        if (!isDisappearingMode) {
+            clearStoredDisappearingExpiries();
+            expiredDisappearingSessionIdsRef.current.clear();
+            setDisappearingExpiries({});
+            return undefined;
+        }
+
+        const { expiredIds } = hydrateDisappearingExpiriesFromStorage();
+
+        if (expiredIds.length) {
+            expireDisappearingSessions(expiredIds);
+        }
+
+        return undefined;
+    }, [isDisappearingMode]);
+
+    React.useEffect(() => {
+        if (!isDisappearingMode) {
+            return undefined;
+        }
+
+        setCountdownNow(Date.now());
+        const interval = window.setInterval(() => {
+            setCountdownNow(Date.now());
+        }, ONE_MINUTE_MS);
+
+        return () => {
+            window.clearInterval(interval);
+        };
+    }, [isDisappearingMode]);
+
+    React.useEffect(() => {
+        if (!isDisappearingMode) {
+            return undefined;
+        }
+
+        const now = Date.now();
+        const timers = [];
+        const expiredIds = Object.entries(disappearingExpiries)
+            .filter(([, expiry]) => parseDisappearingExpiry(expiry) <= now)
+            .map(([sessionId]) => sessionId);
+
+        if (expiredIds.length) {
+            expireDisappearingSessions(expiredIds);
+            return undefined;
+        }
+
+        Object.entries(disappearingExpiries).forEach(([sessionId, expiry]) => {
+            const parsedExpiry = parseDisappearingExpiry(expiry);
+
+            if (!parsedExpiry) {
+                return;
+            }
+
+            const delay = parsedExpiry - now;
+
+            if (delay <= 0) {
+                expireDisappearingSessions([sessionId]);
+                return;
+            }
+
+            timers.push(window.setTimeout(() => {
+                expireDisappearingSessions([sessionId]);
+            }, delay));
+        });
+
+        return () => {
+            timers.forEach((timer) => window.clearTimeout(timer));
+        };
+    }, [disappearingExpiries, isDisappearingMode, sessions, currentSessionId, messages.length]);
+
+    React.useEffect(() => {
+        const handleStorage = (event) => {
+            if (event.key === DISAPPEARING_MODE_STORAGE_KEY) {
+                setIsDisappearingMode(event.newValue === "true");
+                return;
+            }
+
+            if (event.key?.startsWith(DISAPPEARING_EXPIRY_STORAGE_PREFIX)) {
+                hydrateDisappearingExpiriesFromStorage();
+            }
+        };
+
+        window.addEventListener("storage", handleStorage);
+
+        return () => {
+            window.removeEventListener("storage", handleStorage);
+        };
+    }, []);
+
+    React.useEffect(() => {
         if (isGuest) {
             return undefined;
         }
@@ -2488,6 +3238,9 @@ export function ChatPage() {
         sessions,
         starredChats
     );
+
+    const activeDisappearingSessionId = currentSessionId || (messages.length > 1 ? `local-${user?.id || "guest"}` : null);
+    const activeDisappearingCountdownLabel = getDisappearingCountdownLabel(activeDisappearingSessionId);
 
     const isSessionActive = (session, source) => {
         if (currentSessionId !== session.id) {
@@ -2649,7 +3402,7 @@ export function ChatPage() {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => setIsDisappearingMode(!isDisappearingMode)}
+                                        onClick={handleToggleDisappearingMode}
                                         className={cn(
                                             "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
                                             isDisappearingMode ? "bg-orange-500" : "bg-zinc-300 dark:bg-zinc-700"
@@ -2703,6 +3456,7 @@ export function ChatPage() {
                                                     <MessageSquare className={cn("mt-0.5 h-4 w-4 shrink-0", isSessionActive(session, CHAT_SESSION_SOURCE.DRAFTS) ? "text-blue-600 dark:text-blue-400" : "text-zinc-400")} />
                                                     <span className="min-w-0 flex-1">
                                                         <span className="block truncate">{session.title || "Chat session"}</span>
+                                                        {renderDisappearingCountdown(session.id)}
                                                         <span className="mt-1 block text-[11px] font-medium text-zinc-400">
                                                             {t('chat.expiresAt')} {formatDraftExpiryTime(session.draftExpiresAt)}
                                                         </span>
@@ -2767,14 +3521,17 @@ export function ChatPage() {
                                                 key={session.id}
                                                 onClick={() => handleSelectSession(session.id, CHAT_SESSION_SOURCE.TODAY)}
                                                 className={cn(
-                                                    "flex w-full items-center space-x-3 rounded-lg px-2 py-2 text-sm transition-all group",
+                                                    "flex w-full items-start gap-3 rounded-lg px-2 py-2 text-sm transition-all group",
                                                     isSessionActive(session, CHAT_SESSION_SOURCE.TODAY)
                                                         ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium ring-1 ring-blue-200 dark:ring-blue-900/50"
                                                         : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
                                                 )}
                                             >
-                                                <MessageSquare className={cn("h-4 w-4 shrink-0", isSessionActive(session, CHAT_SESSION_SOURCE.TODAY) ? "text-blue-600 dark:text-blue-400" : "text-zinc-400")} />
-                                                <span className="truncate flex-1 text-left">{session.title || "Chat session"}</span>
+                                                <MessageSquare className={cn("mt-0.5 h-4 w-4 shrink-0", isSessionActive(session, CHAT_SESSION_SOURCE.TODAY) ? "text-blue-600 dark:text-blue-400" : "text-zinc-400")} />
+                                                <span className="min-w-0 flex-1 text-left">
+                                                    <span className="block truncate">{session.title || "Chat session"}</span>
+                                                    {renderDisappearingCountdown(session.id)}
+                                                </span>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                                     <button
                                                         onClick={(e) => toggleStar(session.id, e)}
@@ -2877,6 +3634,7 @@ export function ChatPage() {
             {/* Main Chat Area */}
 
             <div className="flex flex-1 flex-col relative">
+                <ConversationNavigator messages={messages} />
 
                 <div className={cn(
                     "flex h-16 items-center px-4 sm:px-6 transition-all duration-300 z-50 sticky top-0 backdrop-blur-md border-b",
@@ -2888,63 +3646,83 @@ export function ChatPage() {
                             <span className="text-sm font-semibold text-zinc-200 tracking-tight">Incognito chat</span>
                         </div>
                     ) : (
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group"
-                            >
-                                <span className="text-lg font-bold tracking-tight">
-                                    {selectedModel.name}
-                                </span>
-                                <ChevronDown className={cn("h-4 w-4 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
-                            </button>
+                        <div className="flex min-w-0 items-center gap-2">
+                            {!isSidebarOpen && (
+                                <button
+                                    onClick={() => setIsSidebarOpen(true)}
+                                    aria-label="Open sidebar"
+                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-zinc-600 transition-all hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white lg:hidden"
+                                >
+                                    <Menu className="h-5 w-5" />
+                                </button>
+                            )}
 
-                            <AnimatePresence>
-                                {isModelDropdownOpen && (
-                                    <>
-                                        <div 
-                                            className="fixed inset-0 z-10" 
-                                            onClick={() => setIsModelDropdownOpen(false)}
-                                        />
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                            className="absolute top-full left-0 mt-2 w-72 p-2 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
-                                        >
-                                            <div className="space-y-1">
-                                                {MODELS.map((model) => (
-                                                    <button
-                                                        key={model.id}
-                                                        onClick={() => {
-                                                            setSelectedModel(model);
-                                                            setIsModelDropdownOpen(false);
-                                                        }}
-                                                        className={cn(
-                                                            "w-full flex items-start gap-3 p-3 rounded-xl transition-all text-left",
-                                                            selectedModel.id === model.id 
-                                                                ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
-                                                                : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
-                                                        )}
-                                                    >
-                                                        <div className={cn("mt-0.5", model.color)}>
-                                                            <model.icon className="h-4 w-4" />
-                                                        </div>
-                                                        <div>
-                                                            <p className={cn("text-xs font-bold leading-none mb-1", selectedModel.id === model.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
-                                                                {model.name}
-                                                            </p>
-                                                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
-                                                                {model.description}
-                                                            </p>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </motion.div>
-                                    </>
+                            <div className="relative min-w-0">
+                                <button
+                                    onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                                    className="flex min-w-0 items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group"
+                                >
+                                    <span className="truncate text-lg font-bold tracking-tight">
+                                        {selectedModel.name}
+                                    </span>
+                                    <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
+                                </button>
+
+                                {activeDisappearingCountdownLabel && (
+                                    <div className="px-3 text-[11px] font-semibold text-orange-500 dark:text-orange-400">
+                                        {activeDisappearingCountdownLabel === "now"
+                                            ? "Disappearing now"
+                                            : `Disappears in ${activeDisappearingCountdownLabel}`}
+                                    </div>
                                 )}
-                            </AnimatePresence>
+
+                                <AnimatePresence>
+                                    {isModelDropdownOpen && (
+                                        <>
+                                            <div
+                                                className="fixed inset-0 z-10"
+                                                onClick={() => setIsModelDropdownOpen(false)}
+                                            />
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                className="absolute top-full left-0 mt-2 w-72 p-2 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
+                                            >
+                                                <div className="space-y-1">
+                                                    {MODELS.map((model) => (
+                                                        <button
+                                                            key={model.id}
+                                                            onClick={() => {
+                                                                setSelectedModel(model);
+                                                                setIsModelDropdownOpen(false);
+                                                            }}
+                                                            className={cn(
+                                                                "w-full flex items-start gap-3 p-3 rounded-xl transition-all text-left",
+                                                                selectedModel.id === model.id
+                                                                    ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
+                                                                    : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
+                                                            )}
+                                                        >
+                                                            <div className={cn("mt-0.5", model.color)}>
+                                                                <model.icon className="h-4 w-4" />
+                                                            </div>
+                                                            <div>
+                                                                <p className={cn("text-xs font-bold leading-none mb-1", selectedModel.id === model.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
+                                                                    {model.name}
+                                                                </p>
+                                                                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                                                                    {model.description}
+                                                                </p>
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        </>
+                                    )}
+                                </AnimatePresence>
+                            </div>
                         </div>
                     )}
 
@@ -3086,7 +3864,7 @@ export function ChatPage() {
 
                                                 return (
 
-                                                    <div key={messageDomId} id={`chat-message-${messageDomId}`}>
+                                                    <div key={messageDomId} id={`chat-message-${messageDomId}`} data-message-index={idx}>
 
                                                         <MessageBubble
 
@@ -3226,12 +4004,13 @@ export function ChatPage() {
                                         exit={{ scale: 0, opacity: 0, rotate: 90 }}
 
                                         onClick={() => setIsSidebarOpen(true)}
+                                        aria-label="Open sidebar"
 
                                         className="fixed bottom-6 left-6 z-50 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-500/40 transition-all active:scale-90 hover:scale-105"
 
                                     >
 
-                                        <Plus className="h-6 w-6 sm:h-7 sm:w-7" />
+                                        <Menu className="h-6 w-6 sm:h-7 sm:w-7" />
 
                                     </motion.button>
 
@@ -3436,7 +4215,7 @@ export function ChatPage() {
 
                                                 return (
 
-                                                    <div key={messageDomId} id={`chat-message-${messageDomId}`}>
+                                                    <div key={messageDomId} id={`chat-message-${messageDomId}`} data-message-index={idx}>
 
                                                         <MessageBubble
 
@@ -3677,8 +4456,8 @@ export function ChatPage() {
                                                 </p>
                                             )}
 
-                                            {/* Compact Language Dropdown */}
-                                            <div className="mt-2 flex items-center gap-2 relative" style={{zIndex:50}}>
+                                            {/* Desktop/tablet Language Dropdown */}
+                                            <div className="mt-2 flex items-center gap-2 relative max-sm:hidden" style={{zIndex:50}}>
                                                 <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground-muted/60 shrink-0">Respond in:</span>
                                                 <div className="relative">
                                                     <button
@@ -3697,25 +4476,100 @@ export function ChatPage() {
                                                                     onClick={() => { setSelectedLanguage(lang.code); setIsLangDropdownOpen(false); }}
                                                                     className={cn(
                                                                         "flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                                                                        selectedLanguage === lang.code
-                                                                            ? "bg-accent text-white"
-                                                                            : "text-zinc-400 hover:bg-white/5 hover:text-white"
-                                                                    )}
-                                                                >
-                                                                    <span>{lang.flag}</span>
-                                                                    <span>{lang.label}</span>
-                                                                </button>
-                                                            ))}
-                                                        </div>
+                                                                    selectedLanguage === lang.code
+                                                                        ? "bg-accent text-white"
+                                                                        : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                                                                )}
+                                                            >
+                                                                <span>{lang.flag}</span>
+                                                                <span>{lang.label}</span>
+                                                                {selectedLanguage === lang.code && <Check className="ml-auto h-3 w-3 shrink-0" />}
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                     )}
                                                 </div>
                                             </div>
 
-                                            <p className="mt-2 text-center text-[10px] text-zinc-400 dark:text-zinc-500">
+                                            <p className="mt-2 text-center text-[10px] text-zinc-400 dark:text-zinc-500 max-sm:hidden">
 
                                                 {t('chat.disclaimer') || "Content generated by AI may contain errors."}
 
                                             </p>
+
+                                            {/* Mobile bottom Language Drawer */}
+                                            <div className="sm:hidden w-full flex flex-col items-center mt-3 relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsMobileFooterExpanded((expanded) => !expanded)}
+                                                    className="h-1.5 w-10 rounded-full bg-zinc-300 transition-all hover:bg-zinc-400 dark:bg-white/20 dark:hover:bg-white/30"
+                                                    aria-label="Toggle response language"
+                                                />
+
+                                                <AnimatePresence>
+                                                    {isMobileFooterExpanded && !isTyping && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: -15, height: 0 }}
+                                                            animate={{ opacity: 1, y: 0, height: "auto" }}
+                                                            exit={{ opacity: 0, y: -15, height: 0 }}
+                                                            transition={{ duration: 0.25, ease: "easeOut" }}
+                                                            className="flex w-full flex-col items-center justify-center overflow-visible pt-4"
+                                                        >
+                                                            <div className="relative" style={{ zIndex: 60 }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setIsLangDropdownOpen((open) => !open)}
+                                                                    className="flex min-h-[36px] items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-4 py-1.5 text-[13px] font-medium text-slate-700 shadow-sm backdrop-blur-md transition-all hover:border-blue-400 hover:text-blue-600 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 dark:hover:border-blue-400 dark:hover:text-white"
+                                                                >
+                                                                    <span className="text-[14px]">{TRANSLATE_LANGUAGES.find((language) => language.code === selectedLanguage)?.flag}</span>
+                                                                    <span>{TRANSLATE_LANGUAGES.find((language) => language.code === selectedLanguage)?.label || "English"}</span>
+                                                                    <ChevronDown className={cn("h-3.5 w-3.5 opacity-60 transition-transform", isLangDropdownOpen && "rotate-180")} />
+                                                                </button>
+
+                                                                <AnimatePresence>
+                                                                    {isLangDropdownOpen && (
+                                                                        <motion.div
+                                                                            initial={{ opacity: 0, y: 10, scale: 0.95, x: "-50%" }}
+                                                                            animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
+                                                                            exit={{ opacity: 0, y: 10, scale: 0.95, x: "-50%" }}
+                                                                            transition={{ duration: 0.15 }}
+                                                                            style={{ transformOrigin: "bottom center" }}
+                                                                            className="absolute bottom-full left-1/2 z-[100] mb-3 w-[280px] rounded-2xl border border-slate-200/80 bg-white/95 p-2 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-zinc-900/95"
+                                                                        >
+                                                                            <div className="max-h-[300px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                                                                {TRANSLATE_LANGUAGES.map((language) => (
+                                                                                    <button
+                                                                                        key={language.code || "en"}
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            setSelectedLanguage(language.code);
+                                                                                            setIsLangDropdownOpen(false);
+                                                                                        }}
+                                                                                        className={cn(
+                                                                                            "flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-[14px] font-medium transition-all",
+                                                                                            selectedLanguage === language.code
+                                                                                                ? "bg-blue-600 text-white shadow-md"
+                                                                                                : "text-slate-600 hover:bg-slate-50 hover:text-blue-600 active:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white dark:active:bg-white/10"
+                                                                                        )}
+                                                                                    >
+                                                                                        <span className="text-xl">{language.flag}</span>
+                                                                                        <span className="flex-1 text-left">{language.label}</span>
+                                                                                        {selectedLanguage === language.code && <Check className="h-4 w-4 shrink-0" />}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </motion.div>
+                                                                    )}
+                                                                </AnimatePresence>
+                                                            </div>
+
+                                                            <p className="mb-1 mt-3 max-w-[280px] text-center text-[11px] leading-relaxed tracking-wide text-zinc-400/80 dark:text-zinc-500">
+                                                                {t('chat.disclaimer') || "DigiLab Learning Assistant can make mistakes. Verify important information."}
+                                                            </p>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
 
                                         </div>
 
