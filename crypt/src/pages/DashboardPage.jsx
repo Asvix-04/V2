@@ -77,6 +77,26 @@ export function DashboardPage() {
         }
     }, []);
 
+    // Live-sync starred sessions when starredChats is updated from another tab (e.g. ChatPage)
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'starredChats') {
+                try {
+                    const starredIds = JSON.parse(e.newValue || '[]');
+                    setSessions(prevSessions => {
+                        const starred = prevSessions.filter(s => starredIds.includes(s.id));
+                        setStarredSessions(starred.slice(0, 3));
+                        return prevSessions;
+                    });
+                } catch {
+                    setStarredSessions([]);
+                }
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
     const handleRestore = async (sessionId) => {
         try {
             await api.post(`/chat/sessions/${sessionId}/restore`);
