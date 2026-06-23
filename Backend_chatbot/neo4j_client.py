@@ -42,10 +42,15 @@ class Neo4jClient:
                 f"Please set them in your .env file."
             )
         
+        # neo4j+ssc accepts self-signed certs (fixes SSL verify error on macOS Python 3.13)
+        fixed_uri = self.uri.replace("neo4j+s://", "neo4j+ssc://").replace("bolt+s://", "bolt+ssc://")
         self.driver = GraphDatabase.driver(
-            self.uri,
+            fixed_uri,
             auth=(self.user, self.password),
-            notifications_min_severity='OFF'  # Suppress Neo4j notifications
+            notifications_min_severity="OFF",
+            connection_timeout=10,
+            max_transaction_retry_time=5,
+            connection_acquisition_timeout=10
         )
     
     def close(self):
