@@ -28,17 +28,17 @@ class ModelConfig:
 
 AVAILABLE_MODELS = {
     "1": ModelConfig(
-        id="gemini-2.5-flash",
-        display_name="Gemini 2.5 Flash",
+        id="gemini-2.5-flash-lite",
+        display_name="Gemini 2.5 Flash Lite",
         api="gemini",
-        description="⚡ Gemini 2.5 Flash — Default (Fast, cost-efficient)",
+        description="⚡ Gemini 2.5 Flash Lite — Default (Fast, cost-efficient)",
         default_max_tokens=2500,
     ),
     "2": ModelConfig(
         id="gemini-2.5-pro",
-        display_name="Gemini 2.5 Pro",
+        display_name="Gemini 2.5 pro",
         api="gemini",
-        description="🔬 Gemini 2.5 Pro — Research (High context, deep reasoning)",
+        description="🔬 Gemini 2.5 pro — Research (High context, deep reasoning)",
         default_max_tokens=4096,
     ),
     "3": ModelConfig(
@@ -46,6 +46,27 @@ AVAILABLE_MODELS = {
         display_name="DeepSeek V3.2",
         api="deepseek",
         description="🌊 DeepSeek V3.2 — Fast & accurate (DeepSeek)",
+        default_max_tokens=3000,
+    ),
+    "4": ModelConfig(
+        id="claude-3-5-haiku-20241022",
+        display_name="Claude 3.5 Haiku",
+        api="claude",
+        description="⚡ Claude 3.5 Haiku — Anthropic's fastest & cheapest model",
+        default_max_tokens=2500,
+    ),
+    "5": ModelConfig(
+        id="deepseek-v4-flash",
+        display_name="DeepSeek V4 Flash",
+        api="deepseek",
+        description="⚡ DeepSeek V4 Flash — Fastest V4, 1M context",
+        default_max_tokens=3000,
+    ),
+    "6": ModelConfig(
+        id="deepseek-v4-pro",
+        display_name="DeepSeek V4 Pro",
+        api="deepseek",
+        description="🔬 DeepSeek V4 Pro — Most capable V4, 1M context",
         default_max_tokens=3000,
     ),
 }
@@ -77,6 +98,7 @@ class UnifiedLLMClient:
             self.client = anthropic.Anthropic(api_key=api_key)
 
         elif model_config.api == "deepseek":
+            # pyrefly: ignore [missing-import]
             from openai import OpenAI
             api_key = os.getenv("DEEPSEEK_API_KEY")
             if not api_key:
@@ -156,12 +178,18 @@ class UnifiedLLMClient:
             except Exception as e:
                 error_str = str(e)
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    # Detect if it's a daily limit (which won't reset in seconds)
+                    err_lower = error_str.lower()
+                    if "perday" in err_lower or "daily" in err_lower or "limit: 20" in err_lower:
+                        print("⚠️ Daily Gemini API quota exceeded. Skipping retries.")
+                        return None
+                    
                     if attempt < max_retries:
                         wait = 5 * (2 ** attempt)
                         print(f"⏳ Rate limited — waiting {wait}s ({attempt + 1}/{max_retries})...")
                         time.sleep(wait)
                         continue
-                    print(f"❌ Rate limit persisted after {max_retries} retries")
+                    print(f" Rate limit persisted after {max_retries} retries")
                     return None
                 if "503" in error_str or "UNAVAILABLE" in error_str or "high demand" in error_str.lower():
                     if attempt < max_retries:
@@ -204,7 +232,7 @@ class UnifiedLLMClient:
                         print(f"⏳ Rate limited — waiting {wait}s ({attempt + 1}/{max_retries})...")
                         time.sleep(wait)
                         continue
-                    print(f"❌ Rate limit persisted after {max_retries} retries")
+                    print(f" Rate limit persisted after {max_retries} retries")
                     return None
                 raise
         return None
@@ -249,7 +277,7 @@ class UnifiedLLMClient:
                         print(f"⏳ Rate limited — waiting {wait}s ({attempt + 1}/{max_retries})...")
                         time.sleep(wait)
                         continue
-                    print(f"❌ Rate limit persisted after {max_retries} retries")
+                    print(f" Rate limit persisted after {max_retries} retries")
                     return None
                 raise
         return None
