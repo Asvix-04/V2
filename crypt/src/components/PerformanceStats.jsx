@@ -90,14 +90,14 @@ const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, b
 
 const SystemStatusItem = ({ label, subLabel, icon: Icon, status = "100% uptime", segments = 60 }) => (
     <div className="flex items-center py-2.5">
-        <div className="flex flex-col w-40">
+        <div className="flex flex-col w-[100px] sm:w-40 shrink-0">
             <div className="flex items-center space-x-2">
-                <Icon size={14} className="text-emerald-400" />
-                <span className="text-sm font-medium text-foreground/90">{label}</span>
+                <Icon size={14} className="text-emerald-400 shrink-0" />
+                <span className="text-[13px] sm:text-sm font-medium text-foreground/90 truncate">{label}</span>
             </div>
-            {subLabel && <span className="text-[10px] text-foreground-muted ml-6">{subLabel}</span>}
+            {subLabel && <span className="text-[9px] sm:text-[10px] text-foreground-muted ml-5 sm:ml-6 truncate">{subLabel}</span>}
         </div>
-        <div className="flex-1 flex space-x-[2px] mx-4">
+        <div className="flex-1 flex gap-[1px] sm:gap-[2px] mx-2 sm:mx-4 min-w-0">
             {Array.from({ length: segments }).map((_, i) => {
                 // Randomly inject some yellow and red segments for visual variety as requested
                 // Seed based on labeling to keep it stable
@@ -110,13 +110,13 @@ const SystemStatusItem = ({ label, subLabel, icon: Icon, status = "100% uptime",
                 return (
                     <div
                         key={i}
-                        className={`h-4 flex-1 rounded-[1px] ${color} opacity-90 hover:opacity-100 transition-opacity`}
+                        className={`h-4 flex-1 rounded-[1px] ${color} opacity-90 hover:opacity-100 transition-opacity ${i < 20 ? 'hidden sm:block' : ''}`}
                     />
                 );
             })}
         </div>
-        <div className="w-24 text-right">
-            <span className="text-[11px] font-medium text-foreground-muted">{status}</span>
+        <div className="w-[70px] sm:w-24 text-right shrink-0">
+            <span className="text-[10px] sm:text-[11px] font-medium text-foreground-muted block truncate">{status}</span>
         </div>
     </div>
 );
@@ -159,7 +159,7 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
                     <span className="text-[11px] sm:text-xs text-foreground-muted truncate font-medium">{subLabel.secondary}</span>
                 </div>
             </div>
-            <div className="relative h-[72px] w-[72px] sm:h-20 sm:w-20 shrink-0">
+            <div className="relative h-[72px] w-[72px] sm:h-20 sm:w-20 shrink-0 min-w-[72px] sm:min-w-[80px] min-h-[72px] sm:min-h-[80px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <Pie
@@ -207,7 +207,7 @@ export function PerformanceStats() {
 
             {/* ROW 1: PERFORMANCE TREND + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
-                <div className="lg:w-[70%]">
+                <div className="lg:w-[70%] w-full min-w-0">
                     <Card spotlight={false} className="p-4
                         border border-slate-200/80 dark:border-white/5
                         bg-white/80 dark:bg-black/40
@@ -227,7 +227,7 @@ export function PerformanceStats() {
                             </div>
                         </div>
 
-                        <div className="h-[200px] w-full">
+                        <div className="h-[200px] w-full min-w-0 min-h-[200px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                                     <defs>
@@ -279,7 +279,7 @@ export function PerformanceStats() {
                         </div>
                     </Card>
                 </div>
-                <div className="lg:w-[30%] grid grid-cols-2 gap-4 lg:flex lg:flex-col lg:gap-6">
+                <div className="lg:w-[30%] w-full min-w-0 grid grid-cols-2 gap-4 lg:flex lg:flex-col lg:gap-6">
                     <div className="flex-1 flex flex-col min-h-0">
                         <MetricCard
                             icon={GlobeChatIcon}
@@ -311,7 +311,7 @@ export function PerformanceStats() {
 
             {/* ROW 2: SYSTEM STATUS + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
-                <div className="lg:w-[70%]">
+                <div className="lg:w-[70%] w-full min-w-0">
                     <Card spotlight={false} className="p-4
                         border border-slate-200/80 dark:border-white/5
                         bg-white/80 dark:bg-black/40
@@ -362,7 +362,7 @@ export function PerformanceStats() {
                         </div>
                     </Card>
                 </div>
-                <div className="lg:w-[30%] grid grid-cols-2 gap-4 lg:flex lg:flex-col lg:gap-6">
+                <div className="lg:w-[30%] w-full min-w-0 grid grid-cols-2 gap-4 lg:flex lg:flex-col lg:gap-6">
                     <div className="flex-1 flex flex-col min-h-0">
                         <MetricCard
                             icon={ShieldCheck}
@@ -393,8 +393,8 @@ export function PerformanceStats() {
             </div>
 
             {/* ROW 3: SOURCE GROUNDING & OFF-TOPIC DETECTION (Split Cards) */}
-            <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-4 lg:flex lg:flex-row lg:gap-6">
-                <div className="lg:w-1/2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:flex lg:flex-row lg:gap-6">
+                <div className="lg:w-1/2 w-full min-w-0">
                     <Card spotlight={false} className="p-4
                         border border-slate-200/80 dark:border-white/5
                         bg-white/80 dark:bg-black/40
@@ -410,7 +410,7 @@ export function PerformanceStats() {
                         />
                     </Card>
                 </div>
-                <div className="lg:w-1/2">
+                <div className="lg:w-1/2 w-full min-w-0">
                     <Card spotlight={false} className="p-4
                         border border-slate-200/80 dark:border-white/5
                         bg-white/80 dark:bg-black/40

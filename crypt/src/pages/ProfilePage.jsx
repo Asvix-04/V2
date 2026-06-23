@@ -198,7 +198,7 @@ export function ProfilePage() {
     const handleSignOut = () => {
         localStorage.removeItem("user");
         localStorage.removeItem("token");
-        navigate("/login");
+        navigate("/");
     };
 
     // Helper to get language name

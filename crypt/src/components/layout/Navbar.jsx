@@ -191,7 +191,7 @@ export function Navbar() {
                                                         onClick={() => {
                                                             localStorage.removeItem("user");
                                                             localStorage.removeItem("token");
-                                                            window.location.href = "/login"; // Force reload/redirect
+                                                            window.location.href = "/"; // Force reload/redirect
                                                         }}
                                                         className="flex w-full items-center rounded-xl px-3 py-2.5 text-sm font-medium text-red-400 hover:bg-red-400/10 transition-colors"
                                                     >

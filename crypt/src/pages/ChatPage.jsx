@@ -1,4 +1,5 @@
 import * as React from "react";
+import ReactDOM from "react-dom";
 
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 
@@ -488,6 +489,34 @@ export function ChatPage() {
     const [activeMenuId, setActiveMenuId] = React.useState(null);
     const [renamingSessionId, setRenamingSessionId] = React.useState(null);
     const [renameValue, setRenameValue] = React.useState("");
+
+    // Portal-based dropdown positioning for starred chats menu
+    const starredMenuTriggerRefs = React.useRef({});
+    const [starredMenuPos, setStarredMenuPos] = React.useState({ top: 0, left: 0, width: 0 });
+    const starredMenuPortalRef = React.useRef(null);
+
+    // Close starred menu on outside click
+    React.useEffect(() => {
+        if (!activeMenuId) return;
+        const handleOutsideClick = (e) => {
+            const portal = starredMenuPortalRef.current;
+            const trigger = starredMenuTriggerRefs.current[activeMenuId];
+            if (
+                portal && !portal.contains(e.target) &&
+                trigger && !trigger.contains(e.target)
+            ) {
+                setActiveMenuId(null);
+            }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [activeMenuId]);
+
+    // Close starred menu when section collapses
+    React.useEffect(() => {
+        if (!isStarredOpen) setActiveMenuId(null);
+    }, [isStarredOpen]);
+
     const [isIncognito, setIsIncognito] = React.useState(() => {
         try { return sessionStorage.getItem('isIncognito') === 'true'; } catch { return false; }
     });
@@ -1585,9 +1614,18 @@ export function ChatPage() {
                                                                         {renamingSessionId !== session.id && (
                                                                             <div className="flex items-center max-sm:opacity-100 opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0">
                                                                                 <button
+                                                                                    ref={(el) => { starredMenuTriggerRefs.current[session.id] = el; }}
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();
-                                                                                        setActiveMenuId(activeMenuId === session.id ? null : session.id);
+                                                                                        const nextId = activeMenuId === session.id ? null : session.id;
+                                                                                        if (nextId && e.currentTarget) {
+                                                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                                                            setStarredMenuPos({
+                                                                                                top: rect.bottom + 4,
+                                                                                                left: rect.right - 144, // 144 = w-36
+                                                                                            });
+                                                                                        }
+                                                                                        setActiveMenuId(nextId);
                                                                                     }}
                                                                                     className="p-1 rounded-md hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 min-w-[36px] min-h-[36px] flex items-center justify-center"
                                                                                 >
@@ -1597,54 +1635,6 @@ export function ChatPage() {
                                                                         )}
                                                                     </button>
 
-                                                                    <AnimatePresence>
-                                                                        {activeMenuId === session.id && (
-                                                                            <motion.div
-                                                                                initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                                                exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                                                                                transition={{ duration: 0.15 }}
-                                                                                className="absolute right-1 top-10 z-[60] w-36 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden"
-                                                                            >
-                                                                                <div className="flex flex-col p-1">
-                                                                                    <button
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            toggleStar(session.id, e);
-                                                                                            setActiveMenuId(null);
-                                                                                        }}
-                                                                                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                                                                                    >
-                                                                                        <span>Unstar Chat</span>
-                                                                                        <Star className="h-3.5 w-3.5 text-yellow-500" />
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setRenameValue(session.title || "");
-                                                                                            setRenamingSessionId(session.id);
-                                                                                            setActiveMenuId(null);
-                                                                                        }}
-                                                                                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                                                                                    >
-                                                                                        <span>Rename</span>
-                                                                                    </button>
-                                                                                    <div className="h-px bg-zinc-200 dark:bg-white/10 my-1 mx-2" />
-                                                                                    <button
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            handleDeleteSession(session.id, e);
-                                                                                            setActiveMenuId(null);
-                                                                                        }}
-                                                                                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                                                                    >
-                                                                                        <span>Delete</span>
-                                                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                                                    </button>
-                                                                                </div>
-                                                                            </motion.div>
-                                                                        )}
-                                                                    </AnimatePresence>
                                                                 </div>
                                                             ))
                                                         }
@@ -2993,6 +2983,72 @@ export function ChatPage() {
                 />
 
             </div>
+
+            {/* Starred Chats Context Menu Portal — renders at document.body to escape overflow:hidden ancestors */}
+            {ReactDOM.createPortal(
+                <AnimatePresence>
+                    {activeMenuId && sessions.some(s => s.id === activeMenuId && starredChats.includes(s.id)) && (() => {
+                        const session = sessions.find(s => s.id === activeMenuId);
+                        if (!session) return null;
+                        return (
+                            <motion.div
+                                ref={starredMenuPortalRef}
+                                key={`starred-portal-menu-${activeMenuId}`}
+                                initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                                transition={{ duration: 0.15 }}
+                                style={{
+                                    position: 'fixed',
+                                    top: starredMenuPos.top,
+                                    left: Math.max(8, starredMenuPos.left),
+                                    width: '144px',
+                                    zIndex: 9999,
+                                }}
+                                className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden"
+                            >
+                                <div className="flex flex-col p-1">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleStar(session.id, e);
+                                            setActiveMenuId(null);
+                                        }}
+                                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                                    >
+                                        <span>Unstar Chat</span>
+                                        <Star className="h-3.5 w-3.5 text-yellow-500" />
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setRenameValue(session.title || "");
+                                            setRenamingSessionId(session.id);
+                                            setActiveMenuId(null);
+                                        }}
+                                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                                    >
+                                        <span>Rename</span>
+                                    </button>
+                                    <div className="h-px bg-zinc-200 dark:bg-white/10 my-1 mx-2" />
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteSession(session.id, e);
+                                            setActiveMenuId(null);
+                                        }}
+                                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                    >
+                                        <span>Delete</span>
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            </motion.div>
+                        );
+                    })()}
+                </AnimatePresence>,
+                document.body
+            )}
 
         </PageTransition>
 
