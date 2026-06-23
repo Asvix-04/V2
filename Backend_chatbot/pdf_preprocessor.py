@@ -2,9 +2,32 @@ import os
 import re
 from glob import glob
 
-import pdfplumber
+import fitz  # PyMuPDF — faster and more reliable than pdfplumber
 from tqdm import tqdm
 from unidecode import unidecode
+
+# OCR support for scanned (image-based) PDFs
+import shutil
+OCR_AVAILABLE = False
+try:
+    import pytesseract
+    from pdf2image import convert_from_path
+    
+    tesseract_exists = shutil.which("tesseract") is not None
+    poppler_exists = shutil.which("pdftoppm") is not None or shutil.which("pdfinfo") is not None
+    
+    if tesseract_exists and poppler_exists:
+        OCR_AVAILABLE = True
+    else:
+        missing = []
+        if not tesseract_exists:
+            missing.append("tesseract")
+        if not poppler_exists:
+            missing.append("poppler (pdftoppm/pdfinfo)")
+        print(f"⚠️  OCR binaries missing from PATH: {', '.join(missing)}")
+        print("   Scanned PDF OCR fallback will be disabled.")
+except ImportError:
+    print("⚠️  OCR Python modules not available: install pytesseract and pdf2image for scanned PDF support")
 
 PDF_DIR = "pdfs"  # Changed from "books" to match your folder
 OUTPUT_DIR = "data/txts"  # Changed to match your pipeline
@@ -125,12 +148,32 @@ def looks_like_table_row(line: str) -> bool:
     Detect a table row in extracted text.
     NOTE: Tables will be converted to bullet format for better RAG retrieval.
     """
+    stripped = line.strip()
+    if not stripped:
+        return False
     if "  " not in line:
         return False
+    # Filter out common false positives like index outlines or table of contents headers
+    # e.g., "1.1 Introduction  5" or "Unit 1: History of Photography  12"
+    if re.match(r"^(Chapter|Unit|CHAPTER|UNIT|\d+(\.\d+)*)", stripped, re.IGNORECASE):
+        return False
+    if len(stripped) < 10:
+        return False
+    # Ensure it actually splits into at least 2 distinct non-empty columns
+    parts = split_table_row(line)
+    if len(parts) < 2:
+        return False
+    
+    # If the first column looks like a full sentence ending in terminal punctuation, it is likely regular text
+    first_part = parts[0]
+    if first_part.endswith((".", "?", "!")) and len(first_part.split()) > 3:
+        return False
+
+    # If it has no digit, verify that columns are significant (e.g. at least two columns of len >= 3)
     if not re.search(r"\d", line):
-        return False
-    if len(line.strip()) < 10:
-        return False
+        significant_cols = sum(1 for p in parts if len(p) >= 3)
+        if significant_cols < 2:
+            return False
     return True
 
 
@@ -222,6 +265,22 @@ def preprocess_page_text(raw_page_text: str) -> list[str]:
     return cleaned_lines
 
 
+def _normalize_header_footer_candidate(line: str) -> str:
+    """Strip dynamic parts like page numbers from candidates to allow duplicate detection."""
+    # Convert to lowercase
+    normalized = line.strip().lower()
+    # Strip standard page number prefix/suffix: "page X", "pg X", "p. X"
+    normalized = re.sub(r"\b(page|pg\.?|p\.?)\s*\d+\b", "", normalized)
+    # Strip fractions: "12 of 100", "12/100"
+    normalized = re.sub(r"\b\d+\s*(of|/)\s*\d+\b", "", normalized)
+    # Strip isolated/trailing/leading numbers and delimiters
+    normalized = re.sub(r"\b\d+\b", "", normalized)
+    normalized = re.sub(r"[-_|=·•◦▪●►]+", "", normalized)
+    # Collapse whitespace
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
 def remove_repeated_headers_footers(pages_lines: list[list[str]]) -> list[list[str]]:
     """
     Detect lines that repeat as first/last non-empty line on many pages
@@ -235,21 +294,26 @@ def remove_repeated_headers_footers(pages_lines: list[list[str]]) -> list[list[s
         non_empty = [l for l in lines if l.strip()]
         if not non_empty:
             continue
-        first_lines.append(non_empty[0].strip())
-        last_lines.append(non_empty[-1].strip())
+        if len(non_empty) > 1:
+            first_lines.append(non_empty[0].strip())
+        if len(non_empty) > 2:
+            last_lines.append(non_empty[-1].strip())
 
     def get_repeated(candidates):
         counts = {}
         for l in candidates:
-            counts[l] = counts.get(l, 0) + 1
+            norm = _normalize_header_footer_candidate(l)
+            if not norm:
+                continue
+            counts[norm] = counts.get(norm, 0) + 1
         # Consider header/footer if appears on >= 3 pages
         # AND is not a content heading (Chapter, Unit, etc.)
         repeated = set()
-        for l, c in counts.items():
+        for norm, c in counts.items():
             if c >= 3:
                 # Don't remove if it's a chapter/unit/section header
-                if not re.match(r"^(Chapter|Unit|CHAPTER|UNIT|\d+\.|[A-Z]\.)", l, re.IGNORECASE):
-                    repeated.add(l)
+                if not re.match(r"^(chapter|unit|ch\.?|\d+\.|[a-z]\.)", norm):
+                    repeated.add(norm)
         return repeated
 
     header_candidates = get_repeated(first_lines)
@@ -264,10 +328,14 @@ def remove_repeated_headers_footers(pages_lines: list[list[str]]) -> list[list[s
 
         for i, line in enumerate(lines):
             stripped = line.strip()
-            if stripped and i == header_idx and stripped in header_candidates:
-                continue
-            if stripped and i == footer_idx and stripped in footer_candidates:
-                continue
+            if stripped:
+                norm = _normalize_header_footer_candidate(stripped)
+                if not norm:
+                    continue
+                if i == header_idx and norm in header_candidates:
+                    continue
+                if i == footer_idx and norm in footer_candidates:
+                    continue
             new_lines.append(line)
         cleaned_pages.append(new_lines)
 
@@ -327,9 +395,10 @@ def merge_lines_to_paragraphs(lines: list[str]) -> str:
 
         is_bullet = re.match(r"^(-|\d+[\).])\s+", stripped) is not None
         heading = is_heading_candidate(line)
+        is_table_header = stripped.startswith("Table:")
 
-        if is_bullet or heading:
-            # CRITICAL: Flush buffer and keep heading/bullet separate
+        if is_bullet or heading or is_table_header:
+            # CRITICAL: Flush buffer and keep heading/bullet/table header separate
             flush_buffer()
             processed.append(stripped)
         else:
@@ -398,17 +467,60 @@ def postprocess_global(text: str) -> str:
 
 # ---------- MAIN PIPELINE ----------
 
+def _ocr_page_image(pdf_path: str, page_index: int) -> str:
+    """
+    Render a single PDF page to an image and run Tesseract OCR on it.
+    Used as a fallback for scanned / image-based pages.
+    """
+    if not OCR_AVAILABLE:
+        return ""
+    try:
+        images = convert_from_path(
+            pdf_path,
+            dpi=300,               # High resolution for better OCR accuracy
+            first_page=page_index + 1,
+            last_page=page_index + 1,
+        )
+        if not images:
+            return ""
+        text = pytesseract.image_to_string(images[0], lang="eng")
+        return text
+    except Exception as e:
+        print(f"⚠️  OCR failed on page {page_index + 1}: {e}")
+        return ""
+
+
 def extract_and_clean_pdf(pdf_path: str) -> str:
     """
     Main extraction pipeline - optimized for RAG with hierarchy preservation.
+    Uses PyMuPDF (fitz) for fast, reliable text extraction (3-5x faster than pdfplumber).
+
+    OCR Fallback: If a page returns no text (scanned / image-based PDF),
+    it is automatically rendered as an image and processed with Tesseract OCR.
+    This makes both digital PDFs and scanned PDFs work seamlessly.
     """
     pages_lines = []
+    scanned_pages = 0
 
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            raw = page.extract_text() or ""
+    with fitz.open(pdf_path) as doc:
+        for page_index, page in enumerate(doc):
+            raw = page.get_text() or ""
+
+            # Fallback to OCR if page has no or very low quality embedded text (scanned PDF)
+            # Count alphanumeric characters to filter out dirty artifacts (e.g. noise like '.', '|', etc.)
+            alphanumeric_count = len(re.sub(r"[^A-Za-z0-9]", "", raw))
+            if alphanumeric_count < 10 and OCR_AVAILABLE:
+                print(f"   🔍 Page {page_index + 1}: low text quality ({alphanumeric_count} alphanumeric chars) — running OCR...")
+                ocr_text = _ocr_page_image(pdf_path, page_index)
+                if ocr_text.strip():
+                    raw = ocr_text
+                    scanned_pages += 1
+
             page_lines = preprocess_page_text(raw)
             pages_lines.append(page_lines)
+
+    if scanned_pages > 0:
+        print(f"   📷 OCR processed {scanned_pages} scanned page(s)")
 
     # Remove repeated headers / footers (preserves content headers)
     pages_lines = remove_repeated_headers_footers(pages_lines)
