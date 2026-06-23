@@ -12,7 +12,8 @@ class TXTNeo4jBuilder:
         if not user or not password:
             raise ValueError("Neo4j credentials are required. Check NEO4J_USERNAME and NEO4J_PASSWORD env vars.")
 
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        fixed_uri = uri.replace("neo4j+s://", "neo4j+ssc://").replace("bolt+s://", "bolt+ssc://")
+        self.driver = GraphDatabase.driver(fixed_uri, auth=(user, password))
         self.database = os.getenv("NEO4J_DATABASE", "neo4j")
 
     def close(self):
@@ -23,9 +24,15 @@ class TXTNeo4jBuilder:
             session.run(query, {"batch": batch})
 
     def build_graph_from_sections(self, sections: List[DocumentSection]):
-        # Clear existing nodes
+        # Clear existing nodes for the source files being processed to avoid global wipe
+        source_files = list({s.source_file for s in sections if s.source_file})
         with self.driver.session(database=self.database) as session:
-            session.run("MATCH (n:Section) DETACH DELETE n")
+            if source_files:
+                print(f"Clearing existing sections for source files: {source_files}")
+                session.run("MATCH (n:Section) WHERE n.source_file IN $source_files DETACH DELETE n", {"source_files": source_files})
+            else:
+                print("No source files specified in sections; clearing all sections.")
+                session.run("MATCH (n:Section) DETACH DELETE n")
 
         print(f"Building graph from {len(sections)} sections...")
 
@@ -34,11 +41,12 @@ class TXTNeo4jBuilder:
         total = len(sections)
         for i, section in enumerate(sections):
             node_batch.append({
-                "id":        section.id,
-                "title":     section.title[:200],
-                "content":   section.content[:1000],
-                "level":     section.level,
-                "full_path": " > ".join(section.section_path),
+                "id":          section.id,
+                "title":       section.title[:200],
+                "content":     section.content[:1000],
+                "level":       section.level,
+                "full_path":   " > ".join(section.section_path),
+                "source_file": section.source_file,
                 "type": (
                     "chapter" if section.level == 1
                     else "section" if section.level <= 3
@@ -50,11 +58,12 @@ class TXTNeo4jBuilder:
                     """
                     UNWIND $batch AS row
                     MERGE (s:Section {id: row.id})
-                    SET s.title     = row.title,
-                        s.content   = row.content,
-                        s.level     = row.level,
-                        s.full_path = row.full_path,
-                        s.type      = row.type
+                    SET s.title       = row.title,
+                        s.content     = row.content,
+                        s.level       = row.level,
+                        s.full_path   = row.full_path,
+                        s.source_file = row.source_file,
+                        s.type        = row.type
                     """,
                     node_batch,
                 )
@@ -66,11 +75,12 @@ class TXTNeo4jBuilder:
                 """
                 UNWIND $batch AS row
                 MERGE (s:Section {id: row.id})
-                SET s.title     = row.title,
-                    s.content   = row.content,
-                    s.level     = row.level,
-                    s.full_path = row.full_path,
-                    s.type      = row.type
+                SET s.title       = row.title,
+                    s.content     = row.content,
+                    s.level       = row.level,
+                    s.full_path   = row.full_path,
+                    s.source_file = row.source_file,
+                    s.type        = row.type
                 """,
                 node_batch,
             )
