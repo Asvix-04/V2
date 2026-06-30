@@ -73,20 +73,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Endpoints that record their own per-user metrics inside the handler.
+# Skip them here so we don't double-count and so we don't overwrite
+# user_id with the generic "guest" default.
+_SELF_LOGGED_PREFIXES = ("/chat", "/text-to-text", "/speech-to-speech")
+
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.perf_counter()
     response = await call_next(request)
     process_time = (time.perf_counter() - start_time) * 1000
     response.headers["X-Process-Time"] = str(process_time)
-    
-    # Generic logging for non-chat endpoints (health, docs, etc.)
-    # Chat endpoint will do its own detailed logging
-    if not request.url.path.startswith("/chat"):
+
+    if not request.url.path.startswith(_SELF_LOGGED_PREFIXES):
         log_request_metrics(
             endpoint=request.url.path,
             status_code=response.status_code,
-            response_time_ms=process_time
+            response_time_ms=process_time,
         )
     return response
 
@@ -804,68 +808,101 @@ async def text_to_text(request: TextToTextRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    if request.language_code:
-        language_code = _normalize_lang_for_tts(request.language_code)
-    else:
-        language_code = sarvam_client.detect_language(request.question)
+    t2t_start = time.perf_counter()
+    user_id = request.user_id or "guest"
 
-    question = request.question.strip()
-
-    # Step 1: Translate question to English (skip if already English)
-    if language_code == "en-IN":
-        english_question = question
-    else:
-        try:
-            english_question = sarvam_client.translate(
-                text=question,
-                target_language_code="en-IN",
-                source_language_code=language_code,
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
-
-    # Step 2: RAG pipeline
     try:
-        result = chatbot.ask_question(
-            question=english_question,
-            use_history=request.use_history if request.use_history is not None else True,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
+        if request.language_code:
+            language_code = _normalize_lang_for_tts(request.language_code)
+        else:
+            language_code = sarvam_client.detect_language(request.question)
 
-    english_answer = result.get("answer", "")
-    if not english_answer.strip():
-        raise HTTPException(status_code=500, detail="Generated answer is empty")
+        question = request.question.strip()
 
-    # Step 3: Translate answer back to user's language (skip if English)
-    if language_code == "en-IN":
-        translated_answer = english_answer
-    else:
+        # Step 1: Translate question to English (skip if already English)
+        if language_code == "en-IN":
+            english_question = question
+        else:
+            try:
+                english_question = sarvam_client.translate(
+                    text=question,
+                    target_language_code="en-IN",
+                    source_language_code=language_code,
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
+        # Step 2: RAG pipeline
         try:
-            translated_answer = sarvam_client.translate(
-                text=english_answer,
-                target_language_code=language_code,
-                source_language_code="en-IN",
+            result = chatbot.ask_question(
+                question=english_question,
+                use_history=request.use_history if request.use_history is not None else True,
             )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Answer translation failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
 
-    return {
-        "original_question": request.question,
-        "detected_language": language_code,
-        "detected_language_name": LANGUAGE_DISPLAY.get(language_code, "Unknown"),
-        "english_question": english_question,
-        "answer": translated_answer,
-        "sources": _compact_sources(result.get("sources", [])),
-        "expanded_queries": result.get("expanded_queries", []),
-        "validation": result.get("validation"),
-    }
+        english_answer = result.get("answer", "")
+        if not english_answer.strip():
+            raise HTTPException(status_code=500, detail="Generated answer is empty")
+
+        # Step 3: Translate answer back to user's language (skip if English)
+        if language_code == "en-IN":
+            translated_answer = english_answer
+        else:
+            try:
+                translated_answer = sarvam_client.translate(
+                    text=english_answer,
+                    target_language_code=language_code,
+                    source_language_code="en-IN",
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Answer translation failed: {str(e)}")
+
+        log_request_metrics(
+            endpoint="/text-to-text",
+            status_code=200,
+            response_time_ms=(time.perf_counter() - t2t_start) * 1000,
+            on_topic="outside the scope" not in (english_answer or "").lower(),
+            has_sources=len(result.get("sources", [])) > 0,
+            user_id=user_id,
+        )
+
+        return {
+            "original_question": request.question,
+            "detected_language": language_code,
+            "detected_language_name": LANGUAGE_DISPLAY.get(language_code, "Unknown"),
+            "english_question": english_question,
+            "answer": translated_answer,
+            "sources": _compact_sources(result.get("sources", [])),
+            "expanded_queries": result.get("expanded_queries", []),
+            "validation": result.get("validation"),
+        }
+
+    except HTTPException as e:
+        log_request_metrics(
+            endpoint="/text-to-text",
+            status_code=e.status_code,
+            response_time_ms=(time.perf_counter() - t2t_start) * 1000,
+            error=str(e.detail),
+            user_id=user_id,
+        )
+        raise
+    except Exception as e:
+        log_request_metrics(
+            endpoint="/text-to-text",
+            status_code=500,
+            response_time_ms=(time.perf_counter() - t2t_start) * 1000,
+            error=str(e),
+            user_id=user_id,
+        )
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
 @app.post("/speech-to-speech", response_model=SpeechToSpeechResponse)
 async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request):
     """Full pipeline: audio → transcript → chat answer → response audio."""
     request_start = time.perf_counter()
+    user_id = request.user_id or "guest"
 
     # ── Rate limit check ──
     client_ip = raw_request.client.host
@@ -877,93 +914,122 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
     if sarvam_client is None:
         raise HTTPException(status_code=503, detail="Speech service not initialized")
 
-    decode_start = time.perf_counter()
-    audio_bytes = _decode_audio_b64(request.audio_base64)
-    decode_ms = round((time.perf_counter() - decode_start) * 1000, 2)
-
-    # ── Audio size check ──
-    if len(audio_bytes) > MAX_AUDIO_BYTES:
-        raise HTTPException(status_code=413, detail="Audio too long. Max ~30 seconds allowed.")
-
-    # Step 1: Transcribe
     try:
-        stt_start = time.perf_counter()
-        transcript, detected_language = sarvam_client.speech_to_text_bytes(
-            audio_bytes=audio_bytes,
-            mime_type=request.mime_type or "audio/wav",
-        )
-        stt_ms = round((time.perf_counter() - stt_start) * 1000, 2)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        decode_start = time.perf_counter()
+        audio_bytes = _decode_audio_b64(request.audio_base64)
+        decode_ms = round((time.perf_counter() - decode_start) * 1000, 2)
 
-    if not transcript.strip():
-        raise HTTPException(status_code=400, detail="No speech detected in audio")
+        # ── Audio size check ──
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail="Audio too long. Max ~30 seconds allowed.")
 
-    # Step 2: Get chat answer
-    try:
-        chat_start = time.perf_counter()
-        result = chatbot.ask_question(
-            question=transcript.strip(),
-            use_history=request.use_history if request.use_history is not None else True,
-        )
-        chat_ms = round((time.perf_counter() - chat_start) * 1000, 2)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
-
-    answer = result.get("answer", "")
-    if not answer.strip():
-        raise HTTPException(status_code=503, detail="Question is outside course material")
-
-    # Step 3: Generate response audio
-    response_language = _normalize_lang_for_tts(request.response_language_code or detected_language)
-
-    try:
-        tts_start = time.perf_counter()
-        if response_language == "en-IN":
-            answer_audio = sarvam_client.text_to_speech_bytes(answer, response_language)
-        else:
-            answer_audio = sarvam_client.translate_to_speech_bytes(
-                text=answer,
-                target_language_code=response_language,
-                source_language_code="en-IN",
+        # Step 1: Transcribe
+        try:
+            stt_start = time.perf_counter()
+            transcript, detected_language = sarvam_client.speech_to_text_bytes(
+                audio_bytes=audio_bytes,
+                mime_type=request.mime_type or "audio/wav",
             )
-        tts_ms = round((time.perf_counter() - tts_start) * 1000, 2)
+            stt_ms = round((time.perf_counter() - stt_start) * 1000, 2)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+        if not transcript.strip():
+            raise HTTPException(status_code=400, detail="No speech detected in audio")
+
+        # Step 2: Get chat answer
+        try:
+            chat_start = time.perf_counter()
+            result = chatbot.ask_question(
+                question=transcript.strip(),
+                use_history=request.use_history if request.use_history is not None else True,
+            )
+            chat_ms = round((time.perf_counter() - chat_start) * 1000, 2)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
+
+        answer = result.get("answer", "")
+        if not answer.strip():
+            raise HTTPException(status_code=503, detail="Question is outside course material")
+
+        # Step 3: Generate response audio
+        response_language = _normalize_lang_for_tts(request.response_language_code or detected_language)
+
+        try:
+            tts_start = time.perf_counter()
+            if response_language == "en-IN":
+                answer_audio = sarvam_client.text_to_speech_bytes(answer, response_language)
+            else:
+                answer_audio = sarvam_client.translate_to_speech_bytes(
+                    text=answer,
+                    target_language_code=response_language,
+                    source_language_code="en-IN",
+                )
+            tts_ms = round((time.perf_counter() - tts_start) * 1000, 2)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(e)}")
+
+        encode_start = time.perf_counter()
+        audio_b64 = _encode_audio_b64(answer_audio)
+        encode_ms = round((time.perf_counter() - encode_start) * 1000, 2)
+        total_ms = round((time.perf_counter() - request_start) * 1000, 2)
+
+        # Get current time in IST
+        ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+
+        _append_s2s_timing_log({
+            "timestamp": ist_now.isoformat(timespec="seconds") + "+05:30",
+            "decode_ms": decode_ms,
+            "stt_ms": stt_ms,
+            "chat_ms": chat_ms,
+            "tts_ms": tts_ms,
+            "encode_ms": encode_ms,
+            "total_ms": total_ms,
+            "transcript_chars": len(transcript),
+            "answer_chars": len(answer),
+            "response_language": response_language,
+            "detected_language": detected_language,
+            "max_output_tokens": 1000,
+        })
+
+        log_request_metrics(
+            endpoint="/speech-to-speech",
+            status_code=200,
+            response_time_ms=total_ms,
+            on_topic="outside the scope" not in (answer or "").lower(),
+            has_sources=len(result.get("sources", [])) > 0,
+            user_id=user_id,
+        )
+
+        return {
+            "transcript": transcript,
+            "detected_language": detected_language,
+            "response_language": response_language,
+            "answer": answer,
+            "sources": _compact_sources(result.get("sources", [])),
+            "expanded_queries": result.get("expanded_queries", []),
+            "validation": result.get("validation"),
+            "audio_base64": audio_b64,
+        }
+
+    except HTTPException as e:
+        log_request_metrics(
+            endpoint="/speech-to-speech",
+            status_code=e.status_code,
+            response_time_ms=(time.perf_counter() - request_start) * 1000,
+            error=str(e.detail),
+            user_id=user_id,
+        )
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(e)}")
-
-    encode_start = time.perf_counter()
-    audio_b64 = _encode_audio_b64(answer_audio)
-    encode_ms = round((time.perf_counter() - encode_start) * 1000, 2)
-    total_ms = round((time.perf_counter() - request_start) * 1000, 2)
-
-    # Get current time in IST
-    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    
-    _append_s2s_timing_log({
-        "timestamp": ist_now.isoformat(timespec="seconds") + "+05:30",
-        "decode_ms": decode_ms,
-        "stt_ms": stt_ms,
-        "chat_ms": chat_ms,
-        "tts_ms": tts_ms,
-        "encode_ms": encode_ms,
-        "total_ms": total_ms,
-        "transcript_chars": len(transcript),
-        "answer_chars": len(answer),
-        "response_language": response_language,
-        "detected_language": detected_language,
-        "max_output_tokens": 1000,
-    })
-
-    return {
-        "transcript": transcript,
-        "detected_language": detected_language,
-        "response_language": response_language,
-        "answer": answer,
-        "sources": _compact_sources(result.get("sources", [])),
-        "expanded_queries": result.get("expanded_queries", []),
-        "validation": result.get("validation"),
-        "audio_base64": audio_b64,
-    }
+        log_request_metrics(
+            endpoint="/speech-to-speech",
+            status_code=500,
+            response_time_ms=(time.perf_counter() - request_start) * 1000,
+            error=str(e),
+            user_id=user_id,
+        )
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 # ─────────────────────────────────────────────────────────────
 # Run
