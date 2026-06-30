@@ -160,7 +160,10 @@ function computeSummary(window = '30d', userId = null) {
     const total = records.length;
     const successes = records.filter(r => r.status_code >= 200 && r.status_code < 300);
     const failures  = records.filter(r => r.status_code >= 400);
-    const chat = records.filter(r => r.endpoint === '/chat');
+    // Treat every user-facing question endpoint as a "chat" so multilingual
+    // and voice queries show up on the dashboard.
+    const CHAT_ENDPOINTS = new Set(['/chat', '/text-to-text', '/speech-to-speech']);
+    const chat = records.filter(r => CHAT_ENDPOINTS.has(r.endpoint));
     const totalChat = chat.length;
 
     const avgMs = records.reduce((s, r) => s + (r.response_time_ms || 0), 0) / total;

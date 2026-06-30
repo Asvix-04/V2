@@ -10,51 +10,6 @@ function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Logic to process text and find link matches
-function processText(text, links) {
-    if (!links || links.length === 0) return [text];
-
-    // Build a map of phrases to match. 
-    const linkEntries = [];
-    links.forEach((l, index) => {
-        if (!l) return;
-        const url = l.url;
-        const linkId = index + 1;
-        let mainTitle = l.title;
-
-        // If title is missing, try to extract keywords from URL path
-        if (!mainTitle || mainTitle.trim() === "" || mainTitle.trim().toLowerCase() === "reference") {
-            try {
-                const urlObj = new URL(url);
-                const pathParts = urlObj.pathname.split('/').filter(p => p.length > 3);
-                if (pathParts.length > 0) {
-                    mainTitle = pathParts[pathParts.length - 1].replace(/[-_]/g, ' ');
-                }
-            } catch {
-                // Ignore malformed reference URLs.
-            }
-        }
-        
-        const displayTitle = mainTitle || "Resource";
-        linkEntries.push({ phrase: displayTitle, url: url, id: linkId });
-
-        // Add suffix after common separators
-        const subParts = displayTitle.split(/[:\-–—]/);
-        if (subParts.length > 1) {
-            const suffix = subParts[subParts.length - 1].trim();
-            if (suffix.length > 3) linkEntries.push({ phrase: suffix, url: url, id: linkId });
-        }
-
-        // Add phrases without common prefixes like "Unit X", "Chapter X"
-        const prefixMatch = displayTitle.match(/^(?:Unit|Chapter|Section|Part)\s+\d+[:\s-]*(.*)/i);
-        if (prefixMatch && prefixMatch[1] && prefixMatch[1].trim().length > 3) {
-            linkEntries.push({ phrase: prefixMatch[1].trim(), url: url, id: linkId });
-        }
-    });
-
-    // For now, return the original text as a single segment.
-    return [text];
-}
 
 // Derive a display title for a reference link (falls back to URL path keywords)
 function deriveTitle(link) {
@@ -234,7 +189,7 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                 onAudio: (audio) => {
                     audioRef.current = audio;
                 },
-            }).catch(() => {}).finally(() => {
+            }).catch(() => { }).finally(() => {
                 if (readingRunRef.current !== runId) {
                     return;
                 }
@@ -500,8 +455,8 @@ export function MessageBubble({ message, onEdit, isEditing = false, onEditSubmit
                         <span className={cn(
                             "text-[10px] px-1.5 py-0.5 rounded-full ml-3 border font-medium bg-black/5 dark:bg-white/5",
                             message.modelName.includes('Flash') ? "text-blue-500 border-blue-500/20" :
-                            message.modelName.includes('Original') ? "text-zinc-500 border-zinc-500/20" :
-                            "text-purple-500 border-purple-500/20"
+                                message.modelName.includes('Original') ? "text-zinc-500 border-zinc-500/20" :
+                                    "text-purple-500 border-purple-500/20"
                         )}>
                             via {message.modelName}
                         </span>

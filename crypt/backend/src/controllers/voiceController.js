@@ -79,6 +79,7 @@ exports.speechToSpeech = async (req, res) => {
             use_history: use_history !== false,
             response_language_code: response_language_code || null,
             model: model || null,
+            user_id: userId,
         });
 
         res.json({
@@ -104,7 +105,7 @@ exports.chat = async (req, res) => {
     const userId = getUserId(req);
     try {
         if (req.query.stream === 'true') {
-            const response = await axios.post(`${PYTHON_BACKEND_URL}/chat?stream=true`, req.body, {
+            const response = await axios.post(`${PYTHON_BACKEND_URL}/chat?stream=true`, { ...req.body, user_id: userId }, {
                 responseType: 'stream',
             });
 
@@ -115,7 +116,7 @@ exports.chat = async (req, res) => {
             return;
         }
 
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, req.body);
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId });
         res.json(response.data);
     } catch (error) {
         console.error('Chat Proxy Error:', error.response?.data || error.message);
@@ -173,6 +174,7 @@ exports.textToText = async (req, res) => {
             language_code: languageCode,
             use_history: useHistory !== false,
             model,
+            user_id: userId,
         });
 
         res.json({

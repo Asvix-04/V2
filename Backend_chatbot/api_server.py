@@ -675,7 +675,17 @@ async def chat(request: QuestionRequest):
 
         return chat_response
 
+    except HTTPException:
+        raise
     except Exception as e:
+        log_request_metrics(
+            endpoint="/chat",
+            status_code=500,
+            response_time_ms=(time.perf_counter() - start_time) * 1000,
+            model=request.model or "1",
+            error=str(e),
+            user_id=request.user_id or "guest",
+        )
         raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
 
 
