@@ -17,8 +17,10 @@ import threading
 import shutil
 from datetime import datetime, timedelta
 from collections import defaultdict
+import json
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
@@ -599,26 +601,14 @@ async def health_check():
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: QuestionRequest):
+def _run_chat_pipeline(request: QuestionRequest, start_time: float) -> Dict[str, Any]:
+    """Run the chatbot pipeline, log metrics, and return the response payload.
+
+    Raises HTTPException on failure (also logged). Used by both the JSON
+    and SSE branches of /chat so the logic stays in one place.
     """
-    Send a question to the chatbot.
-
-    Returns the answer, sources, validation metadata, AND reference links
-    pulled from the MySQL database matched to the topic of the answer.
-    """
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
-    if not request.question or not request.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty")
-
-    start_time = time.perf_counter()
-    print(f"DEBUG: Processing question: {request.question[:30]} | Model: {request.model}")
-
     try:
         # ── 1. Get chatbot answer ──
-        # Check if the chatbot object has ask_question_with_follow_ups, 
-        # otherwise fallback to ask_question
         if hasattr(chatbot, 'ask_question_with_follow_ups'):
             result = chatbot.ask_question_with_follow_ups(
                 question=request.question.strip(),
@@ -691,6 +681,44 @@ async def chat(request: QuestionRequest):
             user_id=request.user_id or "guest",
         )
         raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
+
+
+@app.post("/chat")
+async def chat(request: QuestionRequest, raw_request: Request):
+    """
+    Send a question to the chatbot.
+
+    Returns JSON by default. With ?stream=true, returns Server-Sent Events
+    so the frontend can render incrementally and safely fall back if
+    streaming is unsupported.
+    """
+    if chatbot is None:
+        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    start_time = time.perf_counter()
+    print(f"DEBUG: Processing question: {request.question[:30]} | Model: {request.model}")
+
+    wants_stream = raw_request.query_params.get("stream", "").lower() == "true"
+
+    if wants_stream:
+        def event_stream():
+            try:
+                payload = _run_chat_pipeline(request, start_time)
+                # Single-shot streaming for now (the underlying chatbot is
+                # synchronous). Real token-by-token streaming would require
+                # plumbing Gemini's stream API through ask_question.
+                yield f"data: {json.dumps({'delta': payload.get('answer', '')})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'response': payload})}\n\n"
+            except HTTPException as e:
+                yield f"data: {json.dumps({'error': str(e.detail)})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': f'Error processing question: {str(e)}'})}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    return _run_chat_pipeline(request, start_time)
 
 
 @app.get("/metrics/summary")
