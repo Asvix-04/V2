@@ -2,46 +2,44 @@
 streaming_llm.py — Digilab Streaming LLM Client (Gemini)
 
 Fixes applied:
-- Model object created once in __init__ (not per call)
-- GenerationConfig created once in __init__
-- Proper error handling: rate limit, blocked prompt, auth errors
+- Migrated to google-genai library to resolve legacy dependency conflicts
+- Model config initialized once in __init__
+- Proper error handling: rate limit, auth errors, timeouts
 - Empty/whitespace context handled correctly
 - Clean generator with no silent failures
 """
 
 import os
 from typing import Generator
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 class StreamingLLM:
-    """Wrapper for streaming responses from Gemini."""
+    """Wrapper for streaming responses from Gemini using the new google-genai client."""
 
     def __init__(self):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in .env")
 
-        genai.configure(api_key=api_key)
+        # Initialize the new genai client
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = "gemini-2.5-flash-lite"
 
-        # ✅ Fix 1: Model created ONCE — not per request
-        self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash-lite",
+        # Generate config including system instruction
+        self._config = types.GenerateContentConfig(
+            max_output_tokens=1200,
+            temperature=0.3,
             system_instruction=(
                 "You are Digilab, a helpful Media Literacy course assistant for IGNOU students. "
                 "Answer clearly and concisely using only the provided context. "
                 "Keep responses under 300 words unless more detail is explicitly needed. "
                 "Never reveal your underlying model or provider."
             ),
-        )
-
-        # ✅ Fix 1: GenerationConfig created ONCE
-        self._generation_config = genai.types.GenerationConfig(
-            max_output_tokens=1200,
-            temperature=0.3,
         )
 
     def stream_response(
@@ -62,9 +60,9 @@ class StreamingLLM:
         yield from self._stream_google(query, context)
 
     def _stream_google(self, query: str, context: str) -> Generator[str, None, None]:
-        """Internal Gemini streaming generator."""
+        """Internal Gemini streaming generator using new genai client."""
 
-        # ✅ Fix 3: Proper context check — handles None, empty, whitespace-only
+        # Context check
         context_clean = (context or "").strip()
         if context_clean:
             full_prompt = f"Context:\n{context_clean}\n\nUser Query: {query}"
@@ -72,23 +70,15 @@ class StreamingLLM:
             full_prompt = query
 
         try:
-            response = self.model.generate_content(
-                full_prompt,
-                stream=True,
-                generation_config=self._generation_config,
+            response = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=full_prompt,
+                config=self._config,
             )
 
             for chunk in response:
-                # chunk.text can be None if the chunk carries finish_reason only
                 if chunk.text:
                     yield chunk.text
-
-        except genai.types.BlockedPromptException:
-            yield "⚠️ This query was blocked by the safety filter."
-
-        except genai.types.StopCandidateException:
-            # Partial response already streamed — silently stop, do not raise
-            return
 
         except Exception as e:
             error_msg = str(e).lower()

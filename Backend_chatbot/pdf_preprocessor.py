@@ -3,6 +3,9 @@ import re
 from glob import glob
 
 import fitz  # PyMuPDF — faster and more reliable than pdfplumber
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
 from tqdm import tqdm
 from unidecode import unidecode
 
@@ -492,54 +495,28 @@ def _ocr_page_image(pdf_path: str, page_index: int) -> str:
 
 def extract_and_clean_pdf(pdf_path: str) -> str:
     """
-    Main extraction pipeline - optimized for RAG with hierarchy preservation.
-    Uses PyMuPDF (fitz) for fast, reliable text extraction (3-5x faster than pdfplumber).
-
-    OCR Fallback: If a page returns no text (scanned / image-based PDF),
-    it is automatically rendered as an image and processed with Tesseract OCR.
-    This makes both digital PDFs and scanned PDFs work seamlessly.
+    Main extraction pipeline - optimized for RAG.
+    Uses IBM's Docling (with OCR disabled for speed and reliability) to extract
+    structured layout and tables from PDF, converting it directly to high-quality Markdown text.
     """
-    pages_lines = []
-    scanned_pages = 0
-
-    with fitz.open(pdf_path) as doc:
-        for page_index, page in enumerate(doc):
-            raw = page.get_text() or ""
-
-            # Fallback to OCR if page has no or very low quality embedded text (scanned PDF)
-            # Count alphanumeric characters to filter out dirty artifacts (e.g. noise like '.', '|', etc.)
-            alphanumeric_count = len(re.sub(r"[^A-Za-z0-9]", "", raw))
-            if alphanumeric_count < 10 and OCR_AVAILABLE:
-                print(f"   🔍 Page {page_index + 1}: low text quality ({alphanumeric_count} alphanumeric chars) — running OCR...")
-                ocr_text = _ocr_page_image(pdf_path, page_index)
-                if ocr_text.strip():
-                    raw = ocr_text
-                    scanned_pages += 1
-
-            page_lines = preprocess_page_text(raw)
-            pages_lines.append(page_lines)
-
-    if scanned_pages > 0:
-        print(f"   📷 OCR processed {scanned_pages} scanned page(s)")
-
-    # Remove repeated headers / footers (preserves content headers)
-    pages_lines = remove_repeated_headers_footers(pages_lines)
-
-    # Flatten page lines with explicit page break (blank line)
-    all_lines = []
-    for pl in pages_lines:
-        all_lines.extend(pl)
-        all_lines.append("")  # Page break
-
-    # Table detection & conversion to bullets
-    all_lines = detect_and_convert_tables(all_lines)
-
-    # Merge lines into paragraphs, PRESERVING bullets & headings
-    cleaned_text = merge_lines_to_paragraphs(all_lines)
-
-    # Global postprocessing
-    cleaned_text = postprocess_global(cleaned_text)
-
+    print(f"\n   🤖 Parsing {os.path.basename(pdf_path)} with Docling...")
+    
+    # Configure pipeline to disable OCR
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_ocr = False
+    
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+    result = converter.convert(pdf_path)
+    
+    # Export to markdown format
+    markdown_text = result.document.export_to_markdown()
+    
+    # Apply global cleanups
+    cleaned_text = postprocess_global(markdown_text)
     return cleaned_text
 
 
