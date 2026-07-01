@@ -4,8 +4,8 @@ const bcrypt = require('bcrypt');
 class User {
     constructor(data) {
         this.id = data.id || null;
-        this.name = data.name;
-        this.email = data.email;
+        this.name = typeof data.name === 'string' ? data.name.trim() : data.name;
+        this.email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : data.email;
         this.password = data.password;
         this.role = data.role || 'student';
         this.googleId = data.googleId || null;
@@ -17,18 +17,21 @@ class User {
     // Validate user data
     static validate(data) {
         const errors = [];
+        const name = typeof data.name === 'string' ? data.name.trim() : data.name;
+        const email = typeof data.email === 'string' ? data.email.trim() : data.email;
+        const password = typeof data.password === 'string' ? data.password : data.password;
 
-        if (!data.name) {
+        if (!name) {
             errors.push('Please add a name');
         }
-        if (!data.email) {
+        if (!email) {
             errors.push('Please add an email');
-        } else if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(data.email)) {
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             errors.push('Please add a valid email');
         }
-        if (!data.password) {
+        if (!password) {
             errors.push('Please add a password');
-        } else if (data.password.length < 6) {
+        } else if (password.length < 6) {
             errors.push('Password must be at least 6 characters');
         }
         if (data.role && !['student', 'teacher'].includes(data.role)) {

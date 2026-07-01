@@ -1,0 +1,112 @@
+{
+  "users": {
+    "users_1778070843562_cz1c4qso": {
+      "name": "Persist Test",
+      "email": "persist1778070843352@test.com",
+      "password": "$2b$10$Bjt6Ib/BhIiFYwPVCtw6XO4XsZbyOPM1AL/GqBn6Ku/MTcLgjOP8C",
+      "role": "student",
+      "createdAt": "2026-05-06T12:34:03.562Z"
+    },
+    "users_1778071101553_ppokgtsq": {
+      "name": "satwik",
+      "email": "satwikchandra65@gmail.com",
+      "password": "$2b$10$S9ASChesk.MZJpe9fhH6WuzQcNSixaijNA18yeXPJaA0xEf0EnD7y",
+      "role": "student",
+      "createdAt": "2026-05-06T12:38:21.552Z"
+    },
+    "users_1778072188946_yfk7wsea": {
+      "name": "Draft TTL Tester",
+      "email": "drafttest1778072188760@test.com",
+      "password": "$2b$10$U1UprK0VyXA/qeA4t1Cklekif/c4rieMpzwehK3nEQUxd3OfQdo.6",
+      "role": "student",
+      "createdAt": "2026-05-06T12:56:28.946Z"
+    },
+    "users_1778072258050_yxr0s0mt": {
+      "name": "Draft TTL Tester",
+      "email": "drafttest1778072257891@test.com",
+      "password": "$2b$10$58b4URRr8xxsHjklniW2teX6NuR2FN5KVQxLK9ZI/WZN605l/xNbi",
+      "role": "student",
+      "createdAt": "2026-05-06T12:57:38.050Z"
+    }
+  },
+  "chat_conversations": {
+    "chat_conversations_1778072188974_hphee4pc": {
+      "userId": "users_1778072188946_yfk7wsea",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain eigenvalues simply",
+          "timestamp": "06:15 PM",
+          "createdAt": "2026-05-06T12:56:28.974Z"
+        },
+        {
+          "role": "assistant",
+          "content": "Eigenvalues scale vectors without changing direction.",
+          "timestamp": "06:16 PM",
+          "createdAt": "2026-05-06T12:56:29.004Z"
+        }
+      ],
+      "title": "Explain eigenvalues simply",
+      "createdAt": "2026-05-06T12:56:28.974Z",
+      "updatedAt": "2026-05-06T12:56:29.004Z",
+      "draftExpiresAt": "2026-05-06T18:56:29.004Z",
+      "archivedAt": null
+    },
+    "chat_conversations_1778072258069_e9fgvc63": {
+      "userId": "users_1778072258050_yxr0s0mt",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain eigenvalues simply",
+          "timestamp": "06:15 PM",
+          "createdAt": "2026-05-06T12:57:38.069Z"
+        },
+        {
+          "role": "assistant",
+          "content": "Eigenvalues scale vectors without changing direction.",
+          "timestamp": "06:16 PM",
+          "createdAt": "2026-05-06T12:57:38.098Z"
+        }
+      ],
+      "title": "Explain eigenvalues simply",
+      "createdAt": "2026-05-06T12:57:38.069Z",
+      "updatedAt": "2026-05-06T12:57:38.098Z",
+      "draftExpiresAt": "2026-05-06T18:57:38.098Z",
+      "archivedAt": null
+    },
+    "chat_conversations_1778072398306_iqs45yj3": {
+      "userId": "users_1778070843562_cz1c4qso",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Please explain matrix diagonalization in simple terms.",
+          "timestamp": "06:29 PM",
+          "createdAt": "2026-05-06T12:59:58.306Z"
+        },
+        {
+          "role": "assistant",
+          "content": "Here is the explanation for your question, essentially breaking down the core concepts.",
+          "timestamp": "06:29 PM",
+          "createdAt": "2026-05-06T12:59:59.341Z"
+        },
+        {
+          "role": "user",
+          "content": "Give me one concrete numerical example.",
+          "timestamp": "06:37 PM",
+          "createdAt": "2026-05-06T13:07:08.931Z"
+        },
+        {
+          "role": "assistant",
+          "content": "Here is the explanation for your question, essentially breaking down the core concepts.",
+          "timestamp": "06:37 PM",
+          "createdAt": "2026-05-06T13:07:09.956Z"
+        }
+      ],
+      "title": "Please explain matrix diagonalization in simple term...",
+      "createdAt": "2026-05-06T12:59:58.306Z",
+      "updatedAt": "2026-05-06T13:07:09.956Z",
+      "draftExpiresAt": "2026-05-06T19:07:09.956Z",
+      "archivedAt": null
+    }
+  }
+}

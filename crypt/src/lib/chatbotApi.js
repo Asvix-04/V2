@@ -148,7 +148,7 @@ if (typeof window !== 'undefined') {
 export const chatbotApi = {
     checkHealth: async () => {
         try {
-            const response = await chatbotClient.get('/health');
+            const response = await chatbotClient.get('/health', { timeout: 10000 });
             return response.data;
         } catch (error) {
             console.error('Chatbot health check failed:', error);
@@ -215,7 +215,19 @@ export const chatbotApi = {
         }
     },
 
-    speechToSpeech: async (audioBase64, mimeType, responseLanguageCode = 'en-IN', useHistory = true) => {
+    getMetricsSummary: async (window = '30d') => {
+        try {
+            const response = await chatbotClient.get(`/metrics/summary?window=${window}`);
+            // Bridge replied — good moment to flush queued client errors
+            _flushPending();
+            return response.data;
+        } catch (error) {
+            console.error('Chatbot getMetricsSummary failed:', error);
+            throw error;
+        }
+    },
+
+    speechToSpeech: async (audioBase64, mimeType, responseLanguageCode = null, useHistory = true) => {
         try {
             const response = await chatbotClient.post('/speech-to-speech', {
                 audio_base64: audioBase64,

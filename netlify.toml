@@ -5,6 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "20.19.0"
+  VITE_FIREBASE_AUTH_DOMAIN = "auth.digilab.medialit.in"
 
 # SPA redirect - send all routes to index.html
 [[redirects]]
