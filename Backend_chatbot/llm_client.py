@@ -18,6 +18,8 @@ class ModelConfig:
     api: str            # "gemini" | "claude" | "deepseek"
     description: str
     default_max_tokens: int = 2500  # Per-model token limit
+    pinecone_index: str = "pdf-knowledge-base"       # Which Pinecone index this model retrieves from
+    bm25_cache_path: str = "data/bm25_corpus.json"   # BM25 corpus matching that index
 
 
 AVAILABLE_MODELS = {
@@ -27,6 +29,8 @@ AVAILABLE_MODELS = {
         api="gemini",
         description="⚡ Gemini 2.5 Flash — Default (Fast, cost-efficient)",
         default_max_tokens=2500,
+        pinecone_index="pdf-knowledge-base",
+        bm25_cache_path="data/bm25_corpus.json",
     ),
     "2": ModelConfig(
         id="gemini-2.5-pro",
@@ -34,6 +38,8 @@ AVAILABLE_MODELS = {
         api="gemini",
         description="🔬 Gemini 2.5 Pro — Research (High context, deep reasoning)",
         default_max_tokens=4096,
+        pinecone_index="pdf-knowledge-base-v2",
+        bm25_cache_path="data/bm25_corpus_v2.json",
     ),
     "3": ModelConfig(
         id="deepseek-chat",

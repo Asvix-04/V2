@@ -238,10 +238,10 @@ class SpellCorrector:
         return result
 
 class EnhancedHybridRetriever:
-    def __init__(self, pinecone_index: str = "pdf-knowledge-base"):
+    def __init__(self, pinecone_index: str = "pdf-knowledge-base", bm25_cache_path: str = "data/bm25_corpus.json"):
         self.pinecone_client = PineconeClient(pinecone_index)
         self.neo4j_client = Neo4jClient()
-        self.bm25 = BM25Index()
+        self.bm25 = BM25Index(cache_path=bm25_cache_path)
         self.reformulator = LLMReformulator()
         self.spell_corrector = SpellCorrector()
 

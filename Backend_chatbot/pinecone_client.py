@@ -60,37 +60,40 @@ class PineconeClient:
     
     def upsert_chunks(self, chunks: List[Any]) -> None:
         """Upsert document chunks to Pinecone"""
-        vectors = []
-        
-        for chunk in chunks:
-            embedding = self.create_embeddings([chunk.text])[0]
-            
-            # FIX for Issue #4: Use deterministic hash instead of Python hash()
-            section_path_str = ' > '.join(chunk.section_path)
-            neo4j_id = f"section_{_deterministic_hash(section_path_str)}"
-            
-            vector = {
-                'id': chunk.chunk_id,
-                'values': embedding,
-                'metadata': {
-                    **chunk.metadata,
-                    # Increased from 500 → 1500 chars. Truncating at 500 means the LLM
-                    # only gets a sentence or two of context per chunk, causing it to
-                    # fill missing content with hallucinated facts.
-                    'text': chunk.text[:1500],
-                    'neo4j_id': neo4j_id,
-                    'type': 'document_chunk'
-                }
-            }
-            vectors.append(vector)
-        
-        # Upsert in batches
+        # Embed and upsert in batches — embedding chunks one-at-a-time made this
+        # unusably slow on large corpora (each call re-pays model overhead).
+        # sentence-transformers batches internally, so encoding 100 texts at once
+        # is dramatically faster than 100 separate single-text calls.
         batch_size = 100
-        for i in range(0, len(vectors), batch_size):
-            batch = vectors[i:i + batch_size]
-            self.index.upsert(vectors=batch)
-        
-        print(f"Upserted {len(vectors)} vectors to Pinecone")
+        total = 0
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i + batch_size]
+            embeddings = self.create_embeddings([c.text for c in batch])
+
+            vectors = []
+            for chunk, embedding in zip(batch, embeddings):
+                # FIX for Issue #4: Use deterministic hash instead of Python hash()
+                section_path_str = ' > '.join(chunk.section_path)
+                neo4j_id = f"section_{_deterministic_hash(section_path_str)}"
+
+                vectors.append({
+                    'id': chunk.chunk_id,
+                    'values': embedding,
+                    'metadata': {
+                        **chunk.metadata,
+                        # Increased from 500 → 1500 chars. Truncating at 500 means the LLM
+                        # only gets a sentence or two of context per chunk, causing it to
+                        # fill missing content with hallucinated facts.
+                        'text': chunk.text[:1500],
+                        'neo4j_id': neo4j_id,
+                        'type': 'document_chunk'
+                    }
+                })
+            self.index.upsert(vectors=vectors)
+            total += len(vectors)
+            print(f"  Upserted batch {i // batch_size + 1} ({total}/{len(chunks)} vectors)")
+
+        print(f"Upserted {total} vectors to Pinecone")
     
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
         """Search for similar chunks"""

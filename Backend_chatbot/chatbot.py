@@ -222,15 +222,27 @@ class PDFChatbot:
             model_config = AVAILABLE_MODELS["1"]
         self.model_config = model_config
         self.llm_client = UnifiedLLMClient(model_config)
-        self.retriever = HybridRetriever()
+        self._retrievers: Dict[str, HybridRetriever] = {}
+        self.retriever = self._get_retriever(model_config)
         self.conversation_history = []
         self.follow_up_generator = FollowUpGenerator(self.llm_client)
         self._system_prompt = self._get_system_prompt()
 
+    def _get_retriever(self, model_config: ModelConfig) -> "HybridRetriever":
+        """Return the retriever bound to this model's Pinecone index, building it once per index."""
+        index = model_config.pinecone_index
+        if index not in self._retrievers:
+            self._retrievers[index] = HybridRetriever(
+                pinecone_index=index,
+                bm25_cache_path=model_config.bm25_cache_path,
+            )
+        return self._retrievers[index]
+
     def switch_model(self, model_config: ModelConfig):
-        """Switch LLM model without losing conversation history."""
+        """Switch LLM model (and its associated retriever/index) without losing conversation history."""
         self.llm_client = UnifiedLLMClient(model_config)
         self.model_config = model_config
+        self.retriever = self._get_retriever(model_config)
         self.follow_up_generator = FollowUpGenerator(self.llm_client)
 
     # ─────────────────────────────────────────────────────────
