@@ -1,29 +1,36 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# DigiLab - Start All Servers
-# This script starts the Python AI Server, the Node.js Bridge, and the Frontend.
+# Production entrypoint for the single-container DigiLab deployment.
+# Express serves the built React app publicly while FastAPI remains internal.
 
-echo "🚀 Starting DigiLab Servers..."
+set -Eeuo pipefail
 
-# 1. Start Python AI Server (Port 8000)
-echo "🐍 Starting Python AI Server on port 8000..."
-cd Backend_chatbot
-/usr/local/bin/python3 api_server.py > python_server.log 2>&1 &
+APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_PORT="${PYTHON_PORT:-8000}"
+PORT="${PORT:-7860}"
+
+cleanup() {
+  local exit_code=$?
+  trap - EXIT INT TERM
+  kill "${PYTHON_PID:-}" "${NODE_PID:-}" 2>/dev/null || true
+  wait "${PYTHON_PID:-}" "${NODE_PID:-}" 2>/dev/null || true
+  exit "$exit_code"
+}
+
+trap cleanup EXIT INT TERM
+
+echo "Starting Python AI service on 127.0.0.1:${PYTHON_PORT}"
+cd "$APP_ROOT/Backend_chatbot"
+python -m uvicorn api_server:app \
+  --host 127.0.0.1 \
+  --port "$PYTHON_PORT" \
+  --log-level info &
 PYTHON_PID=$!
-cd ..
 
-# 2. Start Node.js Bridge (Port 5001)
-echo "📦 Starting Node.js Bridge (Backend) on port 5001..."
-cd crypt/backend
-npm start > node_server.log 2>&1 &
+echo "Starting DigiLab web service on 0.0.0.0:${PORT}"
+cd "$APP_ROOT"
+node crypt/backend/src/app.js &
 NODE_PID=$!
-cd ../..
 
-# 3. Start Frontend (Port 5173/5174)
-echo "💻 Starting Frontend..."
-cd crypt
-npm run dev
-cd ..
-
-# Cleanup function to kill background processes on exit
-trap "kill $PYTHON_PID $NODE_PID; exit" INT TERM EXIT
+# Exit the container if either service stops so the platform can restart it.
+wait -n "$PYTHON_PID" "$NODE_PID"

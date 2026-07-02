@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -25,7 +26,10 @@ app.use(express.json());       // Parse JSON body
 app.use(express.urlencoded({ extended: false })); // Parse URL-encoded body
 app.use(cors());               // Enable CORS
 app.use(helmet({
-    crossOriginOpenerPolicy: false
+    crossOriginOpenerPolicy: false,
+    // The SPA connects to Firebase and Google APIs. Keep the remaining Helmet
+    // protections while allowing those client-side connections.
+    contentSecurityPolicy: false
 }));             // Security headers
 
 
@@ -36,13 +40,30 @@ app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/contact', require('./routes/contactRoutes'));
 app.use('/api/voice', require('./routes/voiceRoutes'));
 
-// Serve Static Uploads
-app.use('/uploads', express.static('uploads'));
+// Serve uploaded files from a stable path regardless of the launch directory.
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
-// Base Route
-app.get('/', (req, res) => {
-    res.send('DigiLab API is running...');
-});
+// In production, Express is the single public service: it serves the compiled
+// Vite app and the API from the same origin. Vite dev mode remains unchanged.
+const frontendDist = path.resolve(__dirname, '../../dist');
+
+if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+
+    // Keep unknown API requests as JSON 404s instead of returning index.html.
+    app.use('/api', (req, res) => {
+        res.status(404).json({ message: 'API route not found' });
+    });
+
+    // React Router owns every remaining browser route.
+    app.get(/.*/, (req, res) => {
+        res.sendFile(path.join(frontendDist, 'index.html'));
+    });
+} else {
+    app.get('/', (req, res) => {
+        res.send('DigiLab API is running...');
+    });
+}
 
 // Error Handler
 app.use((err, req, res, next) => {
