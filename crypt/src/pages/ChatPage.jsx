@@ -33,8 +33,8 @@ import chatbotApi from "../lib/chatbotApi";
 import api from "../lib/api";
 
 const MODELS = [
-    { id: "Gemini 2.5 Flash", name: "Gemini 2.5 Flash", description: "Speed and intelligence for everyday learning.", icon: Sparkles, color: "text-blue-500" },
-    { id: "Gemini 2.5 Pro", name: "Gemini 2.5 Pro", description: "Advanced reasoning for high-stakes problems.", icon: Zap, color: "text-purple-500" }
+    { id: "Gemini 2.5 Flash", name: "DigiLab", description: "Speed and intelligence for everyday learning.", icon: Sparkles, color: "text-blue-500" },
+    { id: "Gemini 2.5 Pro", name: "DigiLab 2.0", description: "Advanced reasoning for high-stakes problems.", icon: Zap, color: "text-purple-500" }
 ];
 
 const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;
