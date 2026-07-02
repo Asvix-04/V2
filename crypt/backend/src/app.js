@@ -16,6 +16,9 @@ dotenv.config({
     ]
 });
 
+// Load routes after dotenv so controllers capture the configured service URLs.
+const voiceRoutes = require('./routes/voiceRoutes');
+
 // Initialize Firebase
 initializeFirebase();
 
@@ -38,7 +41,12 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/contact', require('./routes/contactRoutes'));
-app.use('/api/voice', require('./routes/voiceRoutes'));
+app.use('/api/voice', voiceRoutes);
+
+// Backward compatibility for the separately hosted frontend, which points its
+// chatbot base URL at the Space root and calls /chat, /health, and related
+// endpoints directly. The bundled frontend uses /api/voice instead.
+app.use('/', voiceRoutes);
 
 // Serve uploaded files from a stable path regardless of the launch directory.
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
