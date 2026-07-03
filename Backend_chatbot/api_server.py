@@ -413,9 +413,9 @@ async def chat(request: QuestionRequest):
 
 
 @app.get("/metrics/summary")
-async def metrics_summary(window: str = "30d"):
+async def metrics_summary(window: str = "30d", user_id: Optional[str] = None):
     """Get aggregated metrics for the dashboard."""
-    return get_metrics_summary(window=window)
+    return get_metrics_summary(window=window, user_id=user_id)
 
 
 @app.post("/chat/simple")

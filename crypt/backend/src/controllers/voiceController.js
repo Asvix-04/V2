@@ -174,7 +174,7 @@ exports.getMetricsSummary = async (req, res) => {
     try {
         const window = req.query.window || '30d';
         const userId = getUserId(req);
-        const summary = bridgeMetrics.computeSummary(window, userId);
+        const summary = await bridgeMetrics.computeSummary(window, userId);
         res.json(summary);
     } catch (error) {
         console.error('Metrics summary failed:', error.message);

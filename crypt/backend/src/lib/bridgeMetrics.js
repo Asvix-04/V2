@@ -11,10 +11,13 @@
  *   1. Records failures the bridge observes (Python unreachable) into a local
  *      log file using the SAME record schema as metrics_logger.py.
  *   2. Records frontend-reported failures (Network Error) into the same log.
- *   3. Provides a self-contained summary function that reads BOTH files
- *      (Python's data/metrics.jsonl + bridge's bridge_metrics.jsonl) and
- *      computes the dashboard payload — so the page works even when Python
- *      is dead.
+ *   3. Provides a summary function that fetches Python's own /metrics/summary
+ *      over HTTP (same PYTHON_BACKEND_URL used to proxy /chat etc. — Python
+ *      and the bridge are separate deployments in production, so they do NOT
+ *      share a filesystem; reading Python's log file by local path only
+ *      works when both run on the same machine, e.g. local dev). If Python
+ *      is unreachable, falls back to a summary computed from the bridge's
+ *      own local failure log, so the dashboard still shows something.
  *
  * Schema match (so merging is just a concat):
  *   { timestamp, endpoint, status_code, response_time_ms, model,
@@ -23,11 +26,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
-// Python writes to: <repo>/Backend_chatbot/data/metrics.jsonl
-const PYTHON_METRICS_FILE = path.resolve(
-    __dirname, '..', '..', '..', '..', 'Backend_chatbot', 'data', 'metrics.jsonl'
-);
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
 
 // Bridge appends to: <repo>/crypt/backend/bridge_metrics.jsonl
 const BRIDGE_METRICS_FILE = path.resolve(
@@ -92,11 +93,8 @@ function _parseTs(ts) {
     return d;
 }
 
-function _readAllRecords() {
-    const python = _readJsonl(PYTHON_METRICS_FILE);
-    const bridge = _readJsonl(BRIDGE_METRICS_FILE);
-    // Concatenate — both share the same schema.
-    return python.concat(bridge);
+function _readBridgeRecords() {
+    return _readJsonl(BRIDGE_METRICS_FILE);
 }
 
 // ── Summary computation (mirrors metrics_logger.get_metrics_summary) ──
@@ -111,8 +109,7 @@ function _windowStart(window) {
     }
 }
 
-function computeSummary(window = '30d', userId = null) {
-    const all = _readAllRecords();
+function _computeFromRecords(all, window, userId) {
     if (all.length === 0) {
         return {
             total_questions: 0,
@@ -229,19 +226,39 @@ function computeSummary(window = '30d', userId = null) {
         health_history,
         health_pct_change: Math.round(pct_change * 10) / 10,
         status: success_rate > 95 ? 'operational' : (failure_rate > 0 ? 'outage' : 'operational'),
-        // Diagnostic — helpful when debugging
-        _sources: {
-            python_file: PYTHON_METRICS_FILE,
-            python_file_exists: fs.existsSync(PYTHON_METRICS_FILE),
-            bridge_file: BRIDGE_METRICS_FILE,
-            bridge_file_exists: fs.existsSync(BRIDGE_METRICS_FILE),
-        },
     };
+}
+
+// Bridge-only fallback: used when Python's own /metrics/summary is unreachable.
+// Only reflects failures the bridge itself observed (e.g. Python being down),
+// not Python's actual chat completions — so this is intentionally a degraded
+// view, just enough to keep the dashboard from going blank.
+function _computeFromBridgeOnly(window, userId) {
+    const summary = _computeFromRecords(_readBridgeRecords(), window, userId);
+    return { ...summary, _source: 'bridge_only' };
+}
+
+// Fetches Python's own /metrics/summary over HTTP — Python and the bridge are
+// separate deployments in production (no shared filesystem), so this must go
+// over the network rather than reading Python's log file by local path.
+// Falls back to the bridge's own local failure log if Python is unreachable.
+async function computeSummary(window = '30d', userId = null) {
+    try {
+        const params = { window };
+        if (userId) params.user_id = userId;
+        const { data } = await axios.get(`${PYTHON_BACKEND_URL}/metrics/summary`, {
+            params,
+            timeout: 5000,
+        });
+        return { ...data, _source: 'python' };
+    } catch (e) {
+        console.error('bridgeMetrics: Python /metrics/summary unreachable, falling back to bridge-only data:', e.message);
+        return _computeFromBridgeOnly(window, userId);
+    }
 }
 
 module.exports = {
     recordFailure,
     computeSummary,
-    PYTHON_METRICS_FILE,
     BRIDGE_METRICS_FILE,
 };

@@ -47,9 +47,14 @@ def log_request_metrics(
     except Exception as e:
         print(f"⚠️ Metrics logging failed: {e}")
 
-def get_metrics_summary(window="30d"):
+def get_metrics_summary(window="30d", user_id=None):
     """
     Read the log file and compute aggregated summary for the dashboard.
+
+    user_id: when provided, only records logged for that user are counted.
+    Records logged before per-user tracking existed (no user_id field) are
+    excluded from any specific user's view — matches the Node bridge's
+    per-user filtering behavior in bridgeMetrics.js.
     """
     if not os.path.exists(METRICS_FILE):
         return {
@@ -72,6 +77,9 @@ def get_metrics_summary(window="30d"):
         except Exception as e:
             print(f"⚠️ Error reading metrics: {e}")
             return {"status": "error", "message": str(e)}
+
+    if user_id:
+        records = [r for r in records if r.get("user_id") == user_id]
 
     if not records:
         return {"total_questions": 0, "status": "empty"}

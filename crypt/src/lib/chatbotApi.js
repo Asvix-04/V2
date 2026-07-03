@@ -215,18 +215,6 @@ export const chatbotApi = {
         }
     },
 
-    getMetricsSummary: async (window = '30d') => {
-        try {
-            const response = await chatbotClient.get(`/metrics/summary?window=${window}`);
-            // Bridge replied — good moment to flush queued client errors
-            _flushPending();
-            return response.data;
-        } catch (error) {
-            console.error('Chatbot getMetricsSummary failed:', error);
-            throw error;
-        }
-    },
-
     speechToSpeech: async (audioBase64, mimeType, responseLanguageCode = null, useHistory = true) => {
         try {
             const response = await chatbotClient.post('/speech-to-speech', {
