@@ -208,6 +208,19 @@ exports.recordClientError = (req, res) => {
     }
 };
 
-exports.healthCheck = (req, res) => {
-    res.json({ status: 'healthy', service: 'Integrated-AI-Bridge' });
+exports.healthCheck = async (req, res) => {
+    try {
+        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000 });
+        res.json({
+            status: 'healthy',
+            service: 'Integrated-AI-Bridge',
+            backend: response.data,
+        });
+    } catch (error) {
+        res.status(503).json({
+            status: 'starting',
+            service: 'Integrated-AI-Bridge',
+            backend: 'unavailable',
+        });
+    }
 };
