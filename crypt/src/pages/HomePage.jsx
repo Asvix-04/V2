@@ -1,11 +1,11 @@
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useNavigate, Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageTransition } from "../components/ui/PageTransition";
-import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star, StarOff, Languages, GraduationCap } from "lucide-react";
+import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star, StarOff, Languages, GraduationCap, ChevronDown } from "lucide-react";
 import { Logo } from "../components/ui/Logo";
 import { FeaturesSection } from "../components/FeaturesSection";
 import { PerformanceStats } from "../components/PerformanceStats";
@@ -85,6 +85,94 @@ const floatingFeatures = [
     }
 
 ];
+
+function FAQItem({ question, answer }) {
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+        <div className="border-b border-slate-200/50 dark:border-white/[0.06] py-4">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex w-full items-center justify-between text-left focus:outline-none group cursor-pointer"
+            >
+                <span className="text-sm sm:text-base font-semibold text-foreground group-hover:text-accent transition-colors duration-200">
+                    {question}
+                </span>
+                <span className="ml-6 flex h-7 items-center shrink-0">
+                    <motion.div
+                        animate={{ rotate: isOpen ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        <ChevronDown className={`h-4 w-4 sm:h-5 sm:w-5 ${isOpen ? "text-accent" : "text-foreground-muted"}`} />
+                    </motion.div>
+                </span>
+            </button>
+            <AnimatePresence initial={false}>
+                {isOpen && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: "easeInOut" }}
+                        className="overflow-hidden"
+                    >
+                        <p className="mt-2.5 text-xs sm:text-sm text-foreground-muted leading-relaxed">
+                            {answer}
+                        </p>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
+function FAQSection() {
+    const faqs = [
+        {
+            question: "What is DigiLab?",
+            answer: "DigiLab is a purpose-built AI study platform designed to support students and educators. It integrates intelligent document processing, interactive graphs, and advanced LLM reasoning to explain complex subjects in simplified, customizable learning modes."
+        },
+        {
+            question: "How does DigiLab maintain accuracy and limit AI hallucinations?",
+            answer: "DigiLab uses a source-grounding approach. Rather than relying on generic pre-trained knowledge, the system retrieves and anchors its explanations using verified academic sources, textbooks, and documents uploaded to your workspace."
+        },
+        {
+            question: "Is my personal study data and chat history secure?",
+            answer: "Yes. DigiLab is built with privacy in mind. We support an interactive Incognito Session mode where transcripts and files are held in-memory and are never stored or logged in standard database tables. User accounts also secure credentials with industry-grade salt hashing."
+        },
+        {
+            question: "Does the platform support multiple languages?",
+            answer: "Yes, DigiLab is designed for diverse learners and supports multiple languages. This includes major regional languages (such as Hindi, Bengali, Tamil, and Kannada) as well as global languages, powered by optimized multi-model architectures like Sarvam AI."
+        },
+        {
+            question: "Are there any usage limits or paid subscription plans?",
+            answer: "No. DigiLab is completely free to use for student and classroom study workflows. There are no subscriptions, paywalls, or features locked behind payment tiers."
+        }
+    ];
+
+    return (
+        <section className="container mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16 sm:py-24 border-t border-slate-200/50 dark:border-white/[0.05]">
+            <div className="mx-auto max-w-3xl text-center mb-10 sm:mb-14">
+                <div className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[11px] font-mono text-accent mb-4">
+                    Got Questions?
+                </div>
+                <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                    <span className="bg-gradient-to-b from-foreground via-foreground/90 to-foreground/75 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
+                        Frequently Asked Questions
+                    </span>
+                </h2>
+                <p className="mt-4 text-sm sm:text-base text-foreground-muted">
+                    Find quick answers to common questions about DigiLab's features, privacy, and technology.
+                </p>
+            </div>
+            <div className="mx-auto max-w-3xl border-t border-slate-200/50 dark:border-white/[0.06] pt-4 sm:pt-6">
+                {faqs.map((faq, idx) => (
+                    <FAQItem key={idx} question={faq.question} answer={faq.answer} />
+                ))}
+            </div>
+        </section>
+    );
+}
 
 export function HomePage() {
     const { scrollY } = useScroll();
@@ -234,7 +322,13 @@ export function HomePage() {
                             </span>
                             <br />
                             <span
-                                className="bg-clip-text text-transparent bg-gradient-to-br from-indigo-800 via-purple-800 to-indigo-900 dark:from-[#5E6AD2] dark:via-[#8b5cf6] dark:to-[#4F46E5]"
+                                className="bg-clip-text text-transparent bg-gradient-to-br
+from-[#0057B8]
+via-[#1D75E8]
+to-[#5EA9FF]
+dark:from-[#2F80ED]
+dark:via-[#4F9DFF]
+dark:to-[#7DBBFF]"
                                 style={{
                                     backgroundSize: "200% 200%",
                                     animation: "gradient-shift 4s ease infinite",
@@ -286,12 +380,33 @@ export function HomePage() {
                                 >
                                     <Button
                                         size="lg"
-                                        className="h-[32px] sm:h-12 w-auto px-2.5 sm:px-8 text-[10px] sm:text-sm font-semibold
-                                            bg-accent hover:bg-accent-bright text-white
-                                            shadow-[0_4px_24px_rgba(94,106,210,0.35)]
-                                            hover:shadow-[0_8px_32px_rgba(94,106,210,0.5)]
-                                            dark:shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_4px_12px_rgba(94,106,210,0.3)]
-                                            transition-all duration-300 rounded-xl sm:rounded-2xl border-0"
+                                        className="
+h-[32px] sm:h-12
+w-auto
+px-2.5 sm:px-8
+text-[10px] sm:text-sm
+font-semibold
+text-white
+
+bg-gradient-to-r
+from-[#0057B8]
+via-[#1D75E8]
+to-[#3B82F6]
+
+hover:from-[#0047A0]
+hover:via-[#1669D8]
+hover:to-[#2563EB]
+
+shadow-[0_6px_24px_rgba(0,87,184,0.35)]
+hover:shadow-[0_10px_36px_rgba(29,122,224,0.45)]
+dark:shadow-[0_0_0_1px_rgba(59,130,246,0.45),0_6px_20px_rgba(29,122,224,0.35)]
+
+transition-all
+duration-300
+rounded-xl
+sm:rounded-2xl
+border-0
+"
                                     >
                                         <Sparkles className="mr-1 h-2.5 w-2.5 sm:h-4 sm:w-4" />
                                         {t('home.hero.getStarted') || "Get Started Free"}
@@ -483,6 +598,11 @@ export function HomePage() {
                 <div className="block dark:hidden absolute inset-0 bg-gradient-to-b from-transparent via-accent/[0.02] to-transparent pointer-events-none" />
                 <PerformanceStats />
             </section>
+
+            {/* ═══════════════════════════════════════════
+                SECTION 5 — FAQ SECTION
+            ═══════════════════════════════════════════ */}
+            <FAQSection />
         </PageTransition>
     );
 }

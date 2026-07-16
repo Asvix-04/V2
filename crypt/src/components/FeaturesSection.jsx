@@ -1,16 +1,19 @@
-﻿import { motion } from "framer-motion";
+import { useState } from "react";
+import { motion } from "framer-motion";
 import {
     BrainCircuit,
     FileText,
     BookMarked,
     Globe2,
     Mic2,
-    BarChart3,
     ShieldCheck,
     Sparkles,
     CheckCircle,
-    TrendingUp,
     Lock,
+    EyeOff,
+    Trash2,
+    Cpu,
+    Zap,
 } from "lucide-react";
 import { Card } from "./ui/Card";
 
@@ -86,24 +89,73 @@ function NotesIllustration() {
 }
 
 function CitationIllustration() {
+    const [hoveredIndex, setHoveredIndex] = useState(null);
     const sources = [
-        { tag: "IEEE", c: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20" },
-        { tag: "Nature", c: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20" },
-        { tag: "arXiv", c: "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 border-violet-200/50 dark:border-violet-500/20" },
+        {
+            tag: "IEEE",
+            c: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20",
+            fillColor: "bg-blue-500/80",
+            dotColor: "bg-emerald-500",
+            pingColor: "bg-emerald-400",
+        },
+        {
+            tag: "Nature",
+            c: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20",
+            fillColor: "bg-emerald-500/80",
+            dotColor: "bg-emerald-500",
+            pingColor: "bg-emerald-400",
+        },
+        {
+            tag: "arXiv",
+            c: "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 border-violet-200/50 dark:border-violet-500/20",
+            fillColor: "bg-violet-500/80",
+            dotColor: "bg-emerald-500",
+            pingColor: "bg-emerald-400",
+        },
     ];
+
     return (
-        <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none space-y-1.5">
+        <div
+            onMouseLeave={() => setHoveredIndex(null)}
+            className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none space-y-1.5"
+        >
             <div className="flex items-center gap-1 mb-1">
                 <CheckCircle className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
                 <span className="text-[8px] font-semibold text-foreground-muted uppercase tracking-widest">Verified Sources</span>
             </div>
-            {sources.map((s) => (
-                <div key={s.tag} className="flex items-center gap-1.5">
-                    <span className={`text-[7.5px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${s.c}`}>{s.tag}</span>
-                    <div className="h-1.5 bg-slate-100/80 dark:bg-white/5 rounded-full flex-1" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 shrink-0" />
-                </div>
-            ))}
+            {sources.map((s, idx) => {
+                const isActive = hoveredIndex === idx;
+                return (
+                    <div
+                        key={s.tag}
+                        onMouseEnter={() => setHoveredIndex(idx)}
+                        className="flex items-center gap-1.5 cursor-pointer group/row"
+                    >
+                        <span
+                            className={`text-[7.5px] font-bold px-1.5 py-0.5 rounded border shrink-0 transition-all duration-300 ${isActive
+                                ? `${s.c} scale-105 border-current shadow-[0_2px_8px_rgba(94,106,210,0.08)]`
+                                : "bg-slate-50 dark:bg-white/5 border-slate-200/50 dark:border-white/8 text-foreground-muted hover:text-foreground"
+                                }`}
+                        >
+                            {s.tag}
+                        </span>
+                        <div className="h-1.5 bg-slate-100/80 dark:bg-white/5 rounded-full flex-1 overflow-hidden relative">
+                            <motion.div
+                                className={`absolute left-0 top-0 bottom-0 rounded-full ${s.fillColor}`}
+                                initial={{ width: 0 }}
+                                animate={{ width: isActive ? "100%" : "0%" }}
+                                transition={{ duration: 0.35, ease: "easeOut" }}
+                            />
+                        </div>
+                        <div className="relative shrink-0 w-1.5 h-1.5 flex items-center justify-center">
+                            <div className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${isActive ? s.dotColor : "bg-slate-300/40 dark:bg-white/10"}`} />
+                            {isActive && (
+                                <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${s.pingColor}`} />
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -114,6 +166,7 @@ function MultilingualIllustration() {
         { label: "हिंदी", active: false },
         { label: "Tamil", active: false },
         { label: "বাংলা", active: false },
+        { label: "+20 Languages", active: false },
     ];
     return (
         <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none">
@@ -161,71 +214,157 @@ function VoiceIllustration() {
     );
 }
 
-function AnalyticsIllustration() {
-    const pts_data = [28, 42, 33, 58, 48, 72, 62, 83, 76, 92];
-    const W = 100, H = 36;
-    const pts = pts_data.map((v, i) => `${(i / (pts_data.length - 1)) * W},${H - (v / 100) * H}`).join(" ");
+function MultiModelIllustration() {
+    const [isOpen, setIsOpen] = useState(false);
+    const [selected, setSelected] = useState("Gemini 1.5 Pro");
+    const models = ["Gemini 1.5 Pro", "Sarvam Indic AI", "GPT-4o Mini"];
+    
     return (
-        <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none">
-            <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[8px] font-semibold text-foreground-muted">Learning Progress</span>
-                <span className="text-[8px] font-bold text-emerald-500">↑ 18%</span>
+        <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none relative min-h-[78px] flex flex-col justify-center gap-1.5">
+            <span className="text-[7.5px] font-semibold text-foreground-muted uppercase tracking-widest leading-none">Select AI Engine</span>
+            
+            {/* Dropdown Header */}
+            <div 
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center justify-between px-2 py-1.5 rounded-lg border border-slate-200/50 dark:border-white/[0.07] bg-slate-50 dark:bg-white/5 text-[8px] font-semibold text-foreground cursor-pointer hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+            >
+                <span className="flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                    {selected}
+                </span>
+                <span className="text-[7px] text-foreground-muted">▼</span>
             </div>
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 32 }} preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id="cg2" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgb(94,106,210)" stopOpacity="0.2" />
-                        <stop offset="100%" stopColor="rgb(94,106,210)" stopOpacity="0" />
-                    </linearGradient>
-                </defs>
-                <polyline points={`${pts} ${W},${H} 0,${H}`} fill="url(#cg2)" />
-                <polyline points={pts} fill="none" stroke="rgb(94,106,210)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                {/* Last dot */}
-                <circle cx={W} cy={H - (92 / 100) * H} r="2" fill="rgb(94,106,210)" />
-            </svg>
+            
+            {/* Dropdown Options */}
+            {isOpen && (
+                <div className="border border-slate-200/60 dark:border-white/[0.08] bg-white/95 dark:bg-black/90 backdrop-blur-md rounded-lg p-1 space-y-0.5 shadow-md">
+                    {models.map((m) => {
+                        const isSelected = selected === m;
+                        return (
+                            <div
+                                onClick={() => {
+                                    setSelected(m);
+                                    setIsOpen(false);
+                                }}
+                                key={m}
+                                className={`flex items-center justify-between px-1.5 py-1 rounded text-[7.5px] font-medium cursor-pointer transition-all ${
+                                    isSelected
+                                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold"
+                                        : "text-foreground-muted hover:bg-slate-50 dark:hover:bg-white/5 hover:text-foreground"
+                                }`}
+                            >
+                                <span>{m}</span>
+                                {isSelected && <span className="text-amber-500 text-[6px]">●</span>}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }
 
 function SecurityIllustration() {
+    const [isIncognito, setIsIncognito] = useState(true);
+    const items = isIncognito
+        ? [
+            { label: "Fast & Quick", icon: Zap },
+            { label: "Accurate & Robust", icon: CheckCircle },
+            { label: "Zero Logs", icon: Trash2 },
+        ]
+        : [
+            { label: "Fast & Quick", icon: Zap },
+            { label: "Accurate & Robust", icon: CheckCircle },
+            { label: "Saved History", icon: FileText },
+        ];
+
     return (
-        <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none">
-            <div className="flex items-center gap-1.5 mb-2">
-                <div className="w-4 h-4 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/40 dark:border-emerald-500/20 flex items-center justify-center">
-                    <ShieldCheck className="w-2 h-2 text-emerald-500" />
-                </div>
-                <span className="text-[8px] font-semibold text-emerald-600 dark:text-emerald-400">End-to-end encrypted</span>
+        <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none transition-all duration-300">
+            {/* Toggle header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/[0.04] pb-1.5 mb-1.5">
+                <span className="text-[7.5px] font-semibold text-foreground uppercase tracking-widest">Incognito Mode</span>
+                <button
+                    onClick={() => setIsIncognito(!isIncognito)}
+                    className={`w-7 h-4 rounded-full p-[2px] transition-colors duration-200 focus:outline-none flex items-center cursor-pointer ${isIncognito ? "bg-teal-500" : "bg-slate-200 dark:bg-white/10"
+                        }`}
+                >
+                    <motion.div
+                        className="w-3 h-3 rounded-full bg-white shadow-sm"
+                        animate={{ x: isIncognito ? 12 : 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                </button>
             </div>
+
+            {/* Status indicator */}
+            <div className="flex items-center gap-1.5 mb-2">
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-colors duration-300 ${isIncognito
+                    ? "bg-teal-50 dark:bg-teal-500/10 border-teal-200/40 dark:border-teal-500/20"
+                    : "bg-slate-50 dark:bg-white/5 border-slate-200/40 dark:border-white/5"
+                    }`}>
+                    <ShieldCheck className={`w-2 h-2 transition-colors duration-300 ${isIncognito ? "text-teal-500" : "text-foreground-muted"}`} />
+                </div>
+                <span className={`text-[8px] font-semibold transition-colors duration-300 ${isIncognito ? "text-teal-600 dark:text-teal-400" : "text-foreground-muted"
+                    }`}>
+                    {isIncognito ? "Privacy Protected Session" : "Standard Active Session"}
+                </span>
+            </div>
+
+            {/* Three cards */}
             <div className="grid grid-cols-3 gap-1">
-                {["AES-256", "Zero Logs", "GDPR"].map((label) => (
-                    <div key={label} className="flex flex-col items-center py-1.5 rounded-lg bg-slate-50/70 dark:bg-white/4 border border-slate-200/40 dark:border-white/5 gap-0.5">
-                        <Lock className="w-2 h-2 text-foreground-muted" />
-                        <span className="text-[6.5px] text-foreground-muted font-semibold text-center leading-none">{label}</span>
-                    </div>
-                ))}
+                {items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                        <div
+                            key={item.label}
+                            className="flex flex-col items-center py-1.5 rounded-lg bg-slate-50/70 dark:bg-white/5 border border-slate-200/40 dark:border-white/5 gap-0.5 transition-all duration-300 hover:scale-[1.03]"
+                        >
+                            <Icon className={`w-2.5 h-2.5 transition-colors duration-300 ${isIncognito && item.label === "Zero Logs" ? "text-teal-500" : "text-foreground-muted"}`} />
+                            <span className="text-[6.5px] text-foreground-muted font-semibold text-center leading-none mt-0.5">{item.label}</span>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
 }
 
-function PathIllustration() {
-    const steps = [
-        { label: "Foundations", done: true },
-        { label: "Concepts", done: true },
-        { label: "Advanced", done: false },
-        { label: "Mastery", done: false },
-    ];
+function DocumentIntelligenceIllustration() {
+    const [activeAction, setActiveAction] = useState(null);
     return (
-        <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none space-y-1.5">
-            {steps.map((s) => (
-                <div key={s.label} className="flex items-center gap-2">
-                    <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 border ${s.done ? "bg-accent border-accent/40" : "bg-slate-100 dark:bg-white/5 border-slate-200/60 dark:border-white/10"}`}>
-                        {s.done && <div className="w-1 h-1 rounded-full bg-white" />}
+        <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/[0.04] pb-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-5 h-5 rounded bg-purple-500/10 dark:bg-purple-500/20 flex items-center justify-center shrink-0">
+                        <FileText className="w-3 h-3 text-purple-500" />
                     </div>
-                    <span className={`text-[8px] font-medium flex-1 ${s.done ? "text-foreground" : "text-foreground-muted"}`}>{s.label}</span>
-                    {s.done && <div className="h-1 w-6 rounded-full bg-accent/25" />}
+                    <div className="min-w-0 flex flex-col">
+                        <span className="text-[8.5px] font-semibold text-foreground truncate">Semester Notes.pdf</span>
+                        <span className="text-[6.5px] text-foreground-muted">324 Pages • 4.2 MB</span>
+                    </div>
                 </div>
-            ))}
+                <span className="text-[7.5px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-0.5">
+                    <CheckCircle className="w-2 h-2 text-emerald-500" />
+                    Imported
+                </span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+                {["Summarize", "Explain", "Gen Quiz"].map((action) => {
+                    const isActive = activeAction === action;
+                    return (
+                        <button
+                            key={action}
+                            onClick={() => setActiveAction(isActive ? null : action)}
+                            className={`text-[7.5px] font-semibold px-2 py-1 rounded-md border transition-all duration-200 cursor-pointer ${isActive
+                                ? "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
+                                : "bg-slate-50 dark:bg-white/5 border-slate-200/40 dark:border-white/5 text-foreground-muted hover:bg-slate-100 dark:hover:bg-white/10 hover:text-foreground"
+                                }`}
+                        >
+                            {action}
+                        </button>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -262,18 +401,7 @@ const largeFeatures = [
 ];
 
 const smallFeatures = [
-    {
-        id: "source-grounded",
-        icon: BookMarked,
-        iconColor: "text-blue-600 dark:text-blue-400",
-        iconBg: "bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20",
-        hoverBorder: "hover:border-blue-300/60 dark:hover:border-blue-500/25",
-        hoverShadow: "hover:shadow-[0_8px_32px_rgba(59,130,246,0.12)] dark:hover:shadow-[0_4px_24px_rgba(59,130,246,0.08)]",
-        gradientTo: "to-blue-50/25 dark:to-blue-500/[0.02]",
-        title: "Source-Grounded",
-        description: "Every answer cites verified academic references — IEEE, Nature, arXiv.",
-        illustration: <CitationIllustration />,
-    },
+    
     {
         id: "multilingual",
         icon: Globe2,
@@ -287,53 +415,66 @@ const smallFeatures = [
         illustration: <MultilingualIllustration />,
     },
     {
-        id: "voice-image",
+        id: "voice",
         icon: Mic2,
         iconColor: "text-rose-600 dark:text-rose-400",
         iconBg: "bg-rose-50 dark:bg-rose-500/10 border-rose-200/50 dark:border-rose-500/20",
         hoverBorder: "hover:border-rose-300/60 dark:hover:border-rose-500/25",
         hoverShadow: "hover:shadow-[0_8px_32px_rgba(244,63,94,0.12)] dark:hover:shadow-[0_4px_24px_rgba(244,63,94,0.08)]",
         gradientTo: "to-rose-50/25 dark:to-rose-500/[0.02]",
-        title: "Voice & Image",
-        description: "Speak questions or photograph equations and handwritten notes.",
+        title: "Voice",
+        description: "Speak questions to get instant, natural explanations.",
         illustration: <VoiceIllustration />,
     },
     {
-        id: "analytics",
-        icon: BarChart3,
+        id: "source-grounded",
+        icon: BookMarked,
+        iconColor: "text-blue-600 dark:text-blue-400",
+        iconBg: "bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20",
+        hoverBorder: "hover:border-blue-300/60 dark:hover:border-blue-500/25",
+        hoverShadow: "hover:shadow-[0_8px_32px_rgba(59,130,246,0.12)] dark:hover:shadow-[0_4px_24px_rgba(59,130,246,0.08)]",
+        gradientTo: "to-blue-50/25 dark:to-blue-500/[0.02]",
+        title: "Source-Grounded",
+        description: "Every answer cites verified academic references — IEEE, Nature, arXiv.",
+        illustration: <CitationIllustration />,
+    },
+    {
+        id: "multi-model",
+        icon: Cpu,
         iconColor: "text-amber-600 dark:text-amber-400",
         iconBg: "bg-amber-50 dark:bg-amber-500/10 border-amber-200/50 dark:border-amber-500/20",
         hoverBorder: "hover:border-amber-300/60 dark:hover:border-amber-500/25",
         hoverShadow: "hover:shadow-[0_8px_32px_rgba(245,158,11,0.12)] dark:hover:shadow-[0_4px_24px_rgba(245,158,11,0.08)]",
         gradientTo: "to-amber-50/25 dark:to-amber-500/[0.02]",
-        title: "Analytics",
-        description: "Track learning velocity and topic mastery with AI-powered insights.",
-        illustration: <AnalyticsIllustration />,
+        title: "Multi-model Support",
+        description: "Choose between Gemini, GPT, or specialized regional engines like Sarvam AI to fit your learning needs.",
+        illustration: <MultiModelIllustration />,
     },
     {
         id: "security",
         icon: ShieldCheck,
         iconColor: "text-teal-600 dark:text-teal-400",
         iconBg: "bg-teal-50 dark:bg-teal-500/10 border-teal-200/50 dark:border-teal-500/20",
-        hoverBorder: "hover:border-teal-300/60 dark:hover:border-teal-500/25",
+        hoverBorder: "hover:border-teal-300/60 dark:hover:border-teal-300/25",
         hoverShadow: "hover:shadow-[0_8px_32px_rgba(20,184,166,0.12)] dark:hover:shadow-[0_4px_24px_rgba(20,184,166,0.08)]",
         gradientTo: "to-teal-50/25 dark:to-teal-500/[0.02]",
         title: "Secure & Private",
-        description: "AES-256 encrypted. Conversations never stored or sold.",
+        description: "Fast, accurate responses with complete session privacy.",
         illustration: <SecurityIllustration />,
     },
     {
-        id: "learning-path",
-        icon: TrendingUp,
+        id: "document-intelligence",
+        icon: FileText,
         iconColor: "text-purple-600 dark:text-purple-400",
         iconBg: "bg-purple-50 dark:bg-purple-500/10 border-purple-200/50 dark:border-purple-500/20",
         hoverBorder: "hover:border-purple-300/60 dark:hover:border-purple-500/25",
         hoverShadow: "hover:shadow-[0_8px_32px_rgba(168,85,247,0.12)] dark:hover:shadow-[0_4px_24px_rgba(168,85,247,0.08)]",
         gradientTo: "to-purple-50/25 dark:to-purple-500/[0.02]",
-        title: "Learning Path",
-        description: "AI adapts to your pace and builds a custom roadmap to mastery.",
-        illustration: <PathIllustration />,
+        title: "Document Intelligence",
+        description: "Upload PDFs, notes and research papers for instant understanding.",
+        illustration: <DocumentIntelligenceIllustration />,
     },
+    
 ];
 
 /* ─────────────────────────────────────────
@@ -488,7 +629,13 @@ export function FeaturesSection() {
                 >
                     Everything You Need to{" "}
                     <span
-                        className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 via-purple-700 to-indigo-800 dark:from-[#5E6AD2] dark:via-[#8b5cf6] dark:to-[#4F46E5]"
+                        className="bg-clip-text text-transparent bg-gradient-to-br
+from-[#0057B8]
+via-[#1D75E8]
+to-[#5EA9FF]
+dark:from-[#2F80ED]
+dark:via-[#4F9DFF]
+dark:to-[#7DBBFF]"
                         style={{ backgroundSize: "200% 200%", animation: "gradient-shift 5s ease infinite" }}
                     >
                         Learn Smarter

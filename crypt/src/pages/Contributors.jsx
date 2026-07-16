@@ -10,6 +10,17 @@ import SagarImg from "../assets/sagar.png";
 import AtharvImg from "../assets/Atharv.jpeg";
 import SatyamImg from "../assets/satyam.jpg";
 import ShashwatiImg from "../assets/shashwati.png";
+import ishaanImg from "../assets/ishan.jpeg";
+import anupamaImg from "../assets/anupama.png";
+import abdulImg from "../assets/abdul.jpeg";
+import yashImg from "../assets/user.png";
+import tejashriImg from "../assets/tejashri.png";
+import dhivyaImg from "../assets/user.png";
+import BhartenduJhaImg from "../assets/bharat.jpeg";
+import ankitImg from "../assets/ankit.png";
+import supratikImg from "../assets/supratik.png";
+import anushkaImg from "../assets/user.png"; 
+
 
 const contributors = {
   teamLead: [
@@ -48,6 +59,57 @@ const contributors = {
       github: "https://github.com/satyam13",
       image: SatyamImg,
     },
+    {
+      name: "yash jangid",
+      role: "AI Developer",
+      linkedin: "https://www.linkedin.com/in/yashjangid458",
+      email: "yashjangid458@gmail.com",
+      github: "https://github.com/yashjangid458",
+      image: yashImg,
+    },
+    {
+      name: "Tejashri Choudhary ",
+      role: "AI Developer",
+      linkedin: "https://www.linkedin.com/in/tejashri-choudhary-505a402a4/",
+      email: "tejashrichoudhary2@gmail.com ",
+      github: "https://github.com/tejashri-del098",
+      image: tejashriImg,
+    },
+    
+    {
+      name: "Bhartendu Jha",
+      role: "AI Developer",
+      linkedin: "https://www.linkedin.com/in/bhartendu-jha-797807148/",
+      email: "bhartenduvjha@gmail.com",
+      github: "https://github.com/yugjha",
+      image: BhartenduJhaImg, 
+    },
+    {
+      name: "Anupama Rajesh",
+      role: "AI Developer",
+      linkedin: "https://www.linkedin.com/in/anupama-kr", 
+      email: "anupamakrajesh11@gmail.com",
+      github: "https://github.com/Anupama01022004",
+      image: anupamaImg
+    },
+    {
+      name: "Mohd Abdul Rahman",
+      role: "AI Developer",
+      linkedin: "https://www.linkedin.com/in/mohd-abdul-rahman-776479285 ", 
+      email: "mohdabdulrahman510@gmail.com",
+      github: "https://github.com/MohdAbdulRah",
+      image: abdulImg
+
+    },
+    {
+     name: "Supratik Bhowal",
+      role: "AI Developer",
+      linkedin: "https://www.linkedin.com/in/supratik-bhowal-b58906319/", 
+      email: "supratikbhowal23@gmail.com",
+      github: "https://github.com/SupratikB23/",
+      image: supratikImg 
+    }
+
   ],
 
   fullStackDevelopers: [
@@ -74,7 +136,43 @@ const contributors = {
       github: "https://github.com/atharvbanne10",
       image: AtharvImg,
     },
+    {
+      name: "Ankit Kumar Yadav",
+      role: "Full Stack Developer",
+      linkedin: "https://www.linkedin.com/in/ankit-yadav-90712324b/",
+      email: "ankityadav18193@gmail.com",
+      github: "https://github.com/ankit18193",
+      image: ankitImg,
+    },
+
   ],
+  researchAndDevelopment:[
+    {
+      name:"Anushka Gupta ",
+      role:"Research And Development",
+      linkedin:"https://www.linkedin.com/in/anushka-gupta-3175692a7?utm_source=share_via&utm_content=profile&utm_medium=member_android",
+      email:"anushkag1211243@gmail.com ",
+      github:"https://github.com/anushka1213",
+      image: anushkaImg
+    },
+    {
+      name:"Ishaan Goel",
+      role:"Research And Development",
+      linkedin:"https://www.linkedin.com/in/ishaan-vivek-goel",
+      email:"ishaangoel.270906@gmail.com ",
+      github:"https://github.com/Ishkondor",
+      image: ishaanImg
+    },
+    {
+      name: "Dhivya S",
+      role: "Research And Development",
+      linkedin: "http://www.linkedin.com/in/dhivya-sundar-557740334",
+      email: "dhivyasundar4@gmail.com",
+      github: "https://github.com/dhivya-sundar",
+      image: dhivyaImg,
+    },
+    
+  ]
 };
 
 function ContributorCard({ person }) {
@@ -181,6 +279,7 @@ export function Contributors() {
         <Section title="Team Lead" members={contributors.teamLead} />
         <Section title="AI Developers" members={contributors.aiDevelopers} />
         <Section title="Full Stack Developers" members={contributors.fullStackDevelopers} />
+        <Section title="Research And Development" members={contributors.researchAndDevelopment}/>
 
       </div>
     </PageTransition>
