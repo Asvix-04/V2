@@ -51,6 +51,8 @@ MODEL_ALIASES = {
     "gemini-2.5-pro": "2",
     "deepseek v3.2": "3",
     "deepseek-chat": "3",
+    "digilab pro": "4",
+    "digilab-pro": "4",
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -234,7 +236,10 @@ def apply_requested_model(model_name: Optional[str]) -> None:
 
     next_config = AVAILABLE_MODELS[model_key]
     current_config = getattr(chatbot, "model_config", None)
-    if getattr(current_config, "id", None) != next_config.id:
+    # Compare the full config, not just `.id` — DigiLab and DigiLab Pro both use
+    # id="gemini-2.5-flash" but point at different Pinecone indexes, so an
+    # id-only check would wrongly skip switch_model() between them.
+    if current_config != next_config:
         chatbot.switch_model(next_config)
 
 def _decode_audio_b64(audio_b64: str) -> bytes:

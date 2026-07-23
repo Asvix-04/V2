@@ -34,7 +34,8 @@ import api from "../lib/api";
 
 const MODELS = [
     { id: "Gemini 2.5 Flash", name: "DigiLab", description: "AI Assistant for IGNOU Media SLMs", icon: Sparkles, color: "text-blue-500" },
-    { id: "Gemini 2.5 Pro", name: "DigiLab 2.0", description: "AI Assistant for MIL OERs", icon: Zap, color: "text-purple-500" }
+    { id: "Gemini 2.5 Pro", name: "DigiLab 2.0", description: "AI Assistant for MIL OERs", icon: Zap, color: "text-purple-500" },
+    { id: "DigiLab Pro", name: "DigiLab Pro", description: "AI Assistant combining IGNOU Media SLMs & MIL OERs", icon: Star, color: "text-amber-500" }
 ];
 
 const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;

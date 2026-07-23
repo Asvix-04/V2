@@ -48,6 +48,15 @@ AVAILABLE_MODELS = {
         description="🌊 DeepSeek V3.2 — Fast & accurate (DeepSeek)",
         default_max_tokens=3000,
     ),
+    "4": ModelConfig(
+        id="gemini-2.5-flash",
+        display_name="DigiLab Pro",
+        api="gemini",
+        description="🚀 DigiLab Pro — Hybrid (Combined DigiLab + DigiLab 2.0 knowledge base)",
+        default_max_tokens=2500,
+        pinecone_index="pdf-hybrid",
+        bm25_cache_path="data/bm25_corpus_hybrid.json",
+    ),
 }
 
 
