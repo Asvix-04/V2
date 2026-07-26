@@ -91,9 +91,9 @@ class LLMReformulator:
                 line_words = set(line.split())
                 overlap = len(line_words & orig_words) / max(len(line_words), 1)
                 if overlap < 0.85:  # Only keep if meaningfully different
-                    diverse.append(line)
+                     diverse.append(line)
                 elif not diverse:   # Always keep at least one
-                    diverse.append(line)
+                     diverse.append(line)
             return diverse if diverse else self._basic_fallback(query)
         except Exception: return self._basic_fallback(query)
 

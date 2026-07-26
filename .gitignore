@@ -23,3 +23,10 @@ crypt/dist/
 *.log
 crypt/backend/bridge.log
 Backend_chatbot/python_server.log
+Backend_chatbot/venv/
+**/venv/
+
+*_diff.txt
+*_history.txt
+
+ChatPage_main.jsx

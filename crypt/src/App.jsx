@@ -1,6 +1,6 @@
 import * as React from "react";
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
+import { useState } from "react";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 
 import { Layout } from "./layouts/Layout";
@@ -13,6 +13,7 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { ChatPage } from "./pages/ChatPage";
+import { DeepResearchPage } from "./pages/DeepResearchPage";
 import { CookiePolicyPage } from "./pages/CookiePolicyPage";
 import { About } from "./pages/About";
 import { Contributors } from "./pages/Contributors";
@@ -54,28 +55,58 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Redirect first-time visitors to /chat, then show HomePage on subsequent visits
+// Redirect first-time visitors to /chat, then show HomePage on subsequent visits.
+// Using <Navigate> instead of useEffect+navigate so the redirect is synchronous —
+// no intermediate render frame where the outlet is empty and the footer collapses.
 function FirstVisitRedirect() {
-  const navigate = useNavigate();
   const [isFirstVisit] = useState(() => !localStorage.getItem("hasVisitedBefore"));
 
-  useEffect(() => {
-    if (isFirstVisit) {
-      localStorage.setItem("hasVisitedBefore", "true");
-      navigate("/chat", { replace: true });
-    }
-  }, [isFirstVisit, navigate]);
+  if (isFirstVisit) {
+    localStorage.setItem("hasVisitedBefore", "true");
+    return <Navigate to="/chat" replace />;
+  }
 
-  if (isFirstVisit) return null;
   return <HomePage />;
 }
 
-// Scroll to top on every route change
+// Scroll to top on every route change & manage custom scrollbar class exclusion
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => {
+
+  // Scroll to top and set page layout class
+  React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
+    
+    // Explicitly exclude /chat from the custom global scrollbar styles
+    if (pathname === "/chat") {
+      document.documentElement.classList.remove("custom-scrollbar-layout");
+    } else {
+      document.documentElement.classList.add("custom-scrollbar-layout");
+    }
   }, [pathname]);
+
+  // Monitor scrolling state to dynamically fade scrollbar in/out
+  React.useEffect(() => {
+    let scrollTimeout;
+
+    const handleScroll = () => {
+      document.documentElement.classList.add("is-scrolling");
+
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        document.documentElement.classList.remove("is-scrolling");
+      }, 1000); // Hide scrollbar after 1 second of scroll inactivity
+    };
+
+    // Use capture phase (third argument: true) to monitor scroll events on any child container
+    window.addEventListener("scroll", handleScroll, true);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      clearTimeout(scrollTimeout);
+    };
+  }, []);
+
   return null;
 }
 
@@ -91,6 +122,7 @@ function AnimatedRoutes() {
 
       {/* Standalone Pages */}
       <Route path="/chat" element={<ChatPage />} />
+      <Route path="/deep-research" element={<DeepResearchPage />} />
 
       {/* Main Layout Routes (With Header/Footer) */}
       <Route element={<Layout />}>

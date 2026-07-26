@@ -69,11 +69,14 @@ export function DashboardPage() {
                         Explore curated questions, monitor system performance, and manage your chats.
                     </p>
                 </div>
-                <div className="flex space-x-4">
-                    <Input placeholder="Search topics..." className="w-64" />
+                <div className="flex w-full flex-col space-y-3 md:w-auto md:flex-row md:space-x-4 md:space-y-0">
+                    <Input 
+                        placeholder="Search topics..." 
+                        className="w-full md:w-64 rounded-full transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 hover:border-accent/40 focus-visible:shadow-md focus-visible:-translate-y-0.5" 
+                    />
                     {isTeacher && (
-                        <Link to="/chat?mode=classroom-plan">
-                            <Button>
+                        <Link to="/chat?mode=classroom-plan" className="w-full md:w-auto">
+                            <Button className="w-full">
                                 <Plus className="mr-2 h-4 w-4" /> New Plan
                             </Button>
                         </Link>

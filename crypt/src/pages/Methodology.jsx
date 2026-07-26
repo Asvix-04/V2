@@ -183,7 +183,7 @@ export function Methodology() {
               <p className="text-foreground-muted mb-8 max-w-xl mx-auto">
                 Discover how DigiLab's sophisticated methodology transforms your learning experience.
               </p>
-              <Link to="/workspace">
+              <Link to="/dashboard">
                 <Button size="lg" className="h-12 px-8 text-base group">
                   Explore DigiLab
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />

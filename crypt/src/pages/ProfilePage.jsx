@@ -103,57 +103,73 @@ export function ProfilePage() {
         </div>
     );
 
+    // ─── Synchronous cache seed ────────────────────────────────────────────────
+    // Read the 'user' object from localStorage immediately — always present for
+    // authenticated users (written by Login / Signup / Profile save). This
+    // guarantees the page can render on the very first frame without any network.
+    const cachedUser = (() => {
+        try { return JSON.parse(localStorage.getItem('user')) || {}; } catch { return {}; }
+    })();
+
     // Backend State & Logic
     const [loading, setLoading] = useState(false);
-    const [userData, setUserData] = useState(null);
+    // Seed userData from cache so it is never null on first render
+    const [userData, setUserData] = useState(cachedUser);
+    // Seed formData synchronously — ensures name/email/photo appear immediately
     const [formData, setFormData] = useState({
-        name: "",
-        email: "",
-        preferredName: "",
-        age: "",
-        gender: "",
-        location: "",
-        primaryLanguage: "en",
-        profilePhoto: "",
+        name: cachedUser.name || "",
+        email: cachedUser.email || "",
+        preferredName: cachedUser.preferredName || "",
+        age: cachedUser.age || "",
+        gender: cachedUser.gender || "",
+        location: cachedUser.location || "",
+        primaryLanguage: cachedUser.primaryLanguage || "en",
+        profilePhoto: cachedUser.profilePhoto || "",
         preferences: {
-            tone: "neutral"
+            tone: cachedUser.preferences?.tone || "neutral"
         }
     });
 
-    const [isFetching, setIsFetching] = useState(true);
+    // isFetching starts as false — the page never blocks on network for first paint
+    const [isFetching, setIsFetching] = useState(false);
 
+    // Kick off background refresh immediately after mount
     useEffect(() => {
         fetchUserData();
     }, []);
 
+    // Background refresh — does NOT block rendering.
+    // Runs after the page is already visible. Merges fresh server data
+    // into existing state so optional fields (age, gender, etc.) hydrate silently.
     const fetchUserData = async () => {
         setIsFetching(true);
         try {
             const { data } = await api.get('/auth/me');
             setUserData(data);
-            setFormData({
-                name: data.name || "",
-                email: data.email || "john.doe@university.edu",
-                preferredName: data.preferredName || "",
-                age: data.age || "",
-                gender: data.gender || "",
-                location: data.location || "",
-                primaryLanguage: data.primaryLanguage || "en",
-                profilePhoto: data.profilePhoto || "",
+            setFormData(prev => ({
+                // Only overwrite a field if the server returned a non-empty value,
+                // so we never blank out a field that the cache already had.
+                name:            data.name            || prev.name,
+                email:           data.email           || prev.email,
+                preferredName:   data.preferredName   || prev.preferredName,
+                age:             data.age             || prev.age,
+                gender:          data.gender          || prev.gender,
+                location:        data.location        || prev.location,
+                primaryLanguage: data.primaryLanguage || prev.primaryLanguage,
+                profilePhoto:    data.profilePhoto    || prev.profilePhoto,
                 preferences: {
-                    tone: data.preferences?.tone || "neutral"
+                    tone: data.preferences?.tone || prev.preferences?.tone || "neutral"
                 }
-            });
+            }));
+            // Update app language only when the server value differs from cached one
             if (data.primaryLanguage && translations[data.primaryLanguage]) {
                 setLanguage(data.primaryLanguage);
             }
+            // Keep localStorage warm with the freshest full profile
+            localStorage.setItem('user', JSON.stringify(data));
         } catch (error) {
-            console.error("Failed to fetch user data, using defaults", error);
-            // Ensure we have some data to show even if offline
-            setFormData(prev => ({
-                ...prev,
-                email: prev.email || "guest@example.com"
-            }));
+            // Background refresh failed — cached data is already showing, no action needed
+            console.error("Background profile refresh failed, showing cached data", error);
         } finally {
             setIsFetching(false);
         }
@@ -182,7 +198,7 @@ export function ProfilePage() {
     const handleSignOut = () => {
         localStorage.removeItem("user");
         localStorage.removeItem("token");
-        navigate("/login");
+        navigate("/");
     };
 
     // Helper to get language name
@@ -252,10 +268,11 @@ export function ProfilePage() {
         }
     };
 
-    if (isFetching && !userData && !formData.email) return <div className="p-8 text-center">Loading...</div>;
+    // Render gate removed — page renders immediately from cached localStorage data.
+    // isFetching is now only used to drive the subtle background-refresh indicator below.
 
     return (
-        <div className="mx-auto max-w-4xl space-y-8 pb-12 relative">
+        <div className="mx-auto max-w-4xl max-md:px-4 space-y-8 pb-12 relative">
             {saveStatus === 'success' && (
                 <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
                     <Check className="h-5 w-5" />
@@ -263,41 +280,64 @@ export function ProfilePage() {
                 </div>
             )}
 
-            <h1 className="text-3xl font-semibold text-foreground">{t('profile.settings')}</h1>
+            <h1 className="text-2xl md:text-3xl font-semibold text-foreground">{t('profile.settings')}</h1>
 
             <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
                 {/* Sidebar Navigation */}
-                <div className="md:col-span-4 space-y-2">
-                    {['Profile', 'Notifications', 'Security', 'Settings'].map((item) => (
-                        <button
-                            key={item}
-                            onClick={() => setActiveTab(item)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item
-                                ? 'bg-accent text-white shadow-lg shadow-accent/20'
-                                : 'text-foreground-muted hover:bg-white/5 hover:text-foreground'
-                                }`}
-                        >
-                            {item === 'Profile' && <User className="h-4 w-4" />}
-                            {item === 'Notifications' && <Bell className="h-4 w-4" />}
-                            {item === 'Security' && <Shield className="h-4 w-4" />}
-                            {item === 'Settings' && <Settings className="h-4 w-4" />}
-                            {item === 'Profile' ? t('nav.profile') : t(`profile.${item.toLowerCase()}`)}
-                        </button>
-                    ))}
+                <div className="md:col-span-4 space-y-2 flex flex-col max-md:gap-4">
+                    {/* Mobile Section Pills */}
+                    <div className="md:hidden flex overflow-x-auto gap-2 pb-2 -mx-4 px-4 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {['Profile', 'Notifications', 'Security', 'Settings'].map((item) => (
+                            <button
+                                key={item}
+                                onClick={() => setActiveTab(item)}
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap snap-start shrink-0 ${activeTab === item
+                                    ? 'bg-accent text-white shadow-md shadow-accent/20'
+                                    : 'bg-black/5 dark:bg-white/5 text-foreground-muted hover:text-foreground'
+                                    }`}
+                            >
+                                {item === 'Profile' && <User className="h-4 w-4" />}
+                                {item === 'Notifications' && <Bell className="h-4 w-4" />}
+                                {item === 'Security' && <Shield className="h-4 w-4" />}
+                                {item === 'Settings' && <Settings className="h-4 w-4" />}
+                                {item === 'Profile' ? t('nav.profile') : t(`profile.${item.toLowerCase()}`)}
+                            </button>
+                        ))}
+                    </div>
 
-                    <button
-                        onClick={handleSignOut}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-400/10 transition-all mt-4 border border-red-400/10"
-                    >
-                        <LogOut className="h-4 w-4" />
-                        {t('profile.signOut')}
-                    </button>
+                    {/* Desktop Sidebar Buttons */}
+                    <div className="hidden md:flex flex-col space-y-2">
+                        {['Profile', 'Notifications', 'Security', 'Settings'].map((item) => (
+                            <button
+                                key={item}
+                                onClick={() => setActiveTab(item)}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item
+                                    ? 'bg-accent text-white shadow-lg shadow-accent/20'
+                                    : 'text-foreground-muted hover:bg-white/5 hover:text-foreground'
+                                    }`}
+                            >
+                                {item === 'Profile' && <User className="h-4 w-4" />}
+                                {item === 'Notifications' && <Bell className="h-4 w-4" />}
+                                {item === 'Security' && <Shield className="h-4 w-4" />}
+                                {item === 'Settings' && <Settings className="h-4 w-4" />}
+                                {item === 'Profile' ? t('nav.profile') : t(`profile.${item.toLowerCase()}`)}
+                            </button>
+                        ))}
+
+                        <button
+                            onClick={handleSignOut}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-400/10 transition-all mt-4 border border-red-400/10"
+                        >
+                            <LogOut className="h-4 w-4" />
+                            {t('profile.signOut')}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Main Content Area */}
                 <div className="md:col-span-8 space-y-6">
                     {activeTab === 'Security' ? (
-                        <Card className="p-8 space-y-8">
+                        <Card className="p-4 md:p-8 space-y-8">
                             <div>
                                 <h2 className="text-xl font-medium text-foreground">Security Settings</h2>
                                 <p className="text-foreground-muted">Manage your account security preferences</p>
@@ -350,13 +390,13 @@ export function ProfilePage() {
                                                 <div className="p-2 rounded-full bg-accent/10 text-accent">
                                                     {session.icon}
                                                 </div>
-                                                <div>
-                                                    <p className="text-sm font-medium text-foreground">{session.device}</p>
-                                                    <p className="text-xs text-foreground-muted">{session.location} • {session.lastActive}</p>
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-medium text-foreground truncate">{session.device}</p>
+                                                    <p className="text-xs text-foreground-muted truncate">{session.location} • {session.lastActive}</p>
                                                 </div>
                                             </div>
                                             {session.lastActive !== 'Current Session' && (
-                                                <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-500 hover:bg-red-400/10">
+                                                <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-500 hover:bg-red-400/10 shrink-0">
                                                     Revoke
                                                 </Button>
                                             )}
@@ -366,7 +406,7 @@ export function ProfilePage() {
                             </div>
                         </Card>
                     ) : activeTab === 'Notifications' ? (
-                        <Card className="p-8 space-y-10">
+                        <Card className="p-4 md:p-8 space-y-8 md:space-y-10">
                             <div>
                                 <h2 className="text-2xl font-semibold text-foreground">Notification Settings</h2>
                                 <p className="text-foreground-muted">Choose how you want to be notified</p>
@@ -423,7 +463,7 @@ export function ProfilePage() {
                             </div>
                         </Card>
                     ) : activeTab === 'Settings' ? (
-                        <Card className="p-8 space-y-10">
+                        <Card className="p-4 md:p-8 space-y-8 md:space-y-10">
                             {/* Privacy & Data */}
                             <div className="space-y-6">
                                 <div className="flex items-center gap-2 border-b border-white/5 pb-2">
@@ -483,31 +523,31 @@ export function ProfilePage() {
                                     <h3 className="text-xl font-medium">Danger Zone</h3>
                                 </div>
                                 <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-0">
                                         <div>
                                             <p className="text-sm font-medium text-foreground">Deactivate Account</p>
                                             <p className="text-xs text-foreground-muted">Temporarily disable your account</p>
                                         </div>
-                                        <Button variant="outline" size="sm" className="text-red-400 border-red-400/20 hover:bg-red-400/10">Deactivate</Button>
+                                        <Button variant="outline" size="sm" className="w-full md:w-auto text-red-400 border-red-400/20 hover:bg-red-400/10">Deactivate</Button>
                                     </div>
-                                    <div className="flex items-center justify-between pt-4 border-t border-red-500/10">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between pt-4 border-t border-red-500/10 gap-4 md:gap-0">
                                         <div>
                                             <p className="text-sm font-medium text-red-500">Delete Account</p>
                                             <p className="text-xs text-foreground-muted">Permanently delete your account and data</p>
                                         </div>
-                                        <Button variant="default" size="sm" className="bg-red-500 hover:bg-red-600 border-none text-white">Delete Account</Button>
+                                        <Button variant="default" size="sm" className="w-full md:w-auto bg-red-500 hover:bg-red-600 border-none text-white">Delete Account</Button>
                                     </div>
                                 </div>
                             </div>
                         </Card>
                     ) : (
                         <>
-                            <Card className="p-8 space-y-8">
+                            <Card className="p-4 md:p-8 space-y-8">
                                 {/* Profile Pic Section */}
-                                <div className="flex items-center space-x-6">
+                                <div className="flex flex-col md:flex-row items-center md:space-x-6 space-y-4 md:space-y-0 text-center md:text-left">
                                     <div
                                         onClick={() => fileInputRef.current.click()}
-                                        className="h-24 w-24 rounded-full bg-accent/20 flex items-center justify-center text-4xl border-2 border-accent/50 overflow-hidden relative group cursor-pointer"
+                                        className="h-24 w-24 rounded-full bg-accent/20 flex items-center justify-center text-4xl border-2 border-accent/50 overflow-hidden relative group cursor-pointer shrink-0"
                                     >
                                         {formData.profilePhoto ? (
                                             <img src={formData.profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
@@ -528,7 +568,7 @@ export function ProfilePage() {
                                     <div className="flex-1">
                                         <h3 className="text-xl font-medium text-foreground">{formData.name || "User"}</h3>
                                     </div>
-                                    <div className="flex flex-col items-end justify-center">
+                                    <div className="flex flex-col items-center md:items-end justify-center">
                                         <div className="px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-500 text-xs font-medium">
                                             {t('profile.active')}
                                         </div>
@@ -655,10 +695,11 @@ export function ProfilePage() {
 
                                 </div>
 
-                                <div className="flex justify-end pt-4">
+                                <div className="flex flex-col md:flex-row justify-end pt-4">
                                     <Button
                                         onClick={handleSaveChanges}
                                         disabled={saveStatus === 'saving'}
+                                        className="w-full md:w-auto"
                                     >
                                         {saveStatus === 'saving' ? 'Saving...' : t('profile.saveChanges')}
                                     </Button>
@@ -666,7 +707,7 @@ export function ProfilePage() {
                             </Card>
 
                             {/* Appearance Section */}
-                            <Card className="p-8 space-y-10">
+                            <Card className="p-4 md:p-8 space-y-8 md:space-y-10">
                                 <div className="space-y-6">
                                     <div className="flex items-center gap-2 border-b border-white/5 pb-2">
                                         <Palette className="h-5 w-5 text-accent" />
@@ -692,6 +733,15 @@ export function ProfilePage() {
                             </Card>
                         </>
                     )}
+
+                    {/* Mobile Sign Out (at bottom of content) */}
+                    <button
+                        onClick={handleSignOut}
+                        className="md:hidden w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-400/10 transition-all mt-8 border border-red-400/10 bg-red-400/5"
+                    >
+                        <LogOut className="h-4 w-4" />
+                        {t('profile.signOut')}
+                    </button>
                 </div>
             </div>
         </div>

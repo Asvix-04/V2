@@ -43,7 +43,8 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/contact', require('./routes/contactRoutes'));
-app.use('/api/voice', voiceRoutes);
+app.use('/api/voice', require('./routes/voiceRoutes'));
+app.use('/api/research', require('./routes/researchRoutes'));
 
 // Backward compatibility for the separately hosted frontend, which points its
 // chatbot base URL at the Space root and calls /chat, /health, and related
