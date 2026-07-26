@@ -355,7 +355,7 @@ dark:to-[#7DBBFF]"
                             className="hidden sm:flex items-center justify-start sm:justify-center lg:justify-start gap-2 text-xs text-foreground-muted"
                         >
                             <div className="flex -space-x-1.5">
-                                {['bg-indigo-400', 'bg-purple-400', 'bg-blue-400', 'bg-orange-300'].map((c, i) => (
+                                {['bg-indigo-400', 'bg-purple-400', 'bg-green-300', 'bg-orange-300'].map((c, i) => (
                                     <div key={i} className={`w-5 h-5 rounded-full border-2 border-white dark:border-background-base ${c}`} />
                                 ))}
                             </div>

@@ -503,10 +503,11 @@ function LargeFeatureCard({ feature, index }) {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, margin: "-50px" }}
+            className="h-full"
         >
             <Card
                 className={[
-                    "flex flex-col sm:flex-row sm:items-stretch gap-0 overflow-hidden",
+                    "h-full flex flex-col sm:flex-row sm:items-stretch gap-0 overflow-hidden",
                     "p-0",
                     "bg-gradient-to-br from-white dark:from-white/[0.05]",
                     feature.gradientTo,

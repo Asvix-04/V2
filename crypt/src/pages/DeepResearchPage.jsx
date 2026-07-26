@@ -5,7 +5,7 @@ import {
   ArrowLeft, BookOpen, ChevronRight, Loader2, Plus, User as UserIcon,
   Sparkles, Zap, ChevronDown, Star, Menu,
   MessageSquareDashed, Check, Search,
-  MessageSquare, Trash2, CheckCircle2, ArrowUpRight
+  MessageSquare, Trash2, CheckCircle2, ArrowUpRight, X
 } from "lucide-react";
 import { MdSearch } from "react-icons/md";
 import { cn } from "../lib/utils";
@@ -184,6 +184,45 @@ export function DeepResearchPage() {
   const [isMobileFooterExpanded, setIsMobileFooterExpanded] = React.useState(false);
   const [isTyping, setIsTyping] = React.useState(false);
 
+  // ── Deep Research Quota ───────────────────────────────────────────────────
+  const [quota, setQuota] = React.useState(null);
+  const [loadingQuota, setLoadingQuota] = React.useState(false);
+  const [isBannerDismissed, setIsBannerDismissed] = React.useState(false);
+
+  const isQuotaExceeded = quota?.remaining === 0;
+
+  const loadQuota = React.useCallback(async () => {
+    if (isGuest) return;
+    setLoadingQuota(true);
+    try {
+      const res = await api.get("/research/quota");
+      setQuota(prev => {
+        if (prev && prev.remaining !== res.data.remaining) {
+          setIsBannerDismissed(false);
+        }
+        return res.data;
+      });
+    } catch (err) {
+      console.error("Failed to load quota status:", err.message);
+    } finally {
+      setLoadingQuota(false);
+    }
+  }, [isGuest]);
+
+  React.useEffect(() => {
+    loadQuota();
+  }, [loadQuota]);
+
+  React.useEffect(() => {
+    const handleFocus = () => {
+      loadQuota();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [loadQuota]);
+
   React.useEffect(() => {
     let t;
     const onFocusIn = (e) => {
@@ -214,50 +253,92 @@ export function DeepResearchPage() {
   );
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleNewResearch = () => {
-    setSearchParams({});
+  const handleNewResearch = async () => {
     setMessages([]);
+    setSearchParams({});
+    await loadQuota();
   };
 
   const handleSend = async (text) => {
     if (!text.trim()) return;
-    const userMsg = {
-      role: "user",
-      content: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    };
-    let targetId = currentSessionId;
-    let session = null;
-    if (!targetId) {
-      targetId = "dr_" + Date.now();
-      session = { id: targetId, title: text.substring(0, 30) + (text.length > 30 ? "..." : ""), messages: [userMsg], createdAt: Date.now() };
-      saveChatsToStorage([session, ...deepResearchChats]);
-      setSearchParams({ session: targetId });
-    } else {
-      session = deepResearchChats.find(s => s.id === targetId);
-      if (session) {
-        session = { ...session, messages: [...(session.messages || []), userMsg] };
-        saveChatsToStorage(deepResearchChats.map(s => s.id === targetId ? session : s));
-      }
+
+    if (isGuest) {
+      alert("Please log in to use Deep Research.");
+      return;
     }
-    setMessages(prev => [...prev, userMsg]);
+
     setIsLoading(true);
     setActiveStepIndex(0);
-    for (let i = 0; i < RESEARCH_STEPS.length; i++) {
-      await new Promise(r => setTimeout(r, i === 3 ? 1200 : 900));
-      setActiveStepIndex(prev => prev + 1);
+
+    try {
+      // 1. Fetch quota check & generation report from backend
+      const response = await api.post("/research/generate", { topic: text });
+      const data = response.data;
+
+      // Update quota status state
+      setQuota({
+        allowed: data.allowed,
+        used: data.used,
+        remaining: data.remaining,
+        limit: data.limit,
+        renewAt: data.renewAt,
+        message: data.message
+      });
+
+      // 2. Play the visualization steps to maintain original UX
+      for (let i = 0; i < RESEARCH_STEPS.length; i++) {
+        await new Promise(r => setTimeout(r, i === 3 ? 1200 : 900));
+        setActiveStepIndex(prev => prev + 1);
+      }
+
+      // 3. Save to local storage conversation history
+      const userMsg = {
+        role: "user",
+        content: text,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      };
+
+      let targetId = currentSessionId;
+      let session = null;
+      if (!targetId) {
+        targetId = "dr_" + Date.now();
+        session = { id: targetId, title: text.substring(0, 30) + (text.length > 30 ? "..." : ""), messages: [userMsg], createdAt: Date.now() };
+        saveChatsToStorage([session, ...deepResearchChats]);
+        setSearchParams({ session: targetId });
+      } else {
+        session = deepResearchChats.find(s => s.id === targetId);
+        if (session) {
+          session = { ...session, messages: [...(session.messages || []), userMsg] };
+          saveChatsToStorage(deepResearchChats.map(s => s.id === targetId ? session : s));
+        }
+      }
+
+      const assistantMsg = {
+        role: "assistant",
+        content: data.answer,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      };
+
+      const latestChats = JSON.parse(localStorage.getItem("deep_research_chats") || "[]");
+      saveChatsToStorage(latestChats.map(s => s.id === targetId ? { ...s, messages: [...(s.messages || []), assistantMsg] } : s));
+      setMessages(prev => [...prev, userMsg, assistantMsg]);
+
+      // Re-fetch quota to ensure alignment
+      await loadQuota();
+
+    } catch (error) {
+      console.error("Deep Research Generation Error:", error.message);
+      if (error.response && error.response.status === 429) {
+        const quotaData = error.response.data;
+        setQuota(quotaData);
+        alert(quotaData.message || "Monthly Deep Research limit reached.");
+        await loadQuota();
+      } else {
+        alert(error.response?.data?.message || error.message || "Deep Research generation failed.");
+      }
+    } finally {
+      setIsLoading(false);
     }
-    const reportText = generateMockReport(text);
-    const assistantMsg = {
-      role: "assistant",
-      content: reportText,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    };
-    // Re-read from localStorage to get the freshest state and append the assistant message
-    const latestChats = JSON.parse(localStorage.getItem("deep_research_chats") || "[]");
-    saveChatsToStorage(latestChats.map(s => s.id === targetId ? { ...s, messages: [...(s.messages || []), assistantMsg] } : s));
-    setMessages(prev => [...prev, assistantMsg]);
-    setIsLoading(false);
   };
 
   const handleDeleteResearch = (id, e) => {
@@ -442,12 +523,37 @@ export function DeepResearchPage() {
 
               {/* Input area — same structure as ChatPage welcome screen */}
               <div className="w-full relative px-4">
+                {/* Quota warning/info banner */}
+                {quota && !isBannerDismissed && !isGuest && (
+                  <div className={cn(
+                    "mb-3 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border text-sm shadow-sm backdrop-blur-md transition-all duration-200",
+                    isQuotaExceeded
+                      ? "bg-red-50/80 border-red-200 text-red-800 dark:bg-red-950/20 dark:border-red-900/50 dark:text-red-300"
+                      : "bg-amber-50/80 border-amber-200 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/50 dark:text-amber-300"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{quota.message}</span>
+                    </div>
+                    <button
+                      onClick={() => setIsBannerDismissed(true)}
+                      className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-0.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                      aria-label="Dismiss banner"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
                 <ChatInput
                   onSend={handleSend}
-                  placeholder={selectedLanguage
-                    ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...`
-                    : "Enter academic topic, paper domain, or research question..."}
-                  disabled={isLoading}
+                  placeholder={isLoading
+                    ? "Researching..."
+                    : (isQuotaExceeded && !isGuest)
+                      ? "Monthly Deep Research limit reached"
+                      : selectedLanguage
+                        ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...`
+                        : "Enter academic topic, paper domain, or research question..."}
+                  disabled={isLoading || (isQuotaExceeded && !isGuest)}
                 />
 
                 {/* Language Selector — exact same as ChatPage welcome screen */}
@@ -646,14 +752,37 @@ export function DeepResearchPage() {
               {/* ── Sticky Input Footer — exact same structure as ChatPage ── */}
               <div className="w-full bg-gradient-to-t from-white dark:from-zinc-950 to-transparent max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6 pt-4 z-40">
                 <div className="mx-auto max-w-4xl px-4 relative">
+                  {/* Quota warning/info banner */}
+                  {quota && !isBannerDismissed && !isGuest && (
+                    <div className={cn(
+                      "mb-3 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border text-sm shadow-sm backdrop-blur-md transition-all duration-200",
+                      isQuotaExceeded
+                        ? "bg-red-50/80 border-red-200 text-red-800 dark:bg-red-950/20 dark:border-red-900/50 dark:text-red-300"
+                        : "bg-amber-50/80 border-amber-200 text-amber-800 dark:bg-amber-950/20 dark:border-amber-900/50 dark:text-amber-300"
+                    )}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{quota.message}</span>
+                      </div>
+                      <button
+                        onClick={() => setIsBannerDismissed(true)}
+                        className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-0.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                        aria-label="Dismiss banner"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+
                   <ChatInput
                     onSend={handleSend}
                     placeholder={isLoading
                       ? "Researching..."
-                      : selectedLanguage
-                        ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...`
-                        : "Ask follow-up questions to expand your brief..."}
-                    disabled={isLoading}
+                      : (isQuotaExceeded && !isGuest)
+                        ? "Monthly Deep Research limit reached"
+                        : selectedLanguage
+                          ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...`
+                          : "Ask follow-up questions to expand your brief..."}
+                    disabled={isLoading || (isQuotaExceeded && !isGuest)}
                   />
 
                   {/* Desktop language selector */}

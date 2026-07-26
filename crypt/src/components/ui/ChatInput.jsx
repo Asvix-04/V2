@@ -61,6 +61,7 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, isInco
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (disabled) return;
         if (value.trim() && onSend) { onSend(value); setValue(""); }
     };
 
@@ -137,8 +138,9 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, isInco
                 <button
                     type="button"
                     onClick={toggleListening}
+                    disabled={disabled}
                     className={cn(
-                        "flex items-center justify-center h-10 w-10 rounded-full transition-all duration-150 active:scale-95",
+                        "flex items-center justify-center h-10 w-10 rounded-full transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
                         isActive ? "max-md:hidden" : "",
                         isListening
                             ? "bg-red-500/10 text-red-500 animate-pulse"
@@ -155,8 +157,9 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, isInco
                 <button
                     type="button"
                     onClick={props.onVoiceToggle}
+                    disabled={disabled}
                     className={cn(
-                        "flex items-center justify-center h-10 w-10 rounded-full transition-all duration-150 active:scale-95",
+                        "flex items-center justify-center h-10 w-10 rounded-full transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
                         isActive ? "max-md:hidden" : "",
                         isIncognito
                             ? "text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10"

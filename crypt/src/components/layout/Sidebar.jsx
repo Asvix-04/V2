@@ -133,7 +133,7 @@ export function Sidebar({
                         >
                             <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
                             <span className="text-xs font-medium">
-                                {isGuest ? translate("nav.home", "Home") : translate("chat.backToDashboard", "Dashboard")}
+                                {isGuest ? translate("nav.home", "Home") : translate("chat.Dashboard", "Dashboard")}
                             </span>
                         </Link>
 
@@ -211,9 +211,7 @@ export function Sidebar({
                                     <div className="flex items-center gap-2">
                                         <Star className="h-3.5 w-3.5 text-yellow-500 dark:text-yellow-400 shrink-0" />
                                         <span className="text-[13px] font-semibold uppercase tracking-wider">Starred Chats</span>
-                                        <span className="text-[11.5px] text-zinc-400 font-normal">
-                                            ({sessions.filter(s => starredChats.includes(s.id)).length})
-                                        </span>
+                                        
                                     </div>
                                     {isStarredOpen
                                         ? <ChevronDown className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500 shrink-0" />
@@ -312,9 +310,7 @@ export function Sidebar({
                                     <div className="flex items-center gap-2">
                                         <DeepResearchLogo className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
                                         <span className="text-[13px] font-semibold uppercase tracking-wider">Deep Research</span>
-                                        <span className="text-[11.5px] text-zinc-400 font-normal">
-                                            ({deepResearchChats.length})
-                                        </span>
+                                        
                                     </div>
                                     {isDeepResearchOpen
                                         ? <ChevronDown className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500 shrink-0" />

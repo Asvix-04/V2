@@ -28,6 +28,7 @@ app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/contact', require('./routes/contactRoutes'));
 app.use('/api/voice', require('./routes/voiceRoutes'));
+app.use('/api/research', require('./routes/researchRoutes'));
 
 // Serve Static Uploads
 app.use('/uploads', express.static('uploads'));
