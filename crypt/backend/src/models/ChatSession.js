@@ -288,7 +288,17 @@ class ChatSession {
             if (redisClient && !options.onlyDeleted && !options.includeDeleted) {
                 const cached = await redisClient.get(cacheKey);
                 if (cached) {
-                    const parsed = JSON.parse(cached);
+                    let parsed = JSON.parse(cached);
+                    if (options.cursor) {
+                        const cursorTime = new Date(options.cursor).getTime();
+                        parsed = parsed.filter((item) => {
+                            const val = item.updatedAt || item.timestamp || item.createdAt;
+                            return new Date(val).getTime() < cursorTime;
+                        });
+                    }
+                    if (options.limit > 0) {
+                        parsed = parsed.slice(0, options.limit);
+                    }
                     return parsed.map((data) => new ChatSession(data));
                 }
             }
@@ -345,7 +355,19 @@ class ChatSession {
                 await redisClient.setEx(cacheKey, 600, JSON.stringify(sorted.map((s) => s.toJSON())));
             }
 
-            return sorted;
+            let paginated = sorted;
+            if (options.cursor) {
+                const cursorTime = new Date(options.cursor).getTime();
+                paginated = paginated.filter((s) => {
+                    const val = s.updatedAt || s.timestamp || s.createdAt;
+                    return new Date(val).getTime() < cursorTime;
+                });
+            }
+            if (options.limit > 0) {
+                paginated = paginated.slice(0, options.limit);
+            }
+
+            return paginated;
         } catch (error) {
             console.error(`Error finding sessions for user ${userId}:`, error);
             return [];

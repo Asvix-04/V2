@@ -590,12 +590,8 @@ border-0
             {/* ═══════════════════════════════════════════
                 SECTION 4 — PERFORMANCE METRICS
             ═══════════════════════════════════════════ */}
-            <section className="relative py-4">
-                {/* Light mode section separator accent */}
-                <div className="block dark:hidden absolute top-0 left-1/2 -translate-x-1/2 w-64 h-px bg-gradient-to-r from-transparent via-accent/25 to-transparent" />
-                <div className="block dark:hidden absolute inset-0 bg-gradient-to-b from-transparent via-accent/[0.02] to-transparent pointer-events-none" />
-                <PerformanceStats />
-            </section>
+            
+            
 
             {/* ═══════════════════════════════════════════
                 SECTION 5 — FAQ SECTION

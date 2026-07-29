@@ -78,6 +78,7 @@ const GREETING_SENTENCES = [
 
 const ACTIVE_DRAFT_STORAGE_PREFIX = "digilab-active-draft:";
 const PENDING_DRAFT_STORAGE_PREFIX = "digilab-pending-draft:";
+const LAST_ACTIVE_SESSION_PREFIX = "digilab-last-active-session:";
 
 const CHAT_SESSION_SOURCE = {
     DRAFTS: "drafts",
@@ -550,6 +551,8 @@ export function ChatPage() {
         }
     });
     const [isDeepResearchOpen, setIsDeepResearchOpen] = React.useState(true);
+    const [hasMoreSessions, setHasMoreSessions] = React.useState(true);
+    const [isLoadingMoreSessions, setIsLoadingMoreSessions] = React.useState(false);
 
     React.useEffect(() => {
         const handleStorageChange = () => {
@@ -696,7 +699,7 @@ export function ChatPage() {
             setLoadingMore(false);
         }
     };
-    
+
     const handleScroll = (e) => {
         if (e.target.scrollTop === 0 && hasMore && !loadingMore) {
             loadOlderMessages(e.target);
@@ -924,56 +927,7 @@ export function ChatPage() {
 
 
 
-    React.useEffect(() => {
-        const checkHealth = async () => {
-            try {
-                await chatbotApi.checkHealth();
-                setIsConnected(true);
-            } catch (err) {
-                console.error("Backend not available:", err);
-                setIsConnected(false);
-            } finally {
-                setIsCheckingConnection(false);
-            }
-        };
-
-        const loadSessions = async () => {
-            if (!isGuest) {
-                try {
-                    const res = await api.get('/chat/sessions');
-                    if (res.data && res.data.length > 0) {
-                        setSessions(res.data);
-
-                        const sessionId = searchParams.get("sessionId");
-                        if (sessionId) {
-                            const found = res.data.find(s => s.id === sessionId);
-                            if (found) {
-                                setCurrentSessionId(found.id);
-                                setMessages(found.messages);
-                            } else {
-                                const newParams = new URLSearchParams(searchParams);
-                                newParams.delete("sessionId");
-                                navigate({ search: newParams.toString() }, { replace: true });
-                            }
-                        }
-                    } else {
-                        const sessionId = searchParams.get("sessionId");
-                        if (sessionId) {
-                            const newParams = new URLSearchParams(searchParams);
-                            newParams.delete("sessionId");
-                            navigate({ search: newParams.toString() }, { replace: true });
-                        }
-                    }
-                } catch (err) {
-                    console.error("Failed to fetch sessions from DB:", err);
-                }
-            }
-            setIsRestoringSession(false);
-        };
-
-        checkHealth();
-        loadSessions();
-    }, [isGuest]);
+    // Redundant duplicate useEffect removed to consolidate session loading.
 
 
 
@@ -1014,8 +968,9 @@ export function ChatPage() {
     }, [sessions]);
 
     // localStorage helpers
-    const activeDraftStorageKey = user?.uid ? `${ACTIVE_DRAFT_STORAGE_PREFIX}${user.uid}` : null;
-    const pendingDraftStorageKey = user?.uid ? `${PENDING_DRAFT_STORAGE_PREFIX}${user.uid}` : null;
+    const activeDraftStorageKey = (user?.id || user?.uid) ? `${ACTIVE_DRAFT_STORAGE_PREFIX}${user.id || user.uid}` : null;
+    const pendingDraftStorageKey = (user?.id || user?.uid) ? `${PENDING_DRAFT_STORAGE_PREFIX}${user.id || user.uid}` : null;
+    const lastActiveSessionKey = (user?.id || user?.uid) ? `${LAST_ACTIVE_SESSION_PREFIX}${user.id || user.uid}` : null;
     const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
     const getStoredActiveDraft = React.useCallback(() => {
@@ -1070,7 +1025,7 @@ export function ChatPage() {
     }, [sessions]);
 
     const sendKeepaliveDraftSnapshot = React.useCallback((snapshot) => {
-        if (!snapshot || !user?.token) return;
+        if (!snapshot || !user?.token || (Array.isArray(snapshot.messages) && snapshot.messages.length <= 1)) return;
         if (snapshotMatchesSession(snapshot)) return;
 
         try {
@@ -1108,12 +1063,12 @@ export function ChatPage() {
         const msgs = Array.isArray(nextMessages) ? nextMessages : [];
         const currentUnsentText = unsentTextRef.current || "";
         if (msgs.length <= 1 && !currentUnsentText.trim()) return null;
-        
+
         let generatedTitle = title || getSessionTitle(msgs);
         if ((!generatedTitle || generatedTitle === "New Chat") && currentUnsentText) {
             generatedTitle = currentUnsentText.substring(0, 30) + (currentUnsentText.length > 30 ? "..." : "");
         }
-        
+
         const snapshot = {
             sessionId: sessionId || null,
             title: generatedTitle,
@@ -1182,6 +1137,15 @@ export function ChatPage() {
         const snapshot = readPendingDraftSnapshot();
         if (!snapshot || isGuest || isIncognito) return null;
 
+        if (Array.isArray(snapshot.messages) && snapshot.messages.length <= 1) {
+            clearPendingDraftSnapshot();
+            if (snapshot.unsentText) {
+                setInitialInputText(snapshot.unsentText);
+                unsentTextRef.current = snapshot.unsentText;
+            }
+            return null;
+        }
+
         const matchingSession = snapshot.sessionId
             ? existingSessions.find((session) => session.id === snapshot.sessionId)
             : null;
@@ -1223,7 +1187,7 @@ export function ChatPage() {
             console.error("Failed to restore pending draft:", err);
             return null;
         }
-    }, [isGuest, isIncognito, readPendingDraftSnapshot, sessions, snapshotMatchesSession, clearPendingDraftSnapshot, rememberActiveDraft, upsertSessionInState, isDisappearingMode]);
+    }, [isGuest, isIncognito, readPendingDraftSnapshot, sessions, snapshotMatchesSession, clearPendingDraftSnapshot, rememberActiveDraft, upsertSessionInState, isDisappearingMode, setInitialInputText]);
 
     const shouldKeepDraftState = React.useCallback((sessionId) => {
         if (!sessionId) return false;
@@ -1244,21 +1208,29 @@ export function ChatPage() {
 
     const saveCurrentConversationAsDraft = React.useCallback(async () => {
         const currentUnsentText = unsentTextRef.current || "";
-        if (isGuest || isIncognito || (messages.length <= 1 && !currentUnsentText.trim())) return null;
-        
+        if (isGuest || isIncognito || isLoading || messages.length <= 1) return null;
+
         let generatedTitle = getConversationTitle(messages, currentSessionId);
-        if ((!generatedTitle || generatedTitle === "New Chat") && currentUnsentText) {
+        if ((!generatedTitle || generatedTitle === "New Chat" || generatedTitle === "Chat session") && currentUnsentText) {
             generatedTitle = currentUnsentText.substring(0, 30) + (currentUnsentText.length > 30 ? "..." : "");
         }
-        
-        return persistSession({
+
+        const saved = await persistSession({
             sessionId: currentSessionId,
             nextMessages: messages,
             title: generatedTitle,
             isDraft: true,
             unsentText: currentUnsentText
         });
-    }, [isGuest, isIncognito, messages, currentSessionId, persistSession, getConversationTitle]);
+
+        if (saved && !currentSessionId) {
+            setCurrentSessionId(saved.id);
+            const newParams = new URLSearchParams(searchParams);
+            newParams.set("sessionId", saved.id);
+            navigate({ search: newParams.toString() }, { replace: true });
+        }
+        return saved;
+    }, [isGuest, isIncognito, messages, currentSessionId, persistSession, getConversationTitle, isLoading, searchParams, navigate]);
 
     const scheduleAutoSave = React.useCallback(() => {
         if (autoSaveTimerRef.current) {
@@ -1288,6 +1260,12 @@ export function ChatPage() {
             setStarredChats(prev => prev.filter(id => id !== sessionId));
             clearStoredDraft(sessionId);
             clearPendingDraftSnapshot();
+            if (lastActiveSessionKey) {
+                const lastSessionId = localStorage.getItem(lastActiveSessionKey);
+                if (lastSessionId === sessionId) {
+                    localStorage.removeItem(lastActiveSessionKey);
+                }
+            }
             if (currentSessionId === sessionId) {
                 setMessages([INITIAL_MESSAGE]);
                 setCurrentSessionId(null);
@@ -1388,6 +1366,9 @@ export function ChatPage() {
 
         clearStoredDraft();
         clearPendingDraftSnapshot();
+        if (lastActiveSessionKey) {
+            localStorage.removeItem(lastActiveSessionKey);
+        }
         pendingAbandonedDraftIdRef.current = null;
         resetChatSurface();
 
@@ -1407,8 +1388,8 @@ export function ChatPage() {
         if (window.innerWidth < 1024) setIsSidebarOpen(false);
     };
 
-    const handleSelectSession = async (sessionId, source = null) => {
-        const session = sessions.find(s => s.id === sessionId);
+    const handleSelectSession = async (sessionId, source = null, passedSession = null) => {
+        const session = passedSession || sessions.find(s => s.id === sessionId);
         if (!session) return;
 
         const sessionSource = resolveSessionSource(session, source);
@@ -1420,6 +1401,10 @@ export function ChatPage() {
         setDraftMenuSessionId(null);
         setInitialInputText(session.unsentText || "");
         unsentTextRef.current = session.unsentText || "";
+
+        if (lastActiveSessionKey && !isIncognito) {
+            localStorage.setItem(lastActiveSessionKey, session.id);
+        }
 
         const newParams = new URLSearchParams(searchParams);
         newParams.set("sessionId", session.id);
@@ -1454,7 +1439,8 @@ export function ChatPage() {
     };
 
     React.useEffect(() => {
-        const initChat = async () => {
+        console.log("ChatPage: Unified useEffect triggered. isGuest:", isGuest);
+        const checkHealth = async () => {
             try {
                 await chatbotApi.checkHealth();
                 setIsConnected(true);
@@ -1464,12 +1450,17 @@ export function ChatPage() {
             } finally {
                 setIsCheckingConnection(false);
             }
+        };
 
-            if (!isGuest) {
-                try {
-                    const res = await api.get('/chat/sessions');
+        const initSessions = async () => {
+            console.log("ChatPage: initSessions executed");
+            setIsRestoringSession(true);
+            try {
+                if (!isGuest) {
+                    const res = await api.get('/chat/sessions?limit=25');
                     const fetchedSessions = Array.isArray(res.data) ? res.data : [];
                     setSessions(fetchedSessions);
+                    setHasMoreSessions(fetchedSessions.length === 25);
 
                     const restoredDraft = await flushPendingDraftSnapshot(fetchedSessions);
                     const hydratedSessions = restoredDraft?.session
@@ -1479,27 +1470,69 @@ export function ChatPage() {
                     setSessions(hydratedSessions);
 
                     const storedDraft = getStoredActiveDraft();
-                    const sessionId = searchParams.get("sessionId") || storedDraft?.sessionId || restoredDraft?.session?.id;
+                    const lastActiveSessionId = lastActiveSessionKey ? localStorage.getItem(lastActiveSessionKey) : null;
+                    const sessionId = searchParams.get("sessionId") || lastActiveSessionId || storedDraft?.sessionId || restoredDraft?.session?.id;
                     const sessionSource = searchParams.get("source")
                         || (storedDraft && storedDraft.sessionId === sessionId ? storedDraft.source : null)
                         || restoredDraft?.source;
                     const initialSession = hydratedSessions.find((session) => session.id === sessionId);
 
                     if (initialSession) {
-                        await handleSelectSession(initialSession.id, sessionSource);
-                    } else if (sessionId) {
-                        clearStoredDraft(sessionId);
+                        await handleSelectSession(initialSession.id, sessionSource, initialSession);
+                    } else {
+                        if (sessionId) {
+                            clearStoredDraft(sessionId);
+                            if (lastActiveSessionKey && lastActiveSessionId === sessionId) {
+                                localStorage.removeItem(lastActiveSessionKey);
+                            }
+                        }
                     }
-
-                } catch (err) {
-                    console.error("Failed to fetch sessions from DB:", err);
                 }
+            } catch (err) {
+                console.error("Failed to fetch sessions from DB:", err);
+            } finally {
+                setIsRestoringSession(false);
             }
         };
 
-        initChat();
+        checkHealth();
+        initSessions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isGuest, flushPendingDraftSnapshot, getStoredActiveDraft, clearStoredDraft]);
+    }, [isGuest]);
+
+    const loadMoreSessions = React.useCallback(async () => {
+        if (isGuest || isLoadingMoreSessions || !hasMoreSessions) return;
+        setIsLoadingMoreSessions(true);
+        try {
+            const lastSession = sessions[sessions.length - 1];
+            if (!lastSession) {
+                setHasMoreSessions(false);
+                return;
+            }
+            const lastVal = lastSession.updatedAt || lastSession.timestamp || lastSession.createdAt;
+            const cursor = new Date(lastVal).toISOString();
+
+            const res = await api.get(`/chat/sessions?limit=25&cursor=${encodeURIComponent(cursor)}`);
+            const fetchedSessions = Array.isArray(res.data) ? res.data : [];
+
+            if (fetchedSessions.length > 0) {
+                setSessions((prev) => {
+                    const existingIds = new Set(prev.map(s => s.id));
+                    const newSessions = fetchedSessions.filter(s => !existingIds.has(s.id));
+                    return [...prev, ...newSessions];
+                });
+                if (fetchedSessions.length < 25) {
+                    setHasMoreSessions(false);
+                }
+            } else {
+                setHasMoreSessions(false);
+            }
+        } catch (err) {
+            console.error("Failed to load more sessions:", err);
+        } finally {
+            setIsLoadingMoreSessions(false);
+        }
+    }, [isGuest, isLoadingMoreSessions, hasMoreSessions, sessions]);
 
     const handleSend = async (text) => {
 
@@ -1623,7 +1656,7 @@ export function ChatPage() {
                     nextMessages: updatedWithErr,
                     title: getConversationTitle(updatedWithErr, currentSessionId),
                     isDraft: shouldKeepDraftState(currentSessionId)
-                }).catch(() => {});
+                }).catch(() => { });
             }
 
         } finally {
@@ -1973,6 +2006,9 @@ export function ChatPage() {
                 isDisappearingMode={isDisappearingMode}
                 setIsDisappearingMode={setIsDisappearingMode}
                 t={t}
+                hasMoreSessions={hasMoreSessions}
+                isLoadingMoreSessions={isLoadingMoreSessions}
+                onLoadMoreSessions={loadMoreSessions}
             />
 
 
@@ -2203,7 +2239,7 @@ export function ChatPage() {
 
                                         <ChatInput
                                             initialValue={initialInputText}
-                                            onChangeText={(text) => { 
+                                            onChangeText={(text) => {
                                                 unsentTextRef.current = text;
                                                 scheduleAutoSave();
                                             }}
@@ -2306,7 +2342,7 @@ export function ChatPage() {
 
                                             <ChatInput
                                                 initialValue={initialInputText}
-                                                onChangeText={(text) => { 
+                                                onChangeText={(text) => {
                                                     unsentTextRef.current = text;
                                                     scheduleAutoSave();
                                                 }}
@@ -2486,7 +2522,7 @@ export function ChatPage() {
 
                                         <ChatInput
                                             initialValue={initialInputText}
-                                            onChangeText={(text) => { 
+                                            onChangeText={(text) => {
                                                 unsentTextRef.current = text;
                                                 scheduleAutoSave();
                                             }}
@@ -2822,7 +2858,7 @@ export function ChatPage() {
 
                                             <ChatInput
                                                 initialValue={initialInputText}
-                                                onChangeText={(text) => { 
+                                                onChangeText={(text) => {
                                                     unsentTextRef.current = text;
                                                     scheduleAutoSave();
                                                 }}

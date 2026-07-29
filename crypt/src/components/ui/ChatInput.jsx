@@ -30,7 +30,8 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, initia
         if (onChangeText) {
             onChangeText(value);
         }
-    }, [value, onChangeText]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value]);
 
     React.useEffect(() => {
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {

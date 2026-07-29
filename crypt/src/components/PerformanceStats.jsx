@@ -7,7 +7,7 @@ import { Card } from './ui/Card';
 import {
     Clock, AlertCircle,
     ArrowUpRight, ArrowDownRight, Activity,
-    Globe, ShieldCheck, Database, ChevronRight
+    ChevronRight, Globe, ShieldCheck, Database
 } from 'lucide-react';
 import GlobeChatIcon from './icons/GlobeChatIcon';
 
@@ -56,7 +56,7 @@ const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, b
                 <Icon size={40} className={colorClass} />
             </div>
         </div>
-        
+
         <div className="flex items-center justify-between mb-1.5 relative z-10">
             <div className="flex items-center space-x-2.5">
                 <div className={`p-1.5 rounded-lg bg-white/5 border border-white/10 ${colorClass}`}>
@@ -75,7 +75,7 @@ const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, b
                 <span className="text-foreground-muted ml-1 opacity-60 truncate">last 7 days</span>
             </div>
         </div>
-        
+
         {/* Subtle Decorative Element */}
         <div className={`absolute bottom-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-700 bg-gradient-to-r ${bgGradient}`} />
     </Card>
@@ -101,8 +101,8 @@ const SystemStatusItem = ({ label, subLabel, icon: Icon, status = "100% uptime",
                 let color = isHealthy ? "bg-emerald-500" : "bg-rose-500";
 
                 return (
-                    <div 
-                        key={i} 
+                    <div
+                        key={i}
                         className={`h-4 flex-1 rounded-[1px] ${color} opacity-90 hover:opacity-100 transition-opacity`}
                     />
                 );
@@ -215,10 +215,10 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
                         endAngle={-270}
                     >
                         {data.map((entry, index) => (
-                            <Cell 
-                                key={`cell-${index}`} 
-                                fill={entry.color} 
-                                stroke="none" 
+                            <Cell
+                                key={`cell-${index}`}
+                                fill={entry.color}
+                                stroke="none"
                             />
                         ))}
                     </Pie>
@@ -292,7 +292,7 @@ export function PerformanceStats() {
 
     return (
         <div className="space-y-6 container mx-auto max-w-5xl px-4 pb-12">
-            
+
             {/* ROW 1: PERFORMANCE TREND + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
@@ -414,7 +414,7 @@ export function PerformanceStats() {
                                 </span>
                             </div>
                         </div>
-                        
+
                         <div className="divide-y divide-white/5">
                             <SystemStatusItem label="API" icon={Globe} />
                             <SystemStatusItem label="Production" subLabel="7 components" icon={Activity} />
@@ -478,9 +478,9 @@ export function PerformanceStats() {
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-1/2">
                     <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
-                        <GaugeMetric 
-                            data={sourceData} 
-                            label="Source Grounding" 
+                        <GaugeMetric
+                            data={sourceData}
+                            label="Source Grounding"
                             subLabel={{ primary: "With Sources", secondary: "Without Sources" }}
                             value={displayMetrics.groundingRate}
                             color="#3B82F6"
@@ -490,9 +490,9 @@ export function PerformanceStats() {
                 </div>
                 <div className="lg:w-1/2">
                     <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
-                        <GaugeMetric 
-                            data={offTopicData} 
-                            label="Off-Topic Detection" 
+                        <GaugeMetric
+                            data={offTopicData}
+                            label="Off-Topic Detection"
                             subLabel={{ primary: "On-Topic Queries", secondary: "Off-Topic Queries" }}
                             value={displayMetrics.onTopicRate}
                             color="#6366F1"

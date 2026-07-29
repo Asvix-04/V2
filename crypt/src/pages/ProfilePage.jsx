@@ -165,8 +165,12 @@ export function ProfilePage() {
             if (data.primaryLanguage && translations[data.primaryLanguage]) {
                 setLanguage(data.primaryLanguage);
             }
-            // Keep localStorage warm with the freshest full profile
-            localStorage.setItem('user', JSON.stringify(data));
+            // Keep localStorage warm with the freshest full profile, preserving auth token
+            const userRaw = localStorage.getItem('user');
+            if (userRaw) {
+                const cachedUser = JSON.parse(userRaw || '{}');
+                localStorage.setItem('user', JSON.stringify({ ...data, token: cachedUser.token }));
+            }
         } catch (error) {
             // Background refresh failed — cached data is already showing, no action needed
             console.error("Background profile refresh failed, showing cached data", error);
@@ -186,7 +190,11 @@ export function ProfilePage() {
 
             const { data } = await api.put('/auth/profile', updatedData);
             setUserData(data);
-            localStorage.setItem("user", JSON.stringify(data));
+            const userRaw = localStorage.getItem('user');
+            if (userRaw) {
+                const cachedUser = JSON.parse(userRaw || '{}');
+                localStorage.setItem("user", JSON.stringify({ ...data, token: cachedUser.token }));
+            }
         } catch (error) {
             console.error("Failed to update profile", error);
             alert("Failed to update profile");

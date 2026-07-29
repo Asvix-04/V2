@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     ArrowLeft, BookOpen, ChevronDown, ChevronRight, Loader2, Plus, User as UserIcon, X,
-    Star, Menu, MessageSquareDashed, MessageSquare, Trash2, MoreVertical
+    Star, StarOff, Menu, MessageSquareDashed, MessageSquare, Trash2, MoreVertical
 } from "lucide-react";
 import { MdSearch } from "react-icons/md";
 import { cn } from "../../lib/utils";
@@ -45,7 +45,10 @@ export function Sidebar({
     isIncognito = false,
     isDisappearingMode = false,
     setIsDisappearingMode,
-    t
+    t,
+    hasMoreSessions = false,
+    isLoadingMoreSessions = false,
+    onLoadMoreSessions = null
 }) {
     // Internal UI-only states
     const [searchQuery, setSearchQuery] = React.useState("");
@@ -203,7 +206,7 @@ export function Sidebar({
 
                         {/* Starred Chats (shared structure, only when pinned chats exist) */}
                         {(!isIncognito || mode !== "chat") && sessions.some(s => starredChats.includes(s.id)) && (
-                            <div className="space-y-0.5 overflow-hidden">
+                            <div className="space-y-0.5">
                                 <button
                                     onClick={() => setIsStarredOpen(prev => !prev)}
                                     className="w-full flex items-center justify-between px-2 py-1.5 hover:bg-slate-100/60 dark:hover:bg-white/5 rounded-lg transition-colors text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 group text-left cursor-pointer"
@@ -227,7 +230,7 @@ export function Sidebar({
                                             animate={{ height: "auto", opacity: 1 }}
                                             exit={{ height: 0, opacity: 0 }}
                                             transition={{ duration: 0.2, ease: "easeInOut" }}
-                                            className="overflow-hidden"
+                                            className="overflow-visible"
                                         >
                                             <div className="px-1 pb-1">
                                                 {sessions
@@ -235,6 +238,7 @@ export function Sidebar({
                                                     .map((session) => (
                                                         <div key={session.id} className="relative group">
                                                             {mode === "chat" ? (
+                                                                <>
                                                                 <button
                                                                     onClick={() => {
                                                                         if (renamingSessionId !== session.id) {
@@ -281,6 +285,55 @@ export function Sidebar({
                                                                         </div>
                                                                     )}
                                                                 </button>
+                                                                <AnimatePresence>
+                                                                    {activeMenuId === session.id && (
+                                                                        <motion.div
+                                                                            initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                                                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                            exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                                                                            transition={{ duration: 0.15 }}
+                                                                            className="absolute right-4 top-8 z-[60] w-36 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden animate-in fade-in"
+                                                                        >
+                                                                            <div className="flex flex-col p-1">
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        if (onToggleStar) onToggleStar(session.id, e);
+                                                                                        setActiveMenuId(null);
+                                                                                    }}
+                                                                                    className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+                                                                                >
+                                                                                    <span>Unstar Chat</span>
+                                                                                    <StarOff className="h-3.5 w-3.5" />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setRenameValue(session.title || "");
+                                                                                        setRenamingSessionId(session.id);
+                                                                                        setActiveMenuId(null);
+                                                                                    }}
+                                                                                    className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+                                                                                >
+                                                                                    <span>Rename</span>
+                                                                                </button>
+                                                                                <div className="h-px bg-zinc-200 dark:bg-white/10 my-1 mx-2" />
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        if (onDeleteSession) onDeleteSession(session.id, e);
+                                                                                        setActiveMenuId(null);
+                                                                                    }}
+                                                                                    className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors cursor-pointer"
+                                                                                >
+                                                                                    <span>Delete</span>
+                                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                                </button>
+                                                                            </div>
+                                                                        </motion.div>
+                                                                    )}
+                                                                </AnimatePresence>
+                                                                </>
                                                             ) : (
                                                                 <Link
                                                                     to={`/chat?sessionId=${session.id}`}
@@ -481,7 +534,11 @@ export function Sidebar({
                                                                             <button
                                                                                 onClick={(e) => {
                                                                                     e.stopPropagation();
+                                                                                    const willBeStarred = !starredChats.includes(session.id);
                                                                                     if (onToggleStar) onToggleStar(session.id, e);
+                                                                                    if (willBeStarred) {
+                                                                                        setIsStarredOpen(true);
+                                                                                    }
                                                                                     setActiveMenuId(null);
                                                                                 }}
                                                                                 className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
@@ -529,6 +586,27 @@ export function Sidebar({
                                                 </div>
                                             ))
                                         }
+                                        {hasMoreSessions && (
+                                            <div className="pt-2 px-1 flex justify-center">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (onLoadMoreSessions) onLoadMoreSessions();
+                                                    }}
+                                                    disabled={isLoadingMoreSessions}
+                                                    className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-white/10 text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer disabled:opacity-50 transition-colors"
+                                                >
+                                                    {isLoadingMoreSessions ? (
+                                                        <>
+                                                            <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
+                                                            <span>Loading...</span>
+                                                        </>
+                                                    ) : (
+                                                        <span>Show More Chats</span>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="px-4 py-6 text-center flex flex-col items-center justify-center">
