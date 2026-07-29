@@ -76,7 +76,7 @@ function ScrollToTop() {
   // Scroll to top and set page layout class
   React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
-    
+
     // Explicitly exclude /chat from the custom global scrollbar styles
     if (pathname === "/chat") {
       document.documentElement.classList.remove("custom-scrollbar-layout");

@@ -81,12 +81,12 @@ const ChatSession = require('../models/ChatSession');
 
 ChatSession.startDraftPurgeWorker();
 
-// @desc    Get all chat sessions for a user
-// @route   GET /api/chat/sessions
-// @access  Private
 router.get('/sessions', protect, async (req, res) => {
     try {
-        const sessions = await ChatSession.findByUserId(req.user.id);
+        const limit = parseInt(req.query.limit) || 0;
+        const cursor = req.query.cursor ? String(req.query.cursor) : null;
+
+        const sessions = await ChatSession.findByUserId(req.user.id, { limit, cursor });
         console.log("Sessions length:", sessions.length);
         if (sessions.length > 0) {
             console.log("First session constructor name:", sessions[0].constructor.name);

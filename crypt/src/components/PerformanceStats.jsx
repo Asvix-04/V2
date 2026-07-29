@@ -7,7 +7,7 @@ import { Card } from './ui/Card';
 import {
     Clock, AlertCircle,
     ArrowUpRight, ArrowDownRight, Activity,
-    Globe, ShieldCheck, Database
+    ChevronRight, Globe, ShieldCheck, Database
 } from 'lucide-react';
 import GlobeChatIcon from './icons/GlobeChatIcon';
 
