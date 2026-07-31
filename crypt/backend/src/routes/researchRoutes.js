@@ -186,4 +186,60 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
     }
 });
 
+const ResearchSession = require('../models/ResearchSession');
+
+// @desc    Get all research sessions for the logged-in user
+// @route   GET /api/research/sessions
+// @access  Private
+router.get('/sessions', protect, async (req, res) => {
+    try {
+        const sessions = await ResearchSession.findByUserId(req.user.id);
+        res.json(sessions.map((session) => session.toJSON()));
+    } catch (error) {
+        console.error('Fetch research sessions error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Save or update a research session
+// @route   POST /api/research/sessions
+// @access  Private
+router.post('/sessions', protect, async (req, res) => {
+    try {
+        const { id, title, messages, createdAt } = req.body;
+        if (!id) {
+            return res.status(400).json({ message: 'Session ID is required' });
+        }
+
+        const session = await ResearchSession.save({
+            id,
+            title,
+            messages,
+            createdAt
+        }, req.user.id);
+
+        res.json(session.toJSON());
+    } catch (error) {
+        console.error('Save research session error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Delete a research session
+// @route   DELETE /api/research/sessions/:id
+// @access  Private
+router.delete('/sessions/:id', protect, async (req, res) => {
+    try {
+        const success = await ResearchSession.delete(req.params.id, req.user.id);
+        if (success) {
+            res.json({ message: 'Research session deleted successfully' });
+        } else {
+            res.status(404).json({ message: 'Research session not found or unauthorized' });
+        }
+    } catch (error) {
+        console.error('Delete research session error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;

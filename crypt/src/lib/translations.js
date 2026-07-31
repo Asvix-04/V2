@@ -74,10 +74,10 @@ export const translations = {
         "arabic": "Arabic",
         "portuguese": "Portuguese",
 
-        "home.hero.badge": "INTRODUCING DIGILAB V1",
+        "home.hero.badge": "INTRODUCING DIGILAB",
         "home.hero.title1": "Academic Intelligence",
         "home.hero.title2": "Reimagined.",
-        "home.hero.description": "Empowering learning and teaching through advanced AI-driven intelligence.",
+        "home.hero.description": "Strengthening critical thinking through AI-powered Media Literacy, fact-checking, and source analysis.",
         "home.hero.teacherBtn": "I am a Teacher",
         "home.hero.studentBtn": "I am a Student",
         "home.hero.getStarted": "Get Started",
@@ -169,7 +169,7 @@ export const translations = {
         "common.odia": "ओडिया",
         "common.assamese": "असमिया",
         // Home Page
-        "home.hero.badge": "पेश है DIGILAB V1",
+        "home.hero.badge": "पेश है DIGILAB ",
         "home.hero.title1": "शैक्षणिक बुद्धिमत्ता",
         "home.hero.title2": "पुनर्कल्पित।",
         "home.hero.description": "उन्नत AI-संचालित बुद्धिमत्ता के माध्यम से सीखने और सिखाने को सशक्त बनाना।",

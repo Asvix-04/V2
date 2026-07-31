@@ -37,7 +37,7 @@ function ChatIllustration() {
                 {/* User bubble */}
                 <div className="flex justify-end">
                     <div className="bg-accent/12 dark:bg-accent/20 border border-accent/15 rounded-xl rounded-tr-sm px-2.5 py-1.5 text-[9.5px] text-accent font-medium leading-tight max-w-[80%]">
-                        Explain quantum entanglement
+                        Explain how AI-generated misinformation spreads
                     </div>
                 </div>
                 {/* AI reply */}
@@ -190,20 +190,20 @@ function VoiceIllustration() {
     return (
         <div className="rounded-xl border border-slate-200/50 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] p-2.5 select-none">
             <div className="flex items-center gap-1.5 mb-2">
-                <div className="w-4 h-4 rounded-full bg-rose-50 dark:bg-rose-500/10 border border-rose-200/40 dark:border-rose-500/20 flex items-center justify-center">
-                    <Mic2 className="w-2 h-2 text-rose-500" />
+                <div className="w-4 h-4 rounded-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/40 dark:border-indigo-500/20 flex items-center justify-center">
+                    <Mic2 className="w-2 h-2 text-indigo-500" />
                 </div>
                 <div className="h-1.5 bg-slate-100/70 dark:bg-white/5 rounded-full flex-1" />
                 <div className="flex items-center gap-0.5">
-                    <div className="w-1 h-1 rounded-full bg-rose-400 animate-pulse" />
-                    <span className="text-[7px] text-rose-500 font-mono font-bold">REC</span>
+                    <div className="w-1 h-1 rounded-full bg-indigo-400 animate-pulse" />
+                    <span className="text-[7px] text-indigo-500 font-mono font-bold">REC</span>
                 </div>
             </div>
             <div className="flex items-center gap-[2px] justify-center" style={{ height: 28 }}>
                 {bars.map((h, i) => (
                     <motion.div
                         key={i}
-                        className="w-[2.5px] rounded-full bg-gradient-to-t from-rose-500 to-rose-300"
+                        className="w-[2.5px] rounded-full bg-gradient-to-t from-indigo-500 to-indigo-300"
                         animate={{ scaleY: [0.6, 1.4, 0.6] }}
                         transition={{ duration: 0.7 + (i % 3) * 0.15, repeat: Infinity, ease: "easeInOut", delay: i * 0.04 }}
                         style={{ height: h * 2.2, transformOrigin: "bottom" }}
@@ -417,11 +417,11 @@ const smallFeatures = [
     {
         id: "voice",
         icon: Mic2,
-        iconColor: "text-rose-600 dark:text-rose-400",
-        iconBg: "bg-rose-50 dark:bg-rose-500/10 border-rose-200/50 dark:border-rose-500/20",
-        hoverBorder: "hover:border-rose-300/60 dark:hover:border-rose-500/25",
-        hoverShadow: "hover:shadow-[0_8px_32px_rgba(244,63,94,0.12)] dark:hover:shadow-[0_4px_24px_rgba(244,63,94,0.08)]",
-        gradientTo: "to-rose-50/25 dark:to-rose-500/[0.02]",
+        iconColor: "text-indigo-600 dark:text-indigo-400",
+        iconBg: "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200/50 dark:border-indigo-500/20",
+        hoverBorder: "hover:border-indigo-300/60 dark:hover:border-indigo-500/25",
+        hoverShadow: "hover:shadow-[0_8px_32px_rgba(99,102,241,0.12)] dark:hover:shadow-[0_4px_24px_rgba(99,102,241,0.08)]",
+        gradientTo: "to-indigo-50/25 dark:to-indigo-500/[0.02]",
         title: "Voice",
         description: "Speak questions to get instant, natural explanations.",
         illustration: <VoiceIllustration />,

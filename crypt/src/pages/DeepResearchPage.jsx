@@ -114,6 +114,10 @@ export function DeepResearchPage() {
         const res = await api.get("/chat/sessions");
         setSessions(res.data || []);
       } catch { }
+      try {
+        const res = await api.get("/research/sessions");
+        setDeepResearchChats(res.data || []);
+      } catch { }
     };
     load();
   }, []);
@@ -124,26 +128,39 @@ export function DeepResearchPage() {
   });
 
   // ── Deep Research Chats ───────────────────────────────────────────────────
-  const [deepResearchChats, setDeepResearchChats] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem("deep_research_chats") || "[]"); } catch { return []; }
-  });
+  const [deepResearchChats, setDeepResearchChats] = React.useState([]);
 
   React.useEffect(() => {
-    const handleStorage = () => {
-      try { setDeepResearchChats(JSON.parse(localStorage.getItem("deep_research_chats") || "[]")); } catch { }
+    const handleSync = async () => {
+      if (isGuest) return;
+      try {
+        const res = await api.get("/research/sessions");
+        setDeepResearchChats(res.data || []);
+      } catch { }
     };
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener("focus", handleStorage);
+    window.addEventListener("focus", handleSync);
     return () => {
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("focus", handleStorage);
+      window.removeEventListener("focus", handleSync);
     };
-  }, []);
+  }, [isGuest]);
 
-  const saveChatsToStorage = (updated) => {
-    setDeepResearchChats(updated);
-    localStorage.setItem("deep_research_chats", JSON.stringify(updated));
-    window.dispatchEvent(new Event("storage"));
+  const saveResearchSession = async (session) => {
+    try {
+      const res = await api.post("/research/sessions", session);
+      const saved = res.data;
+      setDeepResearchChats(prev => {
+        const exists = prev.some(s => s.id === saved.id);
+        if (exists) {
+          return prev.map(s => s.id === saved.id ? saved : s);
+        } else {
+          return [saved, ...prev];
+        }
+      });
+      return saved;
+    } catch (err) {
+      console.error("Failed to save research session to DB:", err);
+      throw err;
+    }
   };
 
   // ── Messages ──────────────────────────────────────────────────────────────
@@ -302,14 +319,14 @@ export function DeepResearchPage() {
       let session = null;
       if (!targetId) {
         targetId = "dr_" + Date.now();
-        session = { id: targetId, title: text.substring(0, 30) + (text.length > 30 ? "..." : ""), messages: [userMsg], createdAt: Date.now() };
-        saveChatsToStorage([session, ...deepResearchChats]);
+        session = { id: targetId, title: text.substring(0, 30) + (text.length > 30 ? "..." : ""), messages: [userMsg] };
+        await saveResearchSession(session);
         setSearchParams({ session: targetId });
       } else {
         session = deepResearchChats.find(s => s.id === targetId);
         if (session) {
           session = { ...session, messages: [...(session.messages || []), userMsg] };
-          saveChatsToStorage(deepResearchChats.map(s => s.id === targetId ? session : s));
+          await saveResearchSession(session);
         }
       }
 
@@ -319,8 +336,13 @@ export function DeepResearchPage() {
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
 
-      const latestChats = JSON.parse(localStorage.getItem("deep_research_chats") || "[]");
-      saveChatsToStorage(latestChats.map(s => s.id === targetId ? { ...s, messages: [...(s.messages || []), assistantMsg] } : s));
+      if (session) {
+        const finalSession = {
+          ...session,
+          messages: [...(session.messages || []), assistantMsg]
+        };
+        await saveResearchSession(finalSession);
+      }
       setMessages(prev => [...prev, userMsg, assistantMsg]);
 
       // Re-fetch quota to ensure alignment
@@ -341,12 +363,18 @@ export function DeepResearchPage() {
     }
   };
 
-  const handleDeleteResearch = (id, e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const filtered = deepResearchChats.filter(s => s.id !== id);
-    saveChatsToStorage(filtered);
-    if (currentSessionId === id) handleNewResearch();
+  const handleDeleteResearch = async (id, e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    try {
+      await api.delete(`/research/sessions/${id}`);
+      setDeepResearchChats(prev => prev.filter(s => s.id !== id));
+      if (currentSessionId === id) handleNewResearch();
+    } catch (err) {
+      console.error("Failed to delete research session:", err);
+    }
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────

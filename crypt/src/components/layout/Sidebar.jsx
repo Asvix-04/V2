@@ -119,13 +119,16 @@ export function Sidebar({
             <div
                 className={cn(
                     "fixed inset-y-0 left-0 z-[60] flex flex-col border-r border-slate-200/80 dark:border-white/5 bg-white dark:bg-zinc-950 h-full transition-[width,transform] duration-300 ease-in-out lg:relative shadow-[2px_0_20px_rgba(0,0,0,0.04)] dark:shadow-none",
-                    isSidebarOpen
-                        ? "w-[85vw] min-w-[280px] max-w-[320px] translate-x-0 lg:w-80 lg:min-w-[320px]"
-                        : "-translate-x-full lg:translate-x-0 lg:w-[72px] lg:min-w-[72px]"
+                    isIncognito
+                        ? "w-[72px] min-w-[72px] translate-x-0 lg:w-[72px] lg:min-w-[72px]"
+                        : (isSidebarOpen
+                            ? "w-[85vw] min-w-[280px] max-w-[320px] translate-x-0 lg:w-80 lg:min-w-[320px]"
+                            : "-translate-x-full lg:translate-x-0 lg:w-[72px] lg:min-w-[72px]")
                 )}
             >
                 {/* ── Expanded Sidebar ──────────────────────────────────────── */}
-                <div className={cn("flex flex-col h-full w-full overflow-hidden whitespace-nowrap", !isSidebarOpen && "lg:hidden")}>
+                {!isIncognito && (
+                    <div className={cn("flex flex-col h-full w-full overflow-hidden whitespace-nowrap", !isSidebarOpen && "lg:hidden")}>
                     
                     {/* Top bar (Fixed) */}
                     <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-white/5 px-4 bg-white/90 dark:bg-zinc-950/80 sticky top-0 z-10 backdrop-blur-md">
@@ -136,7 +139,7 @@ export function Sidebar({
                         >
                             <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
                             <span className="text-xs font-medium">
-                                {isGuest ? translate("nav.home", "Home") : translate("chat.Dashboard", "Dashboard")}
+                                {isGuest ? translate("nav.home", "Home") : translate("chat.Dashboard", "Workspace")}
                             </span>
                         </Link>
 
@@ -354,7 +357,7 @@ export function Sidebar({
                         )}
 
                         {/* Deep Research Section (Collapsible, only when research topics exist) */}
-                        {(!isIncognito || mode !== "chat") && deepResearchChats.length > 0 && (
+                        {!isGuest && (!isIncognito || mode !== "chat") && deepResearchChats.length > 0 && (
                             <div className="space-y-0.5 overflow-hidden">
                                 <button
                                     onClick={() => setIsDeepResearchOpen(prev => !prev)}
@@ -653,12 +656,13 @@ export function Sidebar({
                         </Link>
                     </div>
                 </div>
+                )}
 
                 {/* ── Collapsed Rail ────────────────────────────────────────── */}
                 <div
                     className={cn(
                         "hidden flex-col h-full w-full items-center py-4 opacity-0 transition-all duration-300",
-                        !isSidebarOpen && "lg:flex opacity-100",
+                        (isIncognito || !isSidebarOpen) && "flex lg:flex opacity-100",
                         mode === "chat" && isIncognito
                             ? "border-r"
                             : "bg-slate-50/50 dark:bg-transparent border-r border-slate-200/60 dark:border-transparent"
@@ -669,45 +673,66 @@ export function Sidebar({
                     } : undefined}
                 >
                     {/* Brand Logo Expand Trigger Button */}
-                    <button
-                        onClick={() => setIsSidebarOpen(true)}
-                        onMouseEnter={() => setIsCollapsedLogoHovered(true)}
-                        onMouseLeave={() => setIsCollapsedLogoHovered(false)}
-                        className={cn(
-                            "relative h-10 w-10 transition-all duration-200 rounded-xl flex items-center justify-center shrink-0 mb-6 cursor-pointer overflow-hidden",
-                            mode === "chat" && isIncognito
-                                ? "text-slate-400 hover:text-slate-200 hover:bg-white/6"
-                                : "text-slate-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 hover:shadow-sm"
-                        )}
-                        title="Expand sidebar"
-                    >
-                        <div className="relative w-5 h-5 flex items-center justify-center">
-                            <Logo
-                                className={cn(
-                                    "absolute w-5 h-5 transition-all duration-300 ease-in-out text-[#5c67f2]",
-                                    isCollapsedLogoHovered ? "opacity-0 scale-75 rotate-90" : "opacity-100 scale-100 rotate-0"
-                                )}
-                            />
-                            <ChevronRight
-                                className={cn(
-                                    "absolute w-5 h-5 text-accent transition-all duration-300 ease-in-out",
-                                    isCollapsedLogoHovered ? "opacity-100 scale-100 translate-x-0" : "opacity-0 scale-75 -translate-x-2"
-                                )}
-                            />
-                        </div>
-                    </button>
+                    {isIncognito ? (
+                        <Link
+                            to={isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/workspace")}
+                            onMouseEnter={() => setIsCollapsedLogoHovered(true)}
+                            onMouseLeave={() => setIsCollapsedLogoHovered(false)}
+                            className="relative h-10 w-10 transition-all duration-200 rounded-xl flex items-center justify-center shrink-0 mb-6 cursor-pointer overflow-hidden text-slate-400 hover:text-slate-200 hover:bg-white/6"
+                            title="Back to Workspace"
+                        >
+                            <div className="relative w-5 h-5 flex items-center justify-center">
+                                <Logo
+                                    className={cn(
+                                        "absolute w-5 h-5 transition-all duration-300 ease-in-out text-[#5c67f2]",
+                                        isCollapsedLogoHovered ? "opacity-0 scale-75 rotate-90" : "opacity-100 scale-100 rotate-0"
+                                    )}
+                                />
+                                <ArrowLeft
+                                    className={cn(
+                                        "absolute w-5 h-5 text-accent transition-all duration-300 ease-in-out",
+                                        isCollapsedLogoHovered ? "opacity-100 scale-100 translate-x-0" : "opacity-0 scale-75 -translate-x-2"
+                                    )}
+                                />
+                            </div>
+                        </Link>
+                    ) : (
+                        <button
+                            onClick={() => setIsSidebarOpen(true)}
+                            onMouseEnter={() => setIsCollapsedLogoHovered(true)}
+                            onMouseLeave={() => setIsCollapsedLogoHovered(false)}
+                            className={cn(
+                                "relative h-10 w-10 transition-all duration-200 rounded-xl flex items-center justify-center shrink-0 mb-6 cursor-pointer overflow-hidden",
+                                "text-slate-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 hover:shadow-sm"
+                            )}
+                            title="Expand sidebar"
+                        >
+                            <div className="relative w-5 h-5 flex items-center justify-center">
+                                <Logo
+                                    className={cn(
+                                        "absolute w-5 h-5 transition-all duration-300 ease-in-out text-[#5c67f2]",
+                                        isCollapsedLogoHovered ? "opacity-0 scale-75 rotate-90" : "opacity-100 scale-100 rotate-0"
+                                    )}
+                                />
+                                <ChevronRight
+                                    className={cn(
+                                        "absolute w-5 h-5 text-accent transition-all duration-300 ease-in-out",
+                                        isCollapsedLogoHovered ? "opacity-100 scale-100 translate-x-0" : "opacity-0 scale-75 -translate-x-2"
+                                    )}
+                                />
+                            </div>
+                        </button>
+                    )}
 
                     {/* Disappearing Messages Toggle (Chat mode only) */}
-                    {mode === "chat" && (
+                    {!isIncognito && mode === "chat" && (
                         <button
                             onClick={() => setIsDisappearingMode?.(!isDisappearingMode)}
                             className={cn(
                                 "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mb-4 cursor-pointer",
                                 isDisappearingMode
                                     ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 shadow-sm"
-                                    : isIncognito
-                                        ? "text-slate-400 hover:text-slate-200 hover:bg-white/6"
-                                        : "text-slate-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 hover:shadow-sm"
+                                    : "text-slate-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 hover:shadow-sm"
                             )}
                             title={isDisappearingMode ? "Disappearing Mode: ON" : "Disappearing Mode: OFF"}
                         >
@@ -716,23 +741,23 @@ export function Sidebar({
                     )}
 
                     {/* Action Button */}
-                    <button
-                        onClick={onNewSession}
-                        className={cn(
-                            "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 shadow-sm hover:shadow-md cursor-pointer",
-                            mode === "chat"
-                                ? isIncognito
-                                    ? "bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25 border border-indigo-500/20"
-                                    : "bg-gradient-to-br from-blue-50 to-indigo-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:from-blue-100 hover:to-indigo-100 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-900/50"
-                                : "bg-gradient-to-br from-indigo-50 to-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:from-indigo-100 hover:to-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200/80 dark:border-indigo-900/50"
-                        )}
-                        title={mode === "chat" ? "New Chat" : "New Research"}
-                    >
-                        <Plus className="h-5 w-5" />
-                    </button>
+                    {!isIncognito && (
+                        <button
+                            onClick={onNewSession}
+                            className={cn(
+                                "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 shadow-sm hover:shadow-md cursor-pointer",
+                                mode === "chat"
+                                    ? "bg-gradient-to-br from-blue-50 to-indigo-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:from-blue-100 hover:to-indigo-100 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-900/50"
+                                    : "bg-gradient-to-br from-indigo-50 to-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:from-indigo-100 hover:to-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200/80 dark:border-indigo-900/50"
+                            )}
+                            title={mode === "chat" ? "New Chat" : "New Research"}
+                        >
+                            <Plus className="h-5 w-5" />
+                        </button>
+                    )}
 
                     {/* Starred shortcut button */}
-                    {sessions.some(s => starredChats.includes(s.id)) && (
+                    {!isIncognito && sessions.some(s => starredChats.includes(s.id)) && (
                         <button
                             onClick={() => setIsSidebarOpen(true)}
                             className="h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mt-4 text-yellow-500 hover:text-yellow-600 dark:text-yellow-400 dark:hover:text-yellow-300 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 hover:shadow-sm cursor-pointer"
@@ -743,7 +768,7 @@ export function Sidebar({
                     )}
 
                     {/* Deep Research shortcut button */}
-                    {deepResearchChats.length > 0 && (
+                    {!isIncognito && deepResearchChats.length > 0 && (
                         <button
                             onClick={() => setIsSidebarOpen(true)}
                             className="h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mt-4 text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 hover:bg-indigo-50 hover:bg-indigo-950/30 hover:shadow-sm cursor-pointer"
@@ -754,38 +779,40 @@ export function Sidebar({
                     )}
 
                     {/* Search shortcut button */}
-                    <button
-                        onClick={() => {
-                            setIsSidebarOpen(true);
-                            setTimeout(() => {
-                                document.getElementById(mode === "chat" ? "sidebar-search" : "sidebar-search-dr")?.focus();
-                            }, 300);
-                        }}
-                        className={cn(
-                            "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mt-4 cursor-pointer",
-                            mode === "chat" && isIncognito
-                                ? "text-slate-400 hover:text-slate-200 hover:bg-white/6"
-                                : "text-slate-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 hover:shadow-sm"
-                        )}
-                        title="Search chats"
-                    >
-                        <MdSearch className="h-5 w-5" />
-                    </button>
+                    {!isIncognito && (
+                        <button
+                            onClick={() => {
+                                setIsSidebarOpen(true);
+                                setTimeout(() => {
+                                    document.getElementById(mode === "chat" ? "sidebar-search" : "sidebar-search-dr")?.focus();
+                                }, 300);
+                            }}
+                            className={cn(
+                                "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mt-4 cursor-pointer",
+                                "text-slate-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 hover:shadow-sm"
+                            )}
+                            title="Search chats"
+                        >
+                            <MdSearch className="h-5 w-5" />
+                        </button>
+                    )}
 
                     {/* User profile avatar shortcut */}
-                    <div className="mt-auto">
-                        <Link
-                            to="/profile"
-                            className="h-10 w-10 flex items-center justify-center rounded-full ring-2 transition-all overflow-hidden bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-blue-100 dark:ring-blue-900/30 hover:ring-blue-200 dark:hover:ring-blue-900/50 cursor-pointer"
-                            title="Profile"
-                        >
-                            {user?.profilePhoto ? (
-                                <img src={user.profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
-                            ) : (
-                                <UserIcon className="h-5 w-5" />
-                            )}
-                        </Link>
-                    </div>
+                    {!isIncognito && (
+                        <div className="mt-auto">
+                            <Link
+                                to="/profile"
+                                className="h-10 w-10 flex items-center justify-center rounded-full ring-2 transition-all overflow-hidden bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-blue-100 dark:ring-blue-900/30 hover:ring-blue-200 dark:hover:ring-blue-900/50 cursor-pointer"
+                                title="Profile"
+                            >
+                                {user?.profilePhoto ? (
+                                    <img src={user.profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
+                                ) : (
+                                    <UserIcon className="h-5 w-5" />
+                                )}
+                            </Link>
+                        </div>
+                    )}
                 </div>
             </div>
         </>

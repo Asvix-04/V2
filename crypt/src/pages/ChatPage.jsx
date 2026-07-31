@@ -543,30 +543,24 @@ export function ChatPage() {
     const [messages, setMessages] = React.useState([INITIAL_MESSAGE]);
     const [sessions, setSessions] = React.useState([]);
 
-    const [deepResearchChats, setDeepResearchChats] = React.useState(() => {
-        try {
-            return JSON.parse(localStorage.getItem("deep_research_chats") || "[]");
-        } catch {
-            return [];
-        }
-    });
+    const [deepResearchChats, setDeepResearchChats] = React.useState([]);
     const [isDeepResearchOpen, setIsDeepResearchOpen] = React.useState(true);
     const [hasMoreSessions, setHasMoreSessions] = React.useState(true);
     const [isLoadingMoreSessions, setIsLoadingMoreSessions] = React.useState(false);
 
     React.useEffect(() => {
-        const handleStorageChange = () => {
+        const handleSync = async () => {
+            if (isGuest) return;
             try {
-                setDeepResearchChats(JSON.parse(localStorage.getItem("deep_research_chats") || "[]"));
+                const res = await api.get('/research/sessions');
+                setDeepResearchChats(Array.isArray(res.data) ? res.data : []);
             } catch { }
         };
-        window.addEventListener("storage", handleStorageChange);
-        window.addEventListener("focus", handleStorageChange);
+        window.addEventListener("focus", handleSync);
         return () => {
-            window.removeEventListener("storage", handleStorageChange);
-            window.removeEventListener("focus", handleStorageChange);
+            window.removeEventListener("focus", handleSync);
         };
-    }, []);
+    }, [isGuest]);
 
     const [currentSessionId, setCurrentSessionId] = React.useState(null);
     const [currentSessionSource, setCurrentSessionSource] = React.useState(null);
@@ -1392,6 +1386,12 @@ export function ChatPage() {
         const session = passedSession || sessions.find(s => s.id === sessionId);
         if (!session) return;
 
+        if (isIncognito) {
+            setIsIncognito(false);
+            try { sessionStorage.removeItem('isIncognito'); } catch { }
+            try { sessionStorage.removeItem('normalStateCache'); } catch { }
+        }
+
         const sessionSource = resolveSessionSource(session, source);
         setCurrentSessionId(session.id);
         setCurrentSessionSource(sessionSource);
@@ -1462,6 +1462,13 @@ export function ChatPage() {
                     setSessions(fetchedSessions);
                     setHasMoreSessions(fetchedSessions.length === 25);
 
+                    try {
+                        const resResearch = await api.get('/research/sessions');
+                        setDeepResearchChats(Array.isArray(resResearch.data) ? resResearch.data : []);
+                    } catch (err) {
+                        console.error("Failed to fetch research sessions:", err);
+                    }
+
                     const restoredDraft = await flushPendingDraftSnapshot(fetchedSessions);
                     const hydratedSessions = restoredDraft?.session
                         ? [restoredDraft.session, ...fetchedSessions.filter((session) => session.id !== restoredDraft.session.id)]
@@ -1469,21 +1476,32 @@ export function ChatPage() {
 
                     setSessions(hydratedSessions);
 
-                    const storedDraft = getStoredActiveDraft();
-                    const lastActiveSessionId = lastActiveSessionKey ? localStorage.getItem(lastActiveSessionKey) : null;
-                    const sessionId = searchParams.get("sessionId") || lastActiveSessionId || storedDraft?.sessionId || restoredDraft?.session?.id;
-                    const sessionSource = searchParams.get("source")
-                        || (storedDraft && storedDraft.sessionId === sessionId ? storedDraft.source : null)
-                        || restoredDraft?.source;
-                    const initialSession = hydratedSessions.find((session) => session.id === sessionId);
+                    const urlSessionId = searchParams.get("sessionId");
+                    const shouldRestore = !isIncognito || urlSessionId;
 
-                    if (initialSession) {
-                        await handleSelectSession(initialSession.id, sessionSource, initialSession);
-                    } else {
-                        if (sessionId) {
-                            clearStoredDraft(sessionId);
-                            if (lastActiveSessionKey && lastActiveSessionId === sessionId) {
-                                localStorage.removeItem(lastActiveSessionKey);
+                    if (shouldRestore) {
+                        if (isIncognito && urlSessionId) {
+                            setIsIncognito(false);
+                            try { sessionStorage.removeItem('isIncognito'); } catch { }
+                            try { sessionStorage.removeItem('normalStateCache'); } catch { }
+                        }
+
+                        const storedDraft = getStoredActiveDraft();
+                        const lastActiveSessionId = lastActiveSessionKey ? localStorage.getItem(lastActiveSessionKey) : null;
+                        const sessionId = urlSessionId || lastActiveSessionId || storedDraft?.sessionId || restoredDraft?.session?.id;
+                        const sessionSource = searchParams.get("source")
+                            || (storedDraft && storedDraft.sessionId === sessionId ? storedDraft.source : null)
+                            || restoredDraft?.source;
+                        const initialSession = hydratedSessions.find((session) => session.id === sessionId);
+
+                        if (initialSession) {
+                            await handleSelectSession(initialSession.id, sessionSource, initialSession);
+                        } else {
+                            if (sessionId) {
+                                clearStoredDraft(sessionId);
+                                if (lastActiveSessionKey && lastActiveSessionId === sessionId) {
+                                    localStorage.removeItem(lastActiveSessionKey);
+                                }
                             }
                         }
                     }
@@ -1533,6 +1551,19 @@ export function ChatPage() {
             setIsLoadingMoreSessions(false);
         }
     }, [isGuest, isLoadingMoreSessions, hasMoreSessions, sessions]);
+
+    const handleDeleteResearch = async (id, e) => {
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+        try {
+            await api.delete(`/research/sessions/${id}`);
+            setDeepResearchChats(prev => prev.filter(c => c.id !== id));
+        } catch (err) {
+            console.error("Failed to delete research session:", err);
+        }
+    };
 
     const handleSend = async (text) => {
 
@@ -1999,6 +2030,7 @@ export function ChatPage() {
                 onNewSession={handleNewChat}
                 onSelectSession={handleSelectSession}
                 onDeleteSession={handleDeleteSession}
+                onDeleteResearch={handleDeleteResearch}
                 onToggleStar={toggleStar}
                 onRenameSubmit={handleRenameSubmit}
                 onClearHistory={handleClearHistory}
@@ -2290,6 +2322,36 @@ export function ChatPage() {
                                                 <MessageBubble key={idx} message={msg} isIncognito={isIncognito} />
 
                                             ))}
+
+                                            {isLoading && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className="flex items-center gap-3 max-sm:p-2 sm:p-4"
+                                                >
+                                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                                                        <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-sm text-zinc-500 dark:text-zinc-400">Thinking</span>
+                                                        <motion.span
+                                                            animate={{ opacity: [0, 1, 0] }}
+                                                            transition={{ duration: 1.5, repeat: Infinity, delay: 0 }}
+                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
+                                                        >.</motion.span>
+                                                        <motion.span
+                                                            animate={{ opacity: [0, 1, 0] }}
+                                                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
+                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
+                                                        >.</motion.span>
+                                                        <motion.span
+                                                            animate={{ opacity: [0, 1, 0] }}
+                                                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
+                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
+                                                        >.</motion.span>
+                                                    </div>
+                                                </motion.div>
+                                            )}
 
                                             {/* Follow-up Question Chips */}
                                             <AnimatePresence>

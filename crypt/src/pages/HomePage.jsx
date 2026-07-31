@@ -5,7 +5,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { PageTransition } from "../components/ui/PageTransition";
-import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star, StarOff, Languages, GraduationCap, ChevronDown } from "lucide-react";
+import { ArrowRight, BookOpen, BrainCircuit, Library, Sparkles, Zap, Check, Star, StarOff, Languages, GraduationCap, ChevronDown, ShieldCheck, Scale, Search, Brain, CheckCircle, FileSearch, Columns, Newspaper, BadgeCheck, Lightbulb } from "lucide-react";
 import { Logo } from "../components/ui/Logo";
 import { FeaturesSection } from "../components/FeaturesSection";
 import { PerformanceStats } from "../components/PerformanceStats";
@@ -85,6 +85,57 @@ const floatingFeatures = [
 
 ];
 
+const mediaLiteracyCards = [
+    {
+        icon: ShieldCheck,
+        title: "Verify Information",
+        description: "Verify online claims, news, and digital content using trusted evidence and AI-assisted analysis before accepting or sharing information.",
+        iconColor: "text-indigo-600 dark:text-indigo-400",
+        iconBg: "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200/50 dark:border-indigo-500/20",
+        hoverBorder: "hover:border-indigo-300/60 dark:hover:border-indigo-500/25",
+        hoverShadow: "hover:shadow-[0_8px_32px_rgba(99,102,241,0.12)] dark:hover:shadow-[0_4px_24px_rgba(99,102,241,0.08)]",
+        gradientTo: "to-indigo-50/25 dark:to-indigo-500/[0.02]"
+    },
+    {
+        icon: Scale,
+        title: "Detect Bias",
+        description: "Recognize how headlines, wording, visuals, and framing influence opinions and identify different forms of bias in media.",
+        iconColor: "text-purple-600 dark:text-purple-400",
+        iconBg: "bg-purple-50 dark:bg-purple-500/10 border-purple-200/50 dark:border-purple-500/20",
+        hoverBorder: "hover:border-purple-300/60 dark:hover:border-purple-500/25",
+        hoverShadow: "hover:shadow-[0_8px_32px_rgba(168,85,247,0.12)] dark:hover:shadow-[0_4px_24px_rgba(168,85,247,0.08)]",
+        gradientTo: "to-purple-50/25 dark:to-purple-500/[0.02]"
+    },
+    {
+        icon: Search,
+        title: "Evaluate Sources",
+        description: "Assess the credibility of websites, news outlets, social platforms, and digital sources before relying on their information.",
+        iconColor: "text-blue-600 dark:text-blue-400",
+        iconBg: "bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20",
+        hoverBorder: "hover:border-blue-300/60 dark:hover:border-blue-500/25",
+        hoverShadow: "hover:shadow-[0_8px_32px_rgba(59,130,246,0.12)] dark:hover:shadow-[0_4px_24px_rgba(59,130,246,0.08)]",
+        gradientTo: "to-blue-50/25 dark:to-blue-500/[0.02]"
+    },
+    {
+        icon: Brain,
+        title: "Think Critically",
+        description: "Compare perspectives, question assumptions, and make informed decisions using evidence rather than misinformation.",
+        iconColor: "text-amber-600 dark:text-amber-400",
+        iconBg: "bg-amber-50 dark:bg-amber-500/10 border-amber-200/50 dark:border-amber-500/20",
+        hoverBorder: "hover:border-amber-300/60 dark:hover:border-amber-500/25",
+        hoverShadow: "hover:shadow-[0_8px_32px_rgba(245,158,11,0.12)] dark:hover:shadow-[0_4px_24px_rgba(245,158,11,0.08)]",
+        gradientTo: "to-amber-50/25 dark:to-amber-500/[0.02]"
+    }
+];
+
+const capabilityPills = [
+    { label: "Fact Checking", icon: CheckCircle, color: "text-indigo-500 bg-indigo-500/5 border-indigo-500/20 dark:border-indigo-500/30 hover:border-indigo-500/40" },
+    { label: "Bias Detection", icon: Scale, color: "text-purple-500 bg-purple-500/5 border-purple-500/20 dark:border-purple-500/30 hover:border-purple-500/40" },
+    { label: "Source Evaluation", icon: FileSearch, color: "text-blue-500 bg-blue-500/5 border-blue-500/20 dark:border-blue-500/30 hover:border-blue-500/40" },
+    { label: "Media Analysis", icon: Columns, color: "text-emerald-500 bg-emerald-500/5 border-emerald-500/20 dark:border-emerald-500/30 hover:border-emerald-500/40" },
+    { label: "Critical Thinking", icon: BrainCircuit, color: "text-amber-500 bg-amber-500/5 border-amber-500/20 dark:border-amber-500/30 hover:border-amber-500/40" }
+];
+
 function FAQItem({ question, answer }) {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -129,23 +180,27 @@ function FAQSection() {
     const faqs = [
         {
             question: "What is DigiLab?",
-            answer: "DigiLab is a purpose-built AI study platform designed to support students and educators. It integrates intelligent document processing, interactive graphs, and advanced LLM reasoning to explain complex subjects in simplified, customizable learning modes."
+            answer: "DigiLab is an AI-assisted Media Literacy platform designed for students. It helps learners verify information, evaluate sources, recognize media bias, and develop critical thinking skills through interactive learning experiences."
         },
         {
-            question: "How does DigiLab maintain accuracy and limit AI hallucinations?",
-            answer: "DigiLab uses a source-grounding approach. Rather than relying on generic pre-trained knowledge, the system retrieves and anchors its explanations using verified academic sources, textbooks, and documents uploaded to your workspace."
+            question: "Why is Media Literacy important?",
+            answer: "Students encounter information from news websites, social media, search engines, and AI tools every day. Media Literacy helps them distinguish facts from misinformation, evaluate credibility, and make informed decisions before believing or sharing content."
         },
         {
-            question: "Is my personal study data and chat history secure?",
-            answer: "Yes. DigiLab is built with privacy in mind. We support an interactive Incognito Session mode where transcripts and files are held in-memory and are never stored or logged in standard database tables. User accounts also secure credentials with industry-grade salt hashing."
+            question: "How does DigiLab help students?",
+            answer: "DigiLab combines Media Literacy principles with AI-assisted analysis to help students verify claims, compare perspectives, analyze media messages, evaluate source credibility, and strengthen critical thinking through practical learning."
         },
         {
-            question: "Does the platform support multiple languages?",
-            answer: "Yes, DigiLab is designed for diverse learners and supports multiple languages. This includes major regional languages (such as Hindi, Bengali, Tamil, and Kannada) as well as global languages, powered by optimized multi-model architectures like Sarvam AI."
+            question: "Does DigiLab replace independent thinking?",
+            answer: "No. DigiLab is designed to support critical thinking—not replace it. The platform encourages students to question information, evaluate evidence, and reach their own informed conclusions."
         },
         {
-            question: "Are there any usage limits or paid subscription plans?",
-            answer: "No. DigiLab is completely free to use for student and classroom study workflows. There are no subscriptions, paywalls, or features locked behind payment tiers."
+            question: "Can DigiLab help identify misinformation and bias?",
+            answer: "Yes. DigiLab helps students analyze media content, recognize different forms of bias, evaluate source reliability, and understand how information is presented before accepting or sharing it."
+        },
+        {
+            question: "Who is DigiLab designed for?",
+            answer: "DigiLab is built primarily for students and educators who want to strengthen Media Literacy, improve information evaluation skills, and become more responsible digital learners."
         }
     ];
 
@@ -157,11 +212,23 @@ function FAQSection() {
                 </div>
                 <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
                     <span className="bg-gradient-to-b from-foreground via-foreground/90 to-foreground/75 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
-                        Frequently Asked Questions
+                        Frequently Asked{" "}
+                    </span>
+                    <span
+                        className="bg-clip-text text-transparent bg-gradient-to-br
+                            from-[#0057B8]
+                            via-[#1D75E8]
+                            to-[#5EA9FF]
+                            dark:from-[#2F80ED]
+                            dark:via-[#4F9DFF]
+                            dark:to-[#7DBBFF]"
+                        style={{ backgroundSize: "200% 200%", animation: "gradient-shift 5s ease infinite" }}
+                    >
+                        Questions
                     </span>
                 </h2>
                 <p className="mt-4 text-sm sm:text-base text-foreground-muted">
-                    Find quick answers to common questions about DigiLab's features, privacy, and technology.
+                    Learn more about how DigiLab helps students develop Media Literacy, evaluate information, and build critical thinking skills through AI-assisted learning.
                 </p>
             </div>
             <div className="mx-auto max-w-3xl border-t border-slate-200/50 dark:border-white/[0.06] pt-4 sm:pt-6">
@@ -344,7 +411,23 @@ dark:to-[#7DBBFF]"
                             transition={{ duration: 0.6, delay: 0.22 }}
                             className="hidden sm:block max-w-xl text-base text-foreground-muted sm:text-lg lg:text-xl leading-relaxed"
                         >
-                            {t('home.hero.description')}
+                            {(() => {
+                                const text = t('home.hero.description');
+                                const target = "Media Literacy";
+                                const idx = text.indexOf(target);
+                                if (idx !== -1) {
+                                    return (
+                                        <>
+                                            {text.substring(0, idx)}
+                                            <span className="text-blue-600 dark:text-blue-400 font-semibold inline-block whitespace-nowrap">
+                                                {target}
+                                            </span>
+                                            {text.substring(idx + target.length)}
+                                        </>
+                                    );
+                                }
+                                return text;
+                            })()}
                         </motion.p>
                         {/* Social proof pill — hidden on mobile to save vertical space */}
                         <motion.div
@@ -487,6 +570,225 @@ border-0
             </section>
 
             {/* ═══════════════════════════════════════════
+                SECTION 1.5 — MEDIA LITERACY OVERVIEW
+            ═══════════════════════════════════════════ */}
+            <section className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-16 pb-8 sm:pt-24 sm:pb-12 border-t border-slate-200/50 dark:border-white/[0.05]">
+                <div className="mx-auto max-w-3xl text-center mb-12 sm:mb-16">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.6 }}
+                        className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/8 dark:bg-accent/10 px-3 py-1 text-[11px] font-mono text-accent-bright mb-4"
+                    >
+                        Media Literacy
+                    </motion.div>
+                    <motion.h2
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.6, delay: 0.05 }}
+                        className="text-3xl font-bold tracking-tight sm:text-4xl"
+                    >
+                        <span className="bg-gradient-to-b from-foreground via-foreground/85 to-foreground/60 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
+                            Why{" "}
+                        </span>
+                        <span
+                            className="bg-clip-text text-transparent bg-gradient-to-br
+                                from-[#0057B8]
+                                via-[#1D75E8]
+                                to-[#5EA9FF]
+                                dark:from-[#2F80ED]
+                                dark:via-[#4F9DFF]
+                                dark:to-[#7DBBFF]"
+                            style={{ backgroundSize: "200% 200%", animation: "gradient-shift 5s ease infinite" }}
+                        >
+                            Media Literacy
+                        </span>
+                        <span className="bg-gradient-to-b from-foreground via-foreground/85 to-foreground/60 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
+                            {" "}Matters
+                        </span>
+                    </motion.h2>
+                    <motion.p
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.6, delay: 0.1 }}
+                        className="mt-4 text-sm sm:text-base text-foreground-muted max-w-3xl mx-auto leading-relaxed"
+                    >
+                        Every day, students encounter news articles, social media content, AI-generated information, and digital media. DigiLab helps them verify information, evaluate sources, recognize bias, and develop critical thinking skills before believing, sharing, or acting on information.
+                    </motion.p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                    {mediaLiteracyCards.map((card, idx) => {
+                        const Icon = card.icon;
+                        return (
+                            <motion.div
+                                key={idx}
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.5, delay: idx * 0.1 }}
+                                className="h-full"
+                            >
+                                <Card className="h-full flex flex-col p-6 bg-gradient-to-br from-white to-slate-50/50 dark:from-white/[0.03] dark:to-white/[0.01] border border-slate-200/70 dark:border-white/[0.06] hover:border-accent/30 dark:hover:border-accent/30 hover:shadow-lg dark:hover:shadow-[0_4px_24px_rgba(99,102,241,0.06)] transition-all duration-300 group cursor-default">
+                                    <div className={`inline-flex w-10 h-10 items-center justify-center rounded-xl border ${card.iconBg} mb-4 shrink-0 transition-transform duration-300 group-hover:scale-105`}>
+                                        <Icon className={`h-5 w-5 ${card.iconColor}`} />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-foreground tracking-tight mb-2">
+                                        {card.title}
+                                    </h3>
+                                    <p className="text-sm text-foreground-muted leading-relaxed flex-1">
+                                        {card.description}
+                                    </p>
+                                </Card>
+                            </motion.div>
+                        );
+                    })}
+                </div>
+
+                {/* Capability strip row of premium pills */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.6, delay: 0.4 }}
+                    className="flex flex-wrap items-center justify-center gap-3 mt-12 max-w-4xl mx-auto"
+                >
+                    {capabilityPills.map((pill, idx) => {
+                        const Icon = pill.icon;
+                        return (
+                            <div
+                                key={idx}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-semibold backdrop-blur-md transition-all duration-300 cursor-default select-none ${pill.color}`}
+                            >
+                                <Icon className="w-3.5 h-3.5" />
+                                <span>{pill.label}</span>
+                            </div>
+                        );
+                    })}
+                </motion.div>
+            </section>
+
+            {/* ═══════════════════════════════════════════
+                SECTION 1.6 — HOW DIGILAB WORKS
+            ═══════════════════════════════════════════ */}
+            <section className="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-8 pb-16 sm:pt-12 sm:pb-24 border-t border-slate-200/50 dark:border-white/[0.05]">
+                <div className="mx-auto max-w-3xl text-center mb-12 sm:mb-16">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.6 }}
+                        className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/8 dark:bg-accent/10 px-3 py-1 text-[11px] font-mono text-accent-bright mb-4"
+                    >
+                        HOW DIGILAB WORKS
+                    </motion.div>
+                    <motion.h2
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.6, delay: 0.05 }}
+                        className="text-3xl font-bold tracking-tight sm:text-4xl"
+                    >
+                        <span className="bg-gradient-to-b from-foreground via-foreground/85 to-foreground/60 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
+                            Learn.{" "}
+                        </span>
+                        <span
+                            className="bg-clip-text text-transparent bg-gradient-to-br
+                                from-[#0057B8]
+                                via-[#1D75E8]
+                                to-[#5EA9FF]
+                                dark:from-[#2F80ED]
+                                dark:via-[#4F9DFF]
+                                dark:to-[#7DBBFF]"
+                            style={{ backgroundSize: "200% 200%", animation: "gradient-shift 5s ease infinite" }}
+                        >
+                            Analyze
+                        </span>
+                        <span className="bg-gradient-to-b from-foreground via-foreground/85 to-foreground/60 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
+                            . Verify.
+                        </span>
+                    </motion.h2>
+                    <motion.p
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.6, delay: 0.1 }}
+                        className="mt-4 text-sm sm:text-base text-foreground-muted max-w-2xl mx-auto leading-relaxed"
+                    >
+                        DigiLab guides students through a practical Media Literacy workflow—helping them understand information, evaluate credibility, recognize bias, and build confident critical thinking skills using AI-assisted analysis.
+                    </motion.p>
+                </div>
+
+                <div className="relative mt-12 max-w-5xl mx-auto">
+                    {/* Visual Connector dashed line for desktop layout */}
+                    <div className="hidden md:block absolute top-[52px] left-[16%] right-[16%] h-0 border-t border-dashed border-slate-200/80 dark:border-white/[0.08] -z-10" />
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {[
+                            {
+                                icon: Newspaper,
+                                title: "Explore Information",
+                                description: "Read articles, news reports, social media posts, and digital content from different sources.",
+                                colorClass: "text-indigo-600 dark:text-indigo-400 border-indigo-200/50 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10"
+                            },
+                            {
+                                icon: BadgeCheck,
+                                title: "Analyze & Verify",
+                                description: "Use DigiLab to evaluate sources, detect bias, verify claims, and understand how information is presented.",
+                                colorClass: "text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10"
+                            },
+                            {
+                                icon: Lightbulb,
+                                title: "Think Critically",
+                                description: "Compare perspectives, draw evidence-based conclusions, and make informed decisions before believing or sharing information.",
+                                colorClass: "text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-500/20 bg-purple-50 dark:bg-purple-500/10"
+                            }
+                        ].map((step, idx) => {
+                            const StepIcon = step.icon;
+                            return (
+                                <motion.div
+                                    key={idx}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ duration: 0.5, delay: idx * 0.15 }}
+                                    className="h-full"
+                                >
+                                    <Card className="h-full flex flex-col items-center text-center p-6 bg-gradient-to-br from-white to-slate-50/50 dark:from-white/[0.03] dark:to-white/[0.01] border border-slate-200/70 dark:border-white/[0.06] hover:border-accent/30 dark:hover:border-accent/30 hover:shadow-lg dark:hover:shadow-[0_4px_24px_rgba(99,102,241,0.06)] transition-all duration-300 group cursor-default">
+                                        <div className={`inline-flex w-12 h-12 items-center justify-center rounded-xl border ${step.colorClass} mb-4 shrink-0 transition-transform duration-300 group-hover:scale-105`}>
+                                            <StepIcon className="h-6 w-6" />
+                                        </div>
+                                        <h3 className="text-base font-bold text-foreground mb-2">
+                                            {step.title}
+                                        </h3>
+                                        <p className="text-xs sm:text-sm text-foreground-muted leading-relaxed flex-1">
+                                            {step.description}
+                                        </p>
+                                    </Card>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Bottom Highlight Supporting Text */}
+                <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.6, delay: 0.5 }}
+                    className="mt-12 text-center"
+                >
+                    <p className="text-xs sm:text-sm text-foreground-muted font-medium italic">
+                        "Media Literacy is not about what to think—it's about learning how to think critically."
+                    </p>
+                </motion.div>
+            </section>
+
+            {/* ═══════════════════════════════════════════
                 SECTION 2 — FEATURES GRID
             ═══════════════════════════════════════════ */}
             <FeaturesSection />
@@ -504,7 +806,7 @@ border-0
                         className="inline-flex items-center gap-2 rounded-full border border-green-500/25 bg-green-500/8 px-3 py-1 text-[11px] font-mono text-green-600 dark:text-green-400 mb-4"
                     >
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                        Always Free
+                        MEDIA LITERACY FOR EVERYONE
                     </motion.div>
                     <motion.h2
                         initial={{ opacity: 0, y: 20 }}
@@ -514,7 +816,22 @@ border-0
                         className="text-3xl font-bold tracking-tight sm:text-4xl"
                     >
                         <span className="bg-gradient-to-b from-foreground via-foreground/85 to-foreground/60 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
-                            Everything You Need, Completely Free
+                            Helping{" "}
+                        </span>
+                        <span
+                            className="bg-clip-text text-transparent bg-gradient-to-br
+                                from-[#0057B8]
+                                via-[#1D75E8]
+                                to-[#5EA9FF]
+                                dark:from-[#2F80ED]
+                                dark:via-[#4F9DFF]
+                                dark:to-[#7DBBFF]"
+                            style={{ backgroundSize: "200% 200%", animation: "gradient-shift 5s ease infinite" }}
+                        >
+                            Students
+                        </span>
+                        <span className="bg-gradient-to-b from-foreground via-foreground/85 to-foreground/60 dark:from-white dark:via-white/95 dark:to-white/70 bg-clip-text text-transparent">
+                            {" "}Navigate the Digital World
                         </span>
                     </motion.h2>
                     <motion.p
@@ -522,9 +839,9 @@ border-0
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                         transition={{ duration: 0.6, delay: 0.1 }}
-                        className="mt-4 text-lg text-foreground-muted max-w-lg mx-auto"
+                        className="mt-4 text-lg text-foreground-muted max-w-2xl mx-auto"
                     >
-                        All features are unlocked — no subscriptions, no paywalls.
+                        Media literacy is an essential skill in today's digital world. DigiLab helps learners verify information, evaluate sources, recognize bias, and build critical thinking skills through AI-assisted learning.
                     </motion.p>
                 </div>
 
@@ -549,26 +866,20 @@ border-0
                             <div className="block dark:hidden absolute -bottom-10 -left-10 w-36 h-36 rounded-full bg-purple-400/6 blur-2xl group-hover:bg-purple-400/10 transition-all duration-500" />
 
                             <div className="mb-7 text-center relative z-10">
-                                <motion.div
-                                    whileHover={{ scale: 1.05 }}
-                                    className="inline-flex items-center rounded-full border border-green-500/30 bg-green-500/10 px-4 py-1.5 text-[10px] font-mono font-semibold text-green-600 dark:text-green-400 mb-4 shadow-[0_2px_12px_rgba(16,185,129,0.1)]"
-                                >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-2 animate-pulse" />
-                                    100% FREE — FOREVER
-                                </motion.div>
-                                <h3 className="text-2xl font-bold text-foreground">All Features Included</h3>
-                                <p className="text-sm text-foreground-muted mt-1">Zero limits, zero cost</p>
+                                
+                                <h3 className="text-2xl font-bold text-foreground">Core Media Literacy Skills</h3>
+                                <p className="text-sm text-foreground-muted mt-1">Key skills for information analysis</p>
                             </div>
 
                             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8 relative z-10">
-                                <PricingFeature highlighted>Real-time Voice Interactions</PricingFeature>
-                                <PricingFeature highlighted>Engineered with Sarvam: India's Own AI</PricingFeature>
-                                <PricingFeature highlighted>Multilingual Support</PricingFeature>
-                                <PricingFeature highlighted>Deep Concept Mapping</PricingFeature>
-                                <PricingFeature highlighted>Multi-model Support</PricingFeature>
-                                <PricingFeature highlighted>Fast and quick responses</PricingFeature>
-                                <PricingFeature highlighted>Accurate and robust responses</PricingFeature>
-                                <PricingFeature highlighted>Source grounding information</PricingFeature>
+                                <PricingFeature highlighted>Information Verification</PricingFeature>
+                                <PricingFeature highlighted>Source Credibility Analysis</PricingFeature>
+                                <PricingFeature highlighted>Bias Detection</PricingFeature>
+                                <PricingFeature highlighted>Fact Checking</PricingFeature>
+                                <PricingFeature highlighted>Critical Thinking</PricingFeature>
+                                <PricingFeature highlighted>Responsible Media Consumption</PricingFeature>
+                                <PricingFeature highlighted>Digital Citizenship</PricingFeature>
+                                <PricingFeature highlighted>AI-Assisted Learning</PricingFeature>
                             </ul>
 
                             <Link to="/signup" className="relative z-10">
@@ -578,7 +889,7 @@ border-0
                                         shadow-[0_4px_24px_rgba(94,106,210,0.3)]
                                         hover:shadow-[0_8px_32px_rgba(94,106,210,0.45)]
                                         transition-all duration-300 rounded-2xl border-0">
-                                        Get Started Free
+                                        Explore Media Literacy
                                         <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                                     </Button>
                                 </motion.div>
