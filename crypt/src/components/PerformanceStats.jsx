@@ -7,32 +7,9 @@ import { Card } from './ui/Card';
 import {
     Clock, AlertCircle,
     ArrowUpRight, ArrowDownRight, Activity,
-    ChevronRight, Globe, ShieldCheck, Database
+    ChevronRight, Globe, ShieldCheck
 } from 'lucide-react';
 import GlobeChatIcon from './icons/GlobeChatIcon';
-
-const trendData = [
-    { name: 'Apr 6', aiResponseTime: 1.2, networkLatency: 0.8 },
-    { name: 'Apr 12', aiResponseTime: 1.8, networkLatency: 1.1 },
-    { name: 'Apr 18', aiResponseTime: 1.4, networkLatency: 0.9 },
-    { name: 'Apr 24', aiResponseTime: 2.1, networkLatency: 1.3 },
-    { name: 'May 6', aiResponseTime: 2.8, networkLatency: 1.5 },
-    { name: 'May 12', aiResponseTime: 1.9, networkLatency: 1.1 },
-    { name: 'May 18', aiResponseTime: 1.5, networkLatency: 0.8 },
-    { name: 'May 24', aiResponseTime: 2.4, networkLatency: 1.4 },
-    { name: 'Jun 5', aiResponseTime: 1.8, networkLatency: 1.0 },
-    { name: 'Jun 30', aiResponseTime: 2.6, networkLatency: 1.6 },
-];
-
-const sourceData = [
-    { name: 'With Sources', value: 82, color: '#3B82F6' },
-    { name: 'Without Sources', value: 18, color: '#e2e8f0' },
-];
-
-const offTopicData = [
-    { name: 'On-Topic', value: 92, color: '#6366F1' },
-    { name: 'Off-Topic', value: 8, color: '#e2e8f0' },
-];
 
 const MetricTooltip = ({ info }) => (
     <div className="group/tooltip relative inline-block z-50">
@@ -188,8 +165,8 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
             <h4 className="text-sm font-semibold text-foreground leading-tight">{label}</h4>
             {info && <div className="shrink-0 mt-0.5"><MetricTooltip info={info} /></div>}
         </div>
-        <div className="flex items-center justify-between mt-auto gap-4">
-            <div className="flex flex-col justify-center space-y-3 min-w-0 flex-1 pr-2">
+        <div className="flex items-center mt-auto gap-4">
+            <div className="flex flex-col justify-center space-y-3 min-w-0 flex-1">
                 <div className="flex items-center space-x-2.5">
                     <div className={`shrink-0 w-2 h-2 rounded-full`} style={{ backgroundColor: color }} />
                     <span className="text-[11px] sm:text-xs text-foreground-muted truncate font-medium">{subLabel.primary}</span>
@@ -199,33 +176,33 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
                     <span className="text-[10px] text-foreground-muted">{subLabel.secondary}</span>
                 </div>
             </div>
-        </div>
-        <div className="relative h-20 w-20 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                    <Pie
-                        data={data}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={28}
-                        outerRadius={36}
-                        paddingAngle={0}
-                        dataKey="value"
-                        startAngle={90}
-                        endAngle={-270}
-                    >
-                        {data.map((entry, index) => (
-                            <Cell
-                                key={`cell-${index}`}
-                                fill={entry.color}
-                                stroke="none"
-                            />
-                        ))}
-                    </Pie>
-                </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-sm font-bold text-foreground">{value}%</span>
+            <div className="relative h-20 w-20 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                        <Pie
+                            data={data}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={28}
+                            outerRadius={36}
+                            paddingAngle={0}
+                            dataKey="value"
+                            startAngle={90}
+                            endAngle={-270}
+                        >
+                            {data.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={entry.color}
+                                    stroke="none"
+                                />
+                            ))}
+                        </Pie>
+                    </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-sm font-bold text-foreground">{value}%</span>
+                </div>
             </div>
         </div>
     </div>
@@ -238,12 +215,24 @@ export function PerformanceStats() {
     const [isLoading, setIsLoading] = React.useState(true);
     const [timeWindow, setTimeWindow] = React.useState('30d');
     const [isWindowMenuOpen, setIsWindowMenuOpen] = React.useState(false);
+    const windowMenuRef = React.useRef(null);
 
     const windowOptions = [
         { label: 'Last 24 hours', value: '24h' },
         { label: 'Last 7 days', value: '7d' },
         { label: 'Last 30 days', value: '30d' }
     ];
+
+    React.useEffect(() => {
+        if (!isWindowMenuOpen) return;
+        const handleClickOutside = (e) => {
+            if (windowMenuRef.current && !windowMenuRef.current.contains(e.target)) {
+                setIsWindowMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [isWindowMenuOpen]);
 
     React.useEffect(() => {
         const fetchMetrics = async () => {
@@ -291,7 +280,7 @@ export function PerformanceStats() {
     const currentYearRange = `${new Date().toLocaleString('default', { month: 'short' })} ${new Date().getFullYear()}`;
 
     return (
-        <div className="space-y-6 container mx-auto max-w-5xl px-4 pb-12">
+        <div className="space-y-6 pb-12">
 
             {/* ROW 1: PERFORMANCE TREND + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
@@ -305,9 +294,36 @@ export function PerformanceStats() {
                                 </div>
                                 <p className="text-xs text-foreground-muted">Response Time Over the {windowOptions.find(o => o.value === timeWindow)?.label}</p>
                             </div>
-                            <div className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-white/10 transition-colors">
-                                <span className="text-[10px] font-medium text-foreground-muted">Last 30 days</span>
-                                <ChevronRight size={12} className="rotate-90 text-foreground-muted" />
+                            <div className="relative" ref={windowMenuRef}>
+                                <div
+                                    onClick={() => setIsWindowMenuOpen((prev) => !prev)}
+                                    className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-white/10 transition-colors"
+                                >
+                                    <span className="text-[10px] font-medium text-foreground-muted">
+                                        {windowOptions.find(o => o.value === timeWindow)?.label}
+                                    </span>
+                                    <ChevronRight size={12} className={`text-foreground-muted transition-transform duration-200 ${isWindowMenuOpen ? '-rotate-90' : 'rotate-90'}`} />
+                                </div>
+                                {isWindowMenuOpen && (
+                                    <div className="absolute right-0 top-full mt-1 w-36 bg-black/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                                        {windowOptions.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                onClick={() => {
+                                                    setTimeWindow(option.value);
+                                                    setIsWindowMenuOpen(false);
+                                                }}
+                                                className={`w-full text-left px-3 py-2 text-[11px] transition-colors ${
+                                                    option.value === timeWindow
+                                                        ? 'bg-accent/10 text-accent font-medium'
+                                                        : 'text-foreground-muted hover:bg-white/5 hover:text-foreground'
+                                                }`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -418,9 +434,7 @@ export function PerformanceStats() {
                         <div className="divide-y divide-white/5">
                             <SystemStatusItem label="API" icon={Globe} />
                             <SystemStatusItem label="Production" subLabel="7 components" icon={Activity} />
-                            <SystemStatusItem label="Production Systems" subLabel="2 components" icon={Database} />
                             <SystemStatusItem label="Preview Models" subLabel="9 components" icon={ShieldCheck} />
-                            <SystemStatusItem label="Website" icon={Globe} />
                         </div>
 
                         {/* Status Legend */}
@@ -479,7 +493,7 @@ export function PerformanceStats() {
                 <div className="lg:w-1/2">
                     <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
                         <GaugeMetric
-                            data={sourceData}
+                            data={liveSourceData}
                             label="Source Grounding"
                             subLabel={{ primary: "With Sources", secondary: "Without Sources" }}
                             value={displayMetrics.groundingRate}
@@ -491,7 +505,7 @@ export function PerformanceStats() {
                 <div className="lg:w-1/2">
                     <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
                         <GaugeMetric
-                            data={offTopicData}
+                            data={liveOffTopicData}
                             label="Off-Topic Detection"
                             subLabel={{ primary: "On-Topic Queries", secondary: "Off-Topic Queries" }}
                             value={displayMetrics.onTopicRate}

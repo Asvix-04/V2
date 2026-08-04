@@ -40,8 +40,9 @@ import api from "../lib/api";
 const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 
 const MODELS = [
-    { id: "Gemini 2.5 Flash", name: "Gemini 2.5 Flash", description: "Speed and intelligence for everyday learning.", icon: Sparkles, color: "text-blue-500" },
-    { id: "Gemini 2.5 Pro", name: "Gemini 2.5 Pro", description: "Advanced reasoning for high-stakes problems.", icon: Zap, color: "text-purple-500" }
+    { id: "Gemini 2.5 Flash", name: "DigiLab", description: "AI Assistant for IGNOU Media SLMs", icon: Sparkles, color: "text-blue-500" },
+    { id: "Gemini 2.5 Pro", name: "DigiLab 2.0", description: "AI Assistant for MIL OERs", icon: Zap, color: "text-purple-500" },
+    { id: "DigiLab Pro", name: "DigiLab Pro", description: "AI Assistant combining IGNOU Media SLMs & MIL OERs", icon: Star, color: "text-amber-500" }
 ];
 
 
@@ -542,6 +543,10 @@ export function ChatPage() {
 
     const [messages, setMessages] = React.useState([INITIAL_MESSAGE]);
     const [sessions, setSessions] = React.useState([]);
+    const sessionsRef = React.useRef(sessions);
+    React.useEffect(() => {
+        sessionsRef.current = sessions;
+    }, [sessions]);
 
     const [deepResearchChats, setDeepResearchChats] = React.useState([]);
     const [isDeepResearchOpen, setIsDeepResearchOpen] = React.useState(true);
@@ -1003,7 +1008,7 @@ export function ChatPage() {
     };
 
     const snapshotMatchesSession = React.useCallback((snapshot, session = null) => {
-        const targetSession = session || sessions.find((s) => s.id === snapshot?.sessionId);
+        const targetSession = session || sessionsRef.current.find((s) => s.id === snapshot?.sessionId);
         if (!snapshot || !targetSession) return false;
 
         return isSameConversationPayload(
@@ -1016,7 +1021,7 @@ export function ChatPage() {
                 messages: targetSession.messages,
             }
         );
-    }, [sessions]);
+    }, []);
 
     const sendKeepaliveDraftSnapshot = React.useCallback((snapshot) => {
         if (!snapshot || !user?.token || (Array.isArray(snapshot.messages) && snapshot.messages.length <= 1)) return;
@@ -1127,7 +1132,7 @@ export function ChatPage() {
         return null;
     }, [isGuest, isIncognito, getConversationTitle, upsertSessionInState, isDisappearingMode]);
 
-    const flushPendingDraftSnapshot = React.useCallback(async (existingSessions = sessions) => {
+    const flushPendingDraftSnapshot = React.useCallback(async (existingSessions = sessionsRef.current) => {
         const snapshot = readPendingDraftSnapshot();
         if (!snapshot || isGuest || isIncognito) return null;
 
@@ -1181,7 +1186,7 @@ export function ChatPage() {
             console.error("Failed to restore pending draft:", err);
             return null;
         }
-    }, [isGuest, isIncognito, readPendingDraftSnapshot, sessions, snapshotMatchesSession, clearPendingDraftSnapshot, rememberActiveDraft, upsertSessionInState, isDisappearingMode, setInitialInputText]);
+    }, [isGuest, isIncognito, readPendingDraftSnapshot, snapshotMatchesSession, clearPendingDraftSnapshot, rememberActiveDraft, upsertSessionInState, isDisappearingMode, setInitialInputText]);
 
     const shouldKeepDraftState = React.useCallback((sessionId) => {
         if (!sessionId) return false;

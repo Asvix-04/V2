@@ -137,8 +137,8 @@ export function Sidebar({
                             onClick={() => setIsSidebarOpen(false)}
                             className="flex items-center space-x-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 group"
                         >
-                            <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
-                            <span className="text-xs font-medium">
+                            <ArrowLeft className="h-4 w-4 shrink-0 group-hover:-translate-x-1 transition-transform" />
+                            <span className="text-[15px] font-semibold">
                                 {isGuest ? translate("nav.home", "Home") : translate("chat.Dashboard", "Workspace")}
                             </span>
                         </Link>
