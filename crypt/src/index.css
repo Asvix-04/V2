@@ -74,11 +74,15 @@
 
 html {
   scroll-behavior: smooth;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   @apply bg-background-base text-foreground antialiased;
   font-family: var(--font-inter);
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .glass {

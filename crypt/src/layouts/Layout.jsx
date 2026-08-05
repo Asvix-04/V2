@@ -8,7 +8,7 @@ export function Layout() {
     const isHome = location.pathname === "/";
 
     return (
-        <div className="relative min-h-screen text-foreground antialiased">
+        <div className="relative min-h-screen text-foreground antialiased pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0">
             <Background />
             <Navbar />
             {isHome ? (

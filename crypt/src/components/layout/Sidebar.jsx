@@ -2,7 +2,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    ArrowLeft, BookOpen, ChevronDown, ChevronRight, Loader2, Plus, User as UserIcon, X,
+    ArrowLeft, BookOpen, ChevronDown, ChevronRight, ChevronLeft, Loader2, Plus, User as UserIcon, X,
     Star, StarOff, Menu, MessageSquareDashed, MessageSquare, Trash2, MoreVertical
 } from "lucide-react";
 import { MdSearch } from "react-icons/md";
@@ -143,11 +143,12 @@ export function Sidebar({
                             </span>
                         </Link>
 
+                        {/* Desktop Collapse Button (with hover animation) */}
                         <button
                             onClick={() => setIsSidebarOpen(false)}
                             onMouseEnter={() => setIsLogoHovered(true)}
                             onMouseLeave={() => setIsLogoHovered(false)}
-                            className="relative h-9 w-9 p-0 text-foreground-muted hover:text-accent hover:bg-accent/10 transition-all duration-300 rounded-xl flex items-center justify-center shrink-0 cursor-pointer overflow-hidden"
+                            className="hidden lg:flex relative h-9 w-9 p-0 text-foreground-muted hover:text-accent hover:bg-accent/10 transition-all duration-300 rounded-xl items-center justify-center shrink-0 cursor-pointer overflow-hidden"
                             title="Collapse sidebar"
                         >
                             <div className="relative w-5 h-5 flex items-center justify-center">
@@ -164,6 +165,16 @@ export function Sidebar({
                                     )}
                                 />
                             </div>
+                        </button>
+
+                        {/* Mobile/Tablet Collapse Button (standard touch-friendly, shows both Logo and ChevronLeft) */}
+                        <button
+                            onClick={() => setIsSidebarOpen(false)}
+                            className="flex lg:hidden h-9 items-center gap-1.5 px-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-all cursor-pointer shrink-0"
+                            title="Collapse sidebar"
+                        >
+                            <Logo className="w-5 h-5 text-[#5c67f2] shrink-0" />
+                            <ChevronLeft className="h-4 w-4 text-zinc-400 dark:text-zinc-500 shrink-0" />
                         </button>
                     </div>
 

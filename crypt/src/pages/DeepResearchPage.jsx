@@ -2,7 +2,7 @@ import * as React from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, BookOpen, ChevronRight, Loader2, Plus, User as UserIcon,
+  ArrowLeft, ArrowRight, BookOpen, ChevronRight, Loader2, Plus, User as UserIcon,
   Sparkles, Zap, ChevronDown, Star, Menu,
   MessageSquareDashed, Check, Search,
   MessageSquare, Trash2, CheckCircle2, ArrowUpRight, X
@@ -15,6 +15,7 @@ import { DeepResearchLogo } from "../components/ui/DeepResearchLogo";
 import GlobeChatIcon from "../components/icons/GlobeChatIcon";
 import { Sidebar } from "../components/layout/Sidebar";
 import api from "../lib/api";
+import { chatbotApi } from "../lib/chatbotApi";
 
 // ─── Shared Constants ─────────────────────────────────────────────────────────
 
@@ -163,26 +164,37 @@ export function DeepResearchPage() {
     }
   };
 
+  // ── Research Loading ──────────────────────────────────────────────────────
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [activeStepIndex, setActiveStepIndex] = React.useState(0);
+
   // ── Messages ──────────────────────────────────────────────────────────────
   const [messages, setMessages] = React.useState([]);
+  const [followUpQuestions, setFollowUpQuestions] = React.useState([]);
   const messagesEndRef = React.useRef(null);
 
   React.useEffect(() => {
+    if (isLoading) return; // Do not overwrite active messages state during a research cycle
     if (currentSessionId) {
       const s = deepResearchChats.find(c => c.id === currentSessionId);
       setMessages(s ? (s.messages || []) : []);
     } else {
       setMessages([]);
     }
-  }, [currentSessionId, deepResearchChats]);
+  }, [currentSessionId, deepResearchChats, isLoading]);
 
   React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === "user") {
+      const userMsgEl = document.getElementById(`dr-message-${messages.length - 1}`);
+      if (userMsgEl) {
+        userMsgEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
-
-  // ── Research Loading ──────────────────────────────────────────────────────
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [activeStepIndex, setActiveStepIndex] = React.useState(0);
 
   // ── Model Selector ────────────────────────────────────────────────────────
   const [selectedModel, setSelectedModel] = React.useState(() => {
@@ -190,6 +202,7 @@ export function DeepResearchPage() {
     return MODELS.find(m => m.id === saved) || MODELS[0];
   });
   const [isModelDropdownOpen, setIsModelDropdownOpen] = React.useState(false);
+  const [isModeDropdownOpen, setIsModeDropdownOpen] = React.useState(false);
 
   React.useEffect(() => {
     localStorage.setItem("selectedModelId", selectedModel.id);
@@ -272,23 +285,55 @@ export function DeepResearchPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleNewResearch = async () => {
     setMessages([]);
+    setFollowUpQuestions([]);
     setSearchParams({});
     await loadQuota();
   };
 
   const handleSend = async (text) => {
-    if (!text.trim()) return;
+    if (!text.trim() || isLoading) return;
 
     if (isGuest) {
       alert("Please log in to use Deep Research.");
       return;
     }
 
+    const userMsg = {
+      role: "user",
+      content: text,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    };
+
+    // 1. Immediately insert user message, clear follow-ups, and trigger loading
+    setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setActiveStepIndex(0);
+    setFollowUpQuestions([]);
+
+    // We'll keep a reference to the active session data for updates
+    let targetId = currentSessionId;
+    let session = null;
 
     try {
-      // 1. Fetch quota check & generation report from backend
+      // 2. Persist the user message to DB/Session history immediately
+      if (!targetId) {
+        targetId = "dr_" + Date.now();
+        session = {
+          id: targetId,
+          title: text.substring(0, 30) + (text.length > 30 ? "..." : ""),
+          messages: [userMsg]
+        };
+        await saveResearchSession(session);
+        setSearchParams({ session: targetId });
+      } else {
+        session = deepResearchChats.find(s => s.id === targetId);
+        if (session) {
+          session = { ...session, messages: [...(session.messages || []), userMsg] };
+          await saveResearchSession(session);
+        }
+      }
+
+      // 3. Fetch report generation from backend (RAG generation)
       const response = await api.post("/research/generate", { topic: text });
       const data = response.data;
 
@@ -302,32 +347,10 @@ export function DeepResearchPage() {
         message: data.message
       });
 
-      // 2. Play the visualization steps to maintain original UX
+      // 4. Play the visualization steps to maintain original UX
       for (let i = 0; i < RESEARCH_STEPS.length; i++) {
         await new Promise(r => setTimeout(r, i === 3 ? 1200 : 900));
         setActiveStepIndex(prev => prev + 1);
-      }
-
-      // 3. Save to local storage conversation history
-      const userMsg = {
-        role: "user",
-        content: text,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      };
-
-      let targetId = currentSessionId;
-      let session = null;
-      if (!targetId) {
-        targetId = "dr_" + Date.now();
-        session = { id: targetId, title: text.substring(0, 30) + (text.length > 30 ? "..." : ""), messages: [userMsg] };
-        await saveResearchSession(session);
-        setSearchParams({ session: targetId });
-      } else {
-        session = deepResearchChats.find(s => s.id === targetId);
-        if (session) {
-          session = { ...session, messages: [...(session.messages || []), userMsg] };
-          await saveResearchSession(session);
-        }
       }
 
       const assistantMsg = {
@@ -336,6 +359,7 @@ export function DeepResearchPage() {
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
 
+      // 5. Save the completed session (including assistant response) to DB
       if (session) {
         const finalSession = {
           ...session,
@@ -343,22 +367,60 @@ export function DeepResearchPage() {
         };
         await saveResearchSession(finalSession);
       }
-      setMessages(prev => [...prev, userMsg, assistantMsg]);
 
-      // Re-fetch quota to ensure alignment
-      await loadQuota();
+      // 6. Append assistant message to local state
+      setMessages(prev => {
+        const hasAssistant = prev.some(m => m.role === "assistant" && m.timestamp === assistantMsg.timestamp && m.content === assistantMsg.content);
+        if (hasAssistant) return prev;
+        return [...prev, assistantMsg];
+      });
+
+      // 7. Stop loading immediately to close the thinking indicator before final API/Quota operations
+      setIsLoading(false);
+
+      // Refresh quota status in the background
+      loadQuota().catch(err => console.error("Quota refresh error:", err));
+
+      // 8. Fetch context-aware follow-up questions in the background
+      try {
+        const followUpPrompt = `Based on the academic research report regarding "${text}", generate 3 short, context-aware follow-up questions that a student or researcher might ask next to expand their brief. Output only the questions.`;
+        const followUpRes = await chatbotApi.sendMessage(followUpPrompt, null, false);
+        const followUps = followUpRes?.follow_up_questions?.type_2_context_aware || followUpRes?.type_2_context_aware || followUpRes?.follow_ups || [];
+        setFollowUpQuestions(followUps.slice(0, 3));
+      } catch (fupErr) {
+        console.error("Failed to generate follow-up questions:", fupErr);
+      }
 
     } catch (error) {
       console.error("Deep Research Generation Error:", error.message);
+
+      const errorMsg = {
+        role: "assistant",
+        content: `Sorry, I encountered an error: ${error.response?.data?.message || error.message || "Deep Research generation failed."}. Please try again.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isError: true
+      };
+
+      // Append assistant error to local state (keeping the user message)
+      setMessages(prev => [...prev, errorMsg]);
+
+      // Save error message to DB session history
+      if (session) {
+        const errorSession = {
+          ...session,
+          messages: [...(session.messages || []), errorMsg]
+        };
+        saveResearchSession(errorSession).catch(err => console.error("Failed to save error session:", err));
+      }
+
       if (error.response && error.response.status === 429) {
         const quotaData = error.response.data;
         setQuota(quotaData);
         alert(quotaData.message || "Monthly Deep Research limit reached.");
-        await loadQuota();
+        loadQuota().catch(() => {});
       } else {
         alert(error.response?.data?.message || error.message || "Deep Research generation failed.");
       }
-    } finally {
       setIsLoading(false);
     }
   };
@@ -421,22 +483,51 @@ export function DeepResearchPage() {
           </div>
 
           {/* CENTER column — Mode Switch, always perfectly centered */}
-          <div className="flex items-center justify-center">
-            <div className="flex items-center bg-slate-100 dark:bg-zinc-800/60 p-1 rounded-xl border border-slate-200/60 dark:border-white/5 shadow-inner shrink-0">
-              <Link
-                to="/chat"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
-              >
-                <GlobeChatIcon className="h-3.5 w-3.5 shrink-0" />
-                <span>Chat</span>
-              </Link>
-              <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition-all"
-              >
-                <DeepResearchLogo className="h-3.5 w-3.5 shrink-0" />
-                <span>Deep Research</span>
-              </button>
-            </div>
+          <div className="flex items-center justify-center relative">
+            <button
+              onClick={() => setIsModeDropdownOpen(!isModeDropdownOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-800/60 hover:bg-slate-200 dark:hover:bg-zinc-700/80 border border-slate-200/60 dark:border-white/5 shadow-sm text-xs font-bold text-zinc-700 dark:text-zinc-200 transition-all select-none"
+            >
+              <DeepResearchLogo className="h-3.5 w-3.5 shrink-0 text-indigo-500 dark:text-indigo-400" />
+              <span>Deep Research</span>
+              <ChevronDown className={cn("h-3 w-3 shrink-0 text-zinc-400 transition-transform duration-200", isModeDropdownOpen && "rotate-180")} />
+            </button>
+
+            <AnimatePresence>
+              {isModeDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setIsModeDropdownOpen(false)}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-full mt-2 w-48 p-1.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
+                  >
+                    <div className="space-y-1">
+                      <Link
+                        to="/chat"
+                        onClick={() => setIsModeDropdownOpen(false)}
+                        className="w-full flex items-center gap-2.5 p-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 text-left text-xs font-semibold transition-all"
+                      >
+                        <GlobeChatIcon className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                        <span>Chat Mode</span>
+                      </Link>
+                      <button
+                        onClick={() => setIsModeDropdownOpen(false)}
+                        className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100/50 dark:border-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-left text-xs font-bold transition-all"
+                      >
+                        <DeepResearchLogo className="h-4 w-4 shrink-0" />
+                        <span>Deep Research</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* RIGHT column — Model Selector */}
@@ -508,26 +599,26 @@ export function DeepResearchPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              className="flex-1 flex flex-col items-center justify-center max-sm:px-3 sm:p-4 max-w-4xl mx-auto w-full"
+              className="flex-1 flex flex-col items-center justify-start sm:justify-center overflow-y-auto max-sm:px-3 sm:p-4 py-6 sm:py-8 max-w-4xl mx-auto w-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               {/* Logo + Heading */}
-              <div className="text-center max-sm:mb-6 sm:mb-8 flex flex-col items-center">
+              <div className="text-center max-sm:mb-4 sm:mb-8 flex flex-col items-center">
                 <motion.div
                   whileHover={{ scale: 1.08, rotate: 2 }}
-                  className="p-4 rounded-3xl bg-gradient-to-tr from-indigo-500/20 to-purple-500/10 border border-indigo-500/25 shadow-[0_0_30px_rgba(99,102,241,0.12)] mb-5 cursor-default"
+                  className="p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-indigo-500/20 to-purple-500/10 border border-indigo-500/25 shadow-[0_0_30px_rgba(99,102,241,0.12)] mb-3 sm:mb-5 cursor-default"
                 >
-                  <DeepResearchLogo className="h-12 w-12" />
+                  <DeepResearchLogo className="h-10 w-10 sm:h-12 sm:w-12" />
                 </motion.div>
-                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2 text-zinc-900 dark:text-white">
+                <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-1 sm:mb-2 text-zinc-900 dark:text-white">
                   Deep Research
                 </h1>
-                <p className="text-sm sm:text-base text-zinc-500 dark:text-zinc-400 max-w-lg leading-relaxed font-medium">
+                <p className="text-xs sm:text-base text-zinc-500 dark:text-zinc-400 max-w-xs sm:max-w-lg leading-relaxed font-medium">
                   Autonomous reasoning agents crawl academic papers, synthesize findings, and compile citations.
                 </p>
               </div>
 
               {/* Research Cards — 3 column */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3 w-full max-sm:mb-4 sm:mb-8">
                 {[
                   { icon: Search, title: "Agentic Search", desc: "Orchestrates multi-step web crawls across scientific databases to retrieve contemporary academic papers." },
                   { icon: Sparkles, title: "Deep Synthesis", desc: "Cross-references scientific claims, checks confidence intervals, and formats cohesive research summaries." },
@@ -535,16 +626,16 @@ export function DeepResearchPage() {
                 ].map(({ icon: Icon, title, desc }) => (
                   <div
                     key={title}
-                    className="p-5 rounded-2xl border border-slate-200/80 dark:border-white/5 bg-white dark:bg-zinc-900/60 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 hover:shadow-[0_4px_24px_rgba(99,102,241,0.06)] transition-all duration-300 group"
+                    className="p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 dark:border-white/5 bg-white dark:bg-zinc-900/60 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 hover:shadow-[0_4px_24px_rgba(99,102,241,0.06)] transition-all duration-300 group"
                   >
-                    <div className="h-9 w-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-3 group-hover:scale-105 transition-transform">
-                      <Icon className="h-4 w-4" />
+                    <div className="h-7 w-7 sm:h-9 sm:w-9 rounded-lg sm:rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2 sm:mb-3 group-hover:scale-105 transition-transform">
+                      <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </div>
-                    <h3 className="text-sm font-bold text-zinc-900 dark:text-white mb-1.5 flex items-center gap-1">
+                    <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white mb-1 sm:mb-1.5 flex items-center gap-1">
                       {title}
                       <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-medium">{desc}</p>
+                    <p className="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-medium">{desc}</p>
                   </div>
                 ))}
               </div>
@@ -772,6 +863,33 @@ export function DeepResearchPage() {
                       </div>
                     </motion.div>
                   )}
+
+                  {/* Follow-up Question Chips */}
+                  <AnimatePresence>
+                    {followUpQuestions.length > 0 && !isLoading && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3, delay: 0.2 }}
+                        className="flex max-sm:flex-col max-sm:items-stretch max-sm:gap-2 sm:flex-row sm:flex-wrap sm:gap-2 pt-2 pb-1"
+                      >
+                        {followUpQuestions.map((q, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              setFollowUpQuestions([]);
+                              handleSend(q);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 text-zinc-600 dark:text-zinc-300 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 hover:bg-indigo-50/30 dark:hover:bg-indigo-500/5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all text-left animate-fade-in cursor-pointer active:scale-[0.98]"
+                          >
+                            <span>{q}</span>
+                            <ArrowRight className="h-3 w-3 shrink-0 opacity-60" />
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   <div ref={messagesEndRef} className="h-24" />
                 </div>

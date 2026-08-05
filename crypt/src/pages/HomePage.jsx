@@ -521,7 +521,51 @@ border-0
                             </Link>
                         </motion.div>
 
+                        {/* Tagline for mobile/tablet screens only — positioned after CTA buttons */}
+                        <motion.p
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.6, delay: 0.36 }}
+                            className="block sm:hidden text-[10px] text-foreground-muted leading-relaxed"
+                        >
+                            {(() => {
+                                const text = t('home.hero.description');
+                                const target = "Media Literacy";
+                                const idx = text.indexOf(target);
+                                if (idx !== -1) {
+                                    return (
+                                        <>
+                                            {text.substring(0, idx)}
+                                            <span className="text-blue-600 dark:text-blue-400 font-semibold inline-block">
+                                                {target}
+                                            </span>
+                                            {text.substring(idx + target.length)}
+                                        </>
+                                    );
+                                }
+                                return text;
+                            })()}
+                        </motion.p>
 
+                        {/* Social proof pill for mobile/tablet screens only — positioned after tagline */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.4, duration: 0.5 }}
+                            className="flex sm:hidden flex-col items-start gap-1 text-[9px] text-foreground-muted"
+                        >
+                            <div className="flex -space-x-1">
+                                {['bg-indigo-400', 'bg-purple-400', 'bg-green-300', 'bg-orange-300'].map((c, i) => (
+                                    <div key={i} className={`w-3.5 h-3.5 rounded-full border border-white dark:border-background-base ${c}`} />
+                                ))}
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                                <span>Trusted by <strong className="text-foreground font-semibold">12.5k+</strong> students</span>
+                                <div className="flex items-center gap-0.5 text-amber-500">
+                                    {[...Array(5)].map((_, i) => <Star key={i} className="h-2.5 w-2.5 fill-current" />)}
+                                </div>
+                            </div>
+                        </motion.div>
 
                     </div>
                 </motion.div>
@@ -557,7 +601,7 @@ border-0
                                             <h3 className="text-[11px] md:text-[17px] font-semibold text-foreground tracking-tight mb-0.5 select-none leading-snug">
                                                 {feature.title}
                                             </h3>
-                                            <p className="text-[10px] md:text-sm text-foreground-muted leading-snug select-none overflow-hidden line-clamp-3 md:line-clamp-2">
+                                            <p className="text-[10px] md:text-sm text-foreground-muted leading-snug select-none overflow-hidden line-clamp-none">
                                                 {feature.description}
                                             </p>
                                         </div>
@@ -845,64 +889,123 @@ border-0
                     </motion.p>
                 </div>
 
-                <div className="max-w-2xl mx-auto">
-                    <motion.div
-                        initial={{ opacity: 0, y: 28 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.65, delay: 0.15 }}
-                    >
-                        <Card className="relative flex flex-col p-6 sm:p-9 group
-                            border border-accent/20 hover:border-accent/35 dark:border-accent/20
-                            bg-gradient-to-b from-white to-slate-50/60 dark:bg-accent/[0.02]
-                            shadow-[0_4px_32px_rgba(94,106,210,0.08)]
-                            hover:shadow-[0_12px_48px_rgba(94,106,210,0.16)]
-                            transition-all duration-500 overflow-hidden">
+                <div className="max-w-5xl mx-auto">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
 
-                            {/* Decorative top beam */}
-                            <div className="block dark:hidden absolute top-0 left-1/2 -translate-x-1/2 w-40 h-[2px] bg-gradient-to-r from-transparent via-accent/50 to-transparent rounded-full" />
-                            {/* Subtle corner glow */}
-                            <div className="block dark:hidden absolute -top-10 -right-10 w-36 h-36 rounded-full bg-accent/8 blur-2xl group-hover:bg-accent/14 transition-all duration-500" />
-                            <div className="block dark:hidden absolute -bottom-10 -left-10 w-36 h-36 rounded-full bg-purple-400/6 blur-2xl group-hover:bg-purple-400/10 transition-all duration-500" />
-
-                            <div className="mb-7 text-center relative z-10">
-                                
-                                <h3 className="text-2xl font-bold text-foreground">Core Media Literacy Skills</h3>
-                                <p className="text-sm text-foreground-muted mt-1">Key skills for information analysis</p>
+                        {/* Left column: Rich content panels */}
+                        <motion.div
+                            initial={{ opacity: 0, x: -30 }}
+                            whileInView={{ opacity: 1, x: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ duration: 0.6, delay: 0.1 }}
+                            className="lg:col-span-5 space-y-6 text-left"
+                        >
+                            <div className="space-y-3">
+                                <h4 className="text-xl sm:text-2xl font-bold text-foreground">AI for Media Literacy.</h4>
+                                <p className="text-sm sm:text-base text-foreground-muted leading-relaxed">
+                                    Everything you need to analyze, verify, compare, and understand digital information—all in one intelligent workspace.
+                                </p>
                             </div>
 
-                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8 relative z-10">
-                                <PricingFeature highlighted>Information Verification</PricingFeature>
-                                <PricingFeature highlighted>Source Credibility Analysis</PricingFeature>
-                                <PricingFeature highlighted>Bias Detection</PricingFeature>
-                                <PricingFeature highlighted>Fact Checking</PricingFeature>
-                                <PricingFeature highlighted>Critical Thinking</PricingFeature>
-                                <PricingFeature highlighted>Responsible Media Consumption</PricingFeature>
-                                <PricingFeature highlighted>Digital Citizenship</PricingFeature>
-                                <PricingFeature highlighted>AI-Assisted Learning</PricingFeature>
-                            </ul>
+                            <div className="space-y-4">
+                                <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-slate-50/50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/[0.04]">
+                                    <div className="mt-1 shrink-0 p-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                        <ShieldCheck className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h5 className="text-sm sm:text-base font-semibold text-foreground">Cross-Reference Sources</h5>
+                                        <p className="text-xs sm:text-sm text-foreground-muted mt-1 leading-relaxed">
+                                            Evaluate online claims against trusted academic databases, credible scientific records, and historical context.
+                                        </p>
+                                    </div>
+                                </div>
 
-                            <Link to="/signup" className="relative z-10">
-                                <motion.div whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}>
-                                    <Button className="w-full h-12 text-sm font-semibold
-                                        bg-accent hover:bg-accent-bright text-white
-                                        shadow-[0_4px_24px_rgba(94,106,210,0.3)]
-                                        hover:shadow-[0_8px_32px_rgba(94,106,210,0.45)]
-                                        transition-all duration-300 rounded-2xl border-0">
-                                        Explore Media Literacy
-                                        <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-                                    </Button>
-                                </motion.div>
-                            </Link>
-                        </Card>
-                    </motion.div>
+                                <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-slate-50/50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/[0.04]">
+                                    <div className="mt-1 shrink-0 p-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                        <Scale className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h5 className="text-sm sm:text-base font-semibold text-foreground">Detect Propaganda & Bias</h5>
+                                        <p className="text-xs sm:text-sm text-foreground-muted mt-1 leading-relaxed">
+                                            Unmask emotionally charged language, logical fallacies, and hidden agendas in reporting and social content.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-slate-50/50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/[0.04]">
+                                    <div className="mt-1 shrink-0 p-2 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                                        <GraduationCap className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h5 className="text-sm sm:text-base font-semibold text-foreground">Curriculum Alignment</h5>
+                                        <p className="text-xs sm:text-sm text-foreground-muted mt-1 leading-relaxed">
+                                            Enhance your assignments by integrating facts that directly corroborate with your course study units.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        {/* Right column: Original expanded card */}
+                        <motion.div
+                            initial={{ opacity: 0, x: 30 }}
+                            whileInView={{ opacity: 1, x: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ duration: 0.6, delay: 0.2 }}
+                            className="lg:col-span-7 w-full"
+                        >
+                            <Card className="relative flex flex-col p-6 sm:p-9 group
+                                border border-accent/20 hover:border-accent/35 dark:border-accent/20
+                                bg-gradient-to-b from-white to-slate-50/60 dark:bg-accent/[0.02]
+                                shadow-[0_4px_32px_rgba(94,106,210,0.08)]
+                                hover:shadow-[0_12px_48px_rgba(94,106,210,0.16)]
+                                transition-all duration-500 overflow-hidden w-full">
+
+                                {/* Decorative top beam */}
+                                <div className="block dark:hidden absolute top-0 left-1/2 -translate-x-1/2 w-40 h-[2px] bg-gradient-to-r from-transparent via-accent/50 to-transparent rounded-full" />
+                                {/* Subtle corner glow */}
+                                <div className="block dark:hidden absolute -top-10 -right-10 w-36 h-36 rounded-full bg-accent/8 blur-2xl group-hover:bg-accent/14 transition-all duration-500" />
+                                <div className="block dark:hidden absolute -bottom-10 -left-10 w-36 h-36 rounded-full bg-purple-400/6 blur-2xl group-hover:bg-purple-400/10 transition-all duration-500" />
+
+                                <div className="mb-7 text-center relative z-10">
+                                    <h3 className="text-2xl font-bold text-foreground">Core Media Literacy Skills</h3>
+                                    <p className="text-sm text-foreground-muted mt-1">Key skills for information analysis</p>
+                                </div>
+
+                                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-8 relative z-10">
+                                    <PricingFeature highlighted>Information Verification</PricingFeature>
+                                    <PricingFeature highlighted>Source Credibility Analysis</PricingFeature>
+                                    <PricingFeature highlighted>Bias Detection</PricingFeature>
+                                    <PricingFeature highlighted>Fact Checking</PricingFeature>
+                                    <PricingFeature highlighted>Critical Thinking</PricingFeature>
+                                    <PricingFeature highlighted>Responsible Media Consumption</PricingFeature>
+                                    <PricingFeature highlighted>Digital Citizenship</PricingFeature>
+                                    <PricingFeature highlighted>AI-Assisted Learning</PricingFeature>
+                                </ul>
+
+                                <Link to="/signup" className="relative z-10">
+                                    <motion.div whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }}>
+                                        <Button className="w-full h-12 text-sm font-semibold
+                                            bg-accent hover:bg-accent-bright text-white
+                                            shadow-[0_4px_24px_rgba(94,106,210,0.3)]
+                                            hover:shadow-[0_8px_32px_rgba(94,106,210,0.45)]
+                                            transition-all duration-300 rounded-2xl border-0">
+                                            Explore Media Literacy
+                                            <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                                        </Button>
+                                    </motion.div>
+                                </Link>
+                            </Card>
+                        </motion.div>
+
+                    </div>
                 </div>
             </section>
             {/* ═══════════════════════════════════════════
                 SECTION 4 — PERFORMANCE METRICS
             ═══════════════════════════════════════════ */}
-            
-            
+
+
 
             {/* ═══════════════════════════════════════════
                 SECTION 5 — FAQ SECTION

@@ -259,7 +259,7 @@ const QuotedTextPreview = ({ quotedText, onClear }) => (
 
 
 
-const ConversationNavigator = ({ messages }) => {
+const ConversationNavigator = ({ messages, scrollContainer }) => {
     const [activeIndex, setActiveIndex] = React.useState(0);
     const [isHovered, setIsHovered] = React.useState(false);
     const [isMobilePanelOpen, setIsMobilePanelOpen] = React.useState(false);
@@ -274,6 +274,7 @@ const ConversationNavigator = ({ messages }) => {
 
     React.useEffect(() => {
         if (messages.length < 20) return;
+        if (!scrollContainer) return;
 
         const observer = new IntersectionObserver(
             (entries) => {
@@ -291,7 +292,7 @@ const ConversationNavigator = ({ messages }) => {
                 }
             },
             {
-                root: null,
+                root: scrollContainer,
                 rootMargin: "-20% 0px -60% 0px",
                 threshold: [0, 0.25, 0.5, 0.75, 1.0],
             }
@@ -301,7 +302,7 @@ const ConversationNavigator = ({ messages }) => {
         elements.forEach((el) => observer.observe(el));
 
         return () => observer.disconnect();
-    }, [messages.length]);
+    }, [messages.length, scrollContainer]);
 
     if (messages.length < 20 || userMessages.length === 0) return null;
 
@@ -645,6 +646,7 @@ export function ChatPage() {
         return MODELS.find(m => m.id === saved) || MODELS[0];
     });
     const [isModelDropdownOpen, setIsModelDropdownOpen] = React.useState(false);
+    const [isModeDropdownOpen, setIsModeDropdownOpen] = React.useState(false);
     const [selectedLanguage, setSelectedLanguage] = React.useState(null); // null = English (default)
     const [isTranslating, setIsTranslating] = React.useState(false);
     const [isLangDropdownOpen, setIsLangDropdownOpen] = React.useState(false);
@@ -731,12 +733,14 @@ export function ChatPage() {
             followUpQuestions: null
         };
     })());
+    const [scrollContainer, setScrollContainer] = React.useState(null);
     const scrollContainerRef = React.useRef(null);
 
 
 
     const setScrollRef = React.useCallback((node) => {
         scrollContainerRef.current = node;
+        setScrollContainer(node);
         if (node && !isIncognito && normalStateCache.current.scrollPos > 0) {
             // Restore instantly upon mount
             node.scrollTop = normalStateCache.current.scrollPos;
@@ -2052,7 +2056,7 @@ export function ChatPage() {
 
             {/* Main Chat Area */}
             <div className="flex flex-1 flex-col relative">
-                <ConversationNavigator messages={messages} />
+                <ConversationNavigator messages={messages} scrollContainer={scrollContainer} />
 
                 <div className={cn(
                     "grid grid-cols-[1fr_auto_1fr] h-[56px] sm:h-16 items-center px-3 sm:px-6 transition-all duration-300 z-50 sticky top-0 border-b",
@@ -2152,22 +2156,51 @@ export function ChatPage() {
 
                     {/* CENTER column — Mode Switch, always perfectly centered */}
                     {!isIncognito && (
-                        <div className="flex items-center justify-center">
-                            <div className="flex items-center bg-slate-100 dark:bg-zinc-800/60 p-1 rounded-xl border border-slate-200/60 dark:border-white/5 shadow-inner shrink-0">
-                                <button
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-sm transition-all"
-                                >
-                                    <GlobeChatIcon className="h-3.5 w-3.5 shrink-0" />
-                                    <span>Chat</span>
-                                </button>
-                                <Link
-                                    to="/deep-research"
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
-                                >
-                                    <DeepResearchLogo className="h-3.5 w-3.5 shrink-0" />
-                                    <span>Deep Research</span>
-                                </Link>
-                            </div>
+                        <div className="flex items-center justify-center relative">
+                            <button
+                                onClick={() => setIsModeDropdownOpen(!isModeDropdownOpen)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-800/60 hover:bg-slate-200 dark:hover:bg-zinc-700/80 border border-slate-200/60 dark:border-white/5 shadow-sm text-xs font-bold text-zinc-700 dark:text-zinc-200 transition-all select-none"
+                            >
+                                <GlobeChatIcon className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
+                                <span>Chat</span>
+                                <ChevronDown className={cn("h-3 w-3 shrink-0 text-zinc-400 transition-transform duration-200", isModeDropdownOpen && "rotate-180")} />
+                            </button>
+
+                            <AnimatePresence>
+                                {isModeDropdownOpen && (
+                                    <>
+                                        <div
+                                            className="fixed inset-0 z-10"
+                                            onClick={() => setIsModeDropdownOpen(false)}
+                                        />
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute top-full mt-2 w-48 p-1.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
+                                        >
+                                            <div className="space-y-1">
+                                                <button
+                                                    onClick={() => setIsModeDropdownOpen(false)}
+                                                    className="w-full flex items-center gap-2.5 p-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100/50 dark:border-blue-500/20 text-blue-600 dark:text-blue-400 text-left text-xs font-bold transition-all"
+                                                >
+                                                    <GlobeChatIcon className="h-4 w-4 shrink-0" />
+                                                    <span>Chat Mode</span>
+                                                </button>
+                                                <Link
+                                                    to="/deep-research"
+                                                    onClick={() => setIsModeDropdownOpen(false)}
+                                                    className="w-full flex items-center gap-2.5 p-2 rounded-xl hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 text-left text-xs font-semibold transition-all"
+                                                >
+                                                    <DeepResearchLogo className="h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-400" />
+                                                    <span>Deep Research</span>
+                                                </Link>
+                                            </div>
+                                        </motion.div>
+                                    </>
+                                )}
+                            </AnimatePresence>
                         </div>
                     )}
 

@@ -13,21 +13,19 @@ import GlobeChatIcon from './icons/GlobeChatIcon';
 
 const MetricTooltip = ({ info }) => (
     <div className="group/tooltip relative inline-block z-50">
-        <div className="flex items-center justify-center w-4 h-4 rounded-full bg-white/5 border border-white/10 hover:bg-white/20 hover:border-white/30 transition-all cursor-help active:scale-95">
+        <div className="flex items-center justify-center w-4 h-4 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/20 hover:border-black/20 dark:hover:border-white/30 transition-all cursor-help active:scale-95">
             <span className="text-[10px] font-bold text-foreground-muted group-hover/tooltip:text-foreground">i</span>
         </div>
-        <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-black/95 backdrop-blur-2xl border border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0">
-            <p className="text-[11px] leading-relaxed text-white font-medium">
+        <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-white/95 dark:bg-black/95 backdrop-blur-2xl border border-black/10 dark:border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0">
+            <p className="text-[11px] leading-relaxed text-foreground font-medium">
                 {info}
             </p>
-            <div className="absolute top-[calc(100%-1px)] right-2 border-[6px] border-transparent border-t-black/10 dark:border-t-white/20" />
-            <div className="absolute top-[calc(100%-2px)] right-2 border-[6px] border-transparent border-t-white dark:border-t-black" />
         </div>
     </div>
 );
 
 const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, bgGradient, className, info }) => (
-    <Card spotlight={false} className={`p-4 flex flex-col justify-between border-white/5 bg-black/40 backdrop-blur-md relative overflow-visible group min-h-[110px] ${className}`}>
+    <Card spotlight={false} className={`p-4 flex flex-col justify-between border-black/8 dark:border-white/5 dark:bg-black/40 dark:backdrop-blur-md relative overflow-visible group min-h-[110px] ${className}`}>
         <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
             <div className={`absolute top-0 right-0 p-4 opacity-5 dark:opacity-10 group-hover:opacity-10 dark:group-hover:opacity-20 transition-opacity duration-500 scale-125`}>
                 <Icon size={40} className={colorClass} />
@@ -36,7 +34,7 @@ const MetricCard = ({ icon: Icon, label, value, trend, trendValue, colorClass, b
 
         <div className="flex items-center justify-between mb-1.5 relative z-10">
             <div className="flex items-center space-x-2.5">
-                <div className={`p-1.5 rounded-lg bg-white/5 border border-white/10 ${colorClass}`}>
+                <div className={`p-1.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/8 dark:border-white/10 ${colorClass}`}>
                     <Icon size={16} />
                 </div>
                 <span className="text-[11px] sm:text-xs font-medium text-foreground-muted leading-tight mt-0.5 break-words">{label}</span>
@@ -172,7 +170,7 @@ const GaugeMetric = ({ data, label, subLabel, value, color, info }) => (
                     <span className="text-[11px] sm:text-xs text-foreground-muted truncate font-medium">{subLabel.primary}</span>
                 </div>
                 <div className="flex items-center space-x-2.5">
-                    <div className="w-2 h-2 rounded-sm bg-white/5" />
+                    <div className="w-2 h-2 rounded-sm bg-black/10 dark:bg-white/5" />
                     <span className="text-[10px] text-foreground-muted">{subLabel.secondary}</span>
                 </div>
             </div>
@@ -285,7 +283,7 @@ export function PerformanceStats() {
             {/* ROW 1: PERFORMANCE TREND + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md relative h-full overflow-visible">
+                    <Card spotlight={false} className="p-4 border-black/8 dark:border-white/5 dark:bg-black/40 dark:backdrop-blur-md relative h-full overflow-visible">
                         <div className="flex items-center justify-between mb-6">
                             <div>
                                 <div className="flex items-center space-x-2">
@@ -297,7 +295,7 @@ export function PerformanceStats() {
                             <div className="relative" ref={windowMenuRef}>
                                 <div
                                     onClick={() => setIsWindowMenuOpen((prev) => !prev)}
-                                    className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-white/10 transition-colors"
+                                    className="bg-black/5 dark:bg-white/5 border border-black/8 dark:border-white/10 rounded-lg px-2 py-1 flex items-center space-x-1.5 cursor-pointer hover:bg-black/8 dark:hover:bg-white/10 transition-colors"
                                 >
                                     <span className="text-[10px] font-medium text-foreground-muted">
                                         {windowOptions.find(o => o.value === timeWindow)?.label}
@@ -305,7 +303,7 @@ export function PerformanceStats() {
                                     <ChevronRight size={12} className={`text-foreground-muted transition-transform duration-200 ${isWindowMenuOpen ? '-rotate-90' : 'rotate-90'}`} />
                                 </div>
                                 {isWindowMenuOpen && (
-                                    <div className="absolute right-0 top-full mt-1 w-36 bg-black/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                                    <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-black/95 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-lg shadow-[0_10px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
                                         {windowOptions.map((option) => (
                                             <button
                                                 key={option.value}
@@ -313,11 +311,10 @@ export function PerformanceStats() {
                                                     setTimeWindow(option.value);
                                                     setIsWindowMenuOpen(false);
                                                 }}
-                                                className={`w-full text-left px-3 py-2 text-[11px] transition-colors ${
-                                                    option.value === timeWindow
+                                                className={`w-full text-left px-3 py-2 text-[11px] transition-colors ${option.value === timeWindow
                                                         ? 'bg-accent/10 text-accent font-medium'
-                                                        : 'text-foreground-muted hover:bg-white/5 hover:text-foreground'
-                                                }`}
+                                                        : 'text-foreground-muted hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground'
+                                                    }`}
                                             >
                                                 {option.label}
                                             </button>
@@ -340,7 +337,7 @@ export function PerformanceStats() {
                                             <stop offset="95%" stopColor="#60A5FA" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" className="dark:[stroke:rgba(255,255,255,0.05)]" vertical={false} />
                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={8} />
                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
                                     <Tooltip content={<CustomTooltip />} />
@@ -412,18 +409,18 @@ export function PerformanceStats() {
             {/* ROW 2: SYSTEM STATUS + 2 CARDS */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-[70%]">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center space-x-4">
+                    <Card spotlight={false} className="p-4 border-black/8 dark:border-white/5 dark:bg-black/40 dark:backdrop-blur-md h-full overflow-visible">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                                 <div className="flex items-center space-x-2">
                                     <h3 className="text-lg font-bold text-foreground">System Status</h3>
                                     <MetricTooltip info="Real-time health monitor and uptime metrics for core infrastructure components." />
                                 </div>
-                                <div className="text-[10px] text-foreground-muted font-medium bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                                <div className="text-[10px] text-foreground-muted font-medium bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded border border-black/8 dark:border-white/5">
                                     Dec 2025 - Mar 2026
                                 </div>
                             </div>
-                            <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full border ${metrics?.status === 'outage' ? 'bg-rose-500/10 border-rose-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+                            <div className={`self-start sm:self-auto flex items-center space-x-1 px-2 py-0.5 rounded-full border shrink-0 ${metrics?.status === 'outage' ? 'bg-rose-500/10 border-rose-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
                                 <Activity size={10} className={`${metrics?.status === 'outage' ? 'text-rose-500' : 'text-emerald-500'} animate-pulse`} />
                                 <span className={`text-[9px] uppercase font-bold tracking-wider ${metrics?.status === 'outage' ? 'text-rose-500' : 'text-emerald-500'}`}>
                                     {metrics?.status === 'outage' ? 'Service Outage' : 'Operational'}
@@ -431,14 +428,14 @@ export function PerformanceStats() {
                             </div>
                         </div>
 
-                        <div className="divide-y divide-white/5">
+                        <div className="divide-y divide-black/8 dark:divide-white/5">
                             <SystemStatusItem label="API" icon={Globe} />
                             <SystemStatusItem label="Production" subLabel="7 components" icon={Activity} />
                             <SystemStatusItem label="Preview Models" subLabel="9 components" icon={ShieldCheck} />
                         </div>
 
                         {/* Status Legend */}
-                        <div className="flex items-center space-x-6 mt-6 pt-4 border-t border-white/5">
+                        <div className="flex items-center space-x-6 mt-6 pt-4 border-t border-black/8 dark:border-white/5">
                             <div className="flex items-center space-x-2">
                                 <div className="w-2 h-2 rounded-sm bg-emerald-500" />
                                 <span className="text-[10px] text-foreground-muted font-medium">Operational</span>
@@ -491,7 +488,7 @@ export function PerformanceStats() {
             {/* ROW 3: SOURCE GROUNDING & OFF-TOPIC DETECTION (Split Cards) */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-1/2">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
+                    <Card spotlight={false} className="p-4 border-black/8 dark:border-white/5 dark:bg-black/40 dark:backdrop-blur-md h-full overflow-visible">
                         <GaugeMetric
                             data={liveSourceData}
                             label="Source Grounding"
@@ -503,7 +500,7 @@ export function PerformanceStats() {
                     </Card>
                 </div>
                 <div className="lg:w-1/2">
-                    <Card spotlight={false} className="p-4 border-white/5 bg-black/40 backdrop-blur-md h-full overflow-visible">
+                    <Card spotlight={false} className="p-4 border-black/8 dark:border-white/5 dark:bg-black/40 dark:backdrop-blur-md h-full overflow-visible">
                         <GaugeMetric
                             data={liveOffTopicData}
                             label="Off-Topic Detection"

@@ -5,12 +5,14 @@ import { Button } from "../ui/Button";
 import { cn } from "../../lib/utils";
 import { GraduationCap, LayoutGrid, MessageSquare, User, Settings, LogOut } from "lucide-react";
 import { useLanguage } from "../../context/LanguageContext";
+import { useUI } from "../../context/UIContext";
 import { Logo } from "../ui/Logo";
 import GlobeChatIcon from "../icons/GlobeChatIcon";
 
 export function Navbar() {
     const location = useLocation();
     const { t, language, setLanguage } = useLanguage();
+    const { theme, setTheme } = useUI();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     // Auth Check
@@ -19,7 +21,7 @@ export function Navbar() {
 
 
     const NavLink = ({ to, icon: Icon, children }) => {
-        const isActive = to === '/home' || to === '/' 
+        const isActive = to === '/home' || to === '/'
             ? location.pathname === '/' || location.pathname === '/home'
             : location.pathname.startsWith(to);
         return (
@@ -94,16 +96,7 @@ export function Navbar() {
                         <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => {
-                                const html = document.documentElement;
-                                if (html.classList.contains('dark')) {
-                                    html.classList.remove('dark');
-                                    localStorage.setItem('theme', 'light');
-                                } else {
-                                    html.classList.add('dark');
-                                    localStorage.setItem('theme', 'dark');
-                                }
-                            }}
+                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                             className="text-foreground-muted hover:text-foreground"
                         >
                             {/* Sun Icon (Visible in Dark) */}
@@ -216,7 +209,7 @@ export function Navbar() {
             >
                 <div className="flex items-center justify-around h-16 px-2">
                     <BottomNavLink to="/home" icon={LayoutGrid} label={t('nav.home')} />
-                    {isLoggedIn && <BottomNavLink to="/dashboard" icon={GraduationCap} label={t('nav.dashboard')} />}
+                    {isLoggedIn && <BottomNavLink to="/workspace" icon={GraduationCap} label={t('nav.dashboard')} />}
                     <BottomNavLink to="/chat" icon={GlobeChatIcon} label={t('nav.chat')} />
                     <BottomNavLink to={isLoggedIn ? "/profile" : "/login"} icon={User} label={isLoggedIn ? t('nav.profile') : t('nav.login')} />
                 </div>
