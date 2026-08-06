@@ -24,6 +24,7 @@ import { PageTransition } from "../components/ui/PageTransition";
 import { VoiceOverlay } from "../components/ui/VoiceOverlay";
 import { DeepResearchLogo } from "../components/ui/DeepResearchLogo";
 import GlobeChatIcon from "../components/icons/GlobeChatIcon";
+import { Logo } from "../components/ui/Logo";
 import { Sidebar } from "../components/layout/Sidebar";
 import {
     ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Layout, Lightbulb,
@@ -2044,6 +2045,7 @@ export function ChatPage() {
                 onRenameSubmit={handleRenameSubmit}
                 onClearHistory={handleClearHistory}
                 isIncognito={isIncognito}
+                onIncognitoToggle={handleIncognitoToggle}
                 isDisappearingMode={isDisappearingMode}
                 setIsDisappearingMode={setIsDisappearingMode}
                 t={t}
@@ -2072,7 +2074,7 @@ export function ChatPage() {
 
                     {/* LEFT column — Model Selector (and menu toggle) */}
                     <div className="flex items-center gap-2 min-w-0">
-                        {!isSidebarOpen && (
+                        {!isSidebarOpen && !isIncognito && (
                             <button
                                 onClick={() => setIsSidebarOpen(true)}
                                 aria-label="Open sidebar"
@@ -2087,12 +2089,7 @@ export function ChatPage() {
                             </button>
                         )}
 
-                        {isIncognito ? (
-                            <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-                                <IncognitoIcon className="h-5 w-5 text-zinc-300 shrink-0" />
-                                <span className="text-sm font-semibold text-zinc-200 tracking-tight truncate block">Incognito chat</span>
-                            </div>
-                        ) : (
+                        {isIncognito ? null : (
                             <div className="relative min-w-0">
                                 <button
                                     onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
@@ -2155,7 +2152,12 @@ export function ChatPage() {
                     </div>
 
                     {/* CENTER column — Mode Switch, always perfectly centered */}
-                    {!isIncognito && (
+                    {isIncognito ? (
+                        <div className="flex items-center justify-center gap-2 min-w-0 overflow-hidden">
+                            <IncognitoIcon className="h-5 w-5 text-zinc-300 shrink-0" />
+                            <span className="text-sm font-semibold text-zinc-200 tracking-tight truncate block">Incognito chat</span>
+                        </div>
+                    ) : (
                         <div className="flex items-center justify-center relative">
                             <button
                                 onClick={() => setIsModeDropdownOpen(!isModeDropdownOpen)}
