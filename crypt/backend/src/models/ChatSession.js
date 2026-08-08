@@ -1,7 +1,7 @@
 const { getFirestore } = require('../config/db');
 const { getRedisClient } = require('../config/redis');
 
-const DRAFT_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 
 const toDate = (value) => {
@@ -553,6 +553,34 @@ class ChatSession {
             return session;
         } catch (error) {
             throw new Error(`Failed to archive session: ${error.message}`);
+        }
+    }
+
+    static async updateTitleById(id, userId, title) {
+        const db = getFirestore();
+        if (!db) return null;
+        const redisClient = getRedisClient();
+
+        try {
+            const session = await ChatSession.findById(id, userId, { includeDeleted: true });
+            if (!session) return null;
+
+            const updatedAt = new Date();
+            await db.collection('chat_sessions').doc(id).set({
+                title,
+                updatedAt
+            }, { merge: true });
+
+            if (redisClient) {
+                await redisClient.del(`chat_session:${id}`);
+                await redisClient.del(`user_sessions:${userId}`);
+            }
+
+            session.title = title;
+            session.updatedAt = updatedAt;
+            return session;
+        } catch (error) {
+            throw new Error(`Failed to update session title: ${error.message}`);
         }
     }
 }

@@ -682,17 +682,18 @@ export function ChatPage() {
         setLoadingMore(true);
         try {
             const currentOffset = messages.length;
-            const res = await api.get(`/chat/sessions/${currentSessionId}/messages?offset=${currentOffset}&limit=20`);
+            const res = await api.get(`/chat/sessions/${currentSessionId}/messages?offset=${currentOffset}&limit=30`);
             const olderMessages = res.data.messages || [];
             if (olderMessages.length > 0) {
-                const previousHeight = scrollElement.scrollHeight;
+                const previousScrollHeight = scrollElement.scrollHeight;
+                const previousScrollTop = scrollElement.scrollTop;
                 setMessages(prev => [...olderMessages, ...prev]);
-                setTimeout(() => {
+                requestAnimationFrame(() => {
                     if (scrollElement) {
-                        const newHeight = scrollElement.scrollHeight;
-                        scrollElement.scrollTop = newHeight - previousHeight;
+                        const newScrollHeight = scrollElement.scrollHeight;
+                        scrollElement.scrollTop = previousScrollTop + (newScrollHeight - previousScrollHeight);
                     }
-                }, 0);
+                });
             }
             setHasMore(res.data.hasMore || false);
         } catch (err) {
@@ -703,7 +704,7 @@ export function ChatPage() {
     };
 
     const handleScroll = (e) => {
-        if (e.target.scrollTop === 0 && hasMore && !loadingMore) {
+        if (e.target.scrollTop < 300 && hasMore && !loadingMore) {
             loadOlderMessages(e.target);
         }
         if (!isIncognito) {
@@ -1219,11 +1220,14 @@ export function ChatPage() {
             generatedTitle = currentUnsentText.substring(0, 30) + (currentUnsentText.length > 30 ? "..." : "");
         }
 
+        const existingSession = currentSessionId ? sessions.find(s => s.id === currentSessionId) : null;
+        const nextIsDraft = existingSession ? existingSession.isDraft === true : false;
+
         const saved = await persistSession({
             sessionId: currentSessionId,
             nextMessages: messages,
             title: generatedTitle,
-            isDraft: true,
+            isDraft: nextIsDraft,
             unsentText: currentUnsentText
         });
 
@@ -1285,8 +1289,9 @@ export function ChatPage() {
         }
     };
 
-    const handleRenameSubmit = async (sessionId) => {
-        const trimmedTitle = renameValue.trim();
+    const handleRenameSubmit = async (sessionId, submittedTitle) => {
+        const titleToUse = typeof submittedTitle === "string" ? submittedTitle : renameValue;
+        const trimmedTitle = titleToUse.trim();
         const session = sessions.find(s => s.id === sessionId);
 
         setRenamingSessionId(null);
@@ -1299,9 +1304,7 @@ export function ChatPage() {
 
         if (!isGuest && !isIncognito) {
             try {
-                await api.post('/chat/sessions', {
-                    sessionId: session.id,
-                    messages: session.messages,
+                await api.patch(`/chat/sessions/${session.id}/title`, {
                     title: trimmedTitle
                 });
             } catch (err) {
@@ -1426,7 +1429,7 @@ export function ChatPage() {
         navigate({ search: newParams.toString() }, { replace: true });
 
         try {
-            const res = await api.get(`/chat/sessions/${session.id}/messages?offset=0&limit=20`);
+            const res = await api.get(`/chat/sessions/${session.id}/messages?offset=0&limit=75`);
             setMessages(res.data.messages || [INITIAL_MESSAGE]);
             setHasMore(res.data.hasMore || false);
         } catch (err) {
@@ -1467,10 +1470,10 @@ export function ChatPage() {
             setIsRestoringSession(true);
             try {
                 if (!isGuest) {
-                    const res = await api.get('/chat/sessions?limit=25');
+                    const res = await api.get('/chat/sessions');
                     const fetchedSessions = Array.isArray(res.data) ? res.data : [];
                     setSessions(fetchedSessions);
-                    setHasMoreSessions(fetchedSessions.length === 25);
+                    setHasMoreSessions(false);
 
                     try {
                         const resResearch = await api.get('/research/sessions');
@@ -1649,12 +1652,11 @@ export function ChatPage() {
 
             if (!isGuest && !isIncognito) {
                 try {
-                    const keepDraftState = shouldKeepDraftState(currentSessionId);
                     const saved = await persistSession({
                         sessionId: currentSessionId,
                         nextMessages: updatedMessages,
                         title: getConversationTitle(updatedMessages, currentSessionId),
-                        isDraft: keepDraftState
+                        isDraft: false
                     });
                     if (saved && !currentSessionId) {
                         setCurrentSessionId(saved.id);
@@ -1689,14 +1691,12 @@ export function ChatPage() {
 
             setMessages(updatedWithErr);
 
-
-
             if (!isGuest && !isIncognito) {
                 persistSession({
                     sessionId: currentSessionId,
                     nextMessages: updatedWithErr,
                     title: getConversationTitle(updatedWithErr, currentSessionId),
-                    isDraft: shouldKeepDraftState(currentSessionId)
+                    isDraft: false
                 }).catch(() => { });
             }
 
@@ -1736,7 +1736,7 @@ export function ChatPage() {
                     sessionId: currentSessionId,
                     nextMessages: updatedVoiceMsgs,
                     title: getConversationTitle(updatedVoiceMsgs, currentSessionId),
-                    isDraft: shouldKeepDraftState(currentSessionId)
+                    isDraft: false
                 });
                 if (saved && !currentSessionId) setCurrentSessionId(saved.id);
             } catch (dbErr) {
@@ -1774,7 +1774,7 @@ export function ChatPage() {
                         sessionId: currentSessionId,
                         nextMessages: updatedMessages,
                         title: getConversationTitle(updatedMessages, currentSessionId),
-                        isDraft: shouldKeepDraftState(currentSessionId)
+                        isDraft: false
                     });
                     if (saved && !currentSessionId) setCurrentSessionId(saved.id);
                 } catch (dbErr) { console.error("Failed to save translated chat to DB:", dbErr); }

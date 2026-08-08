@@ -54,6 +54,38 @@ const hasSameConversationPayload = (existingSession, messages, title) => {
         && serializeConversationMessages(existingSession.messages) === serializeConversationMessages(messages);
 };
 
+const mergeMessages = (dbMessages, clientMessages) => {
+    if (!Array.isArray(dbMessages) || dbMessages.length === 0) {
+        return clientMessages;
+    }
+    if (!Array.isArray(clientMessages) || clientMessages.length === 0) {
+        return dbMessages;
+    }
+
+    const n = dbMessages.length;
+    const m = clientMessages.length;
+    let maxOverlap = 0;
+
+    for (let L = Math.min(n, m); L > 0; L--) {
+        let match = true;
+        for (let i = 0; i < L; i++) {
+            const dbMsg = dbMessages[n - L + i];
+            const clMsg = clientMessages[i];
+            if (!dbMsg || !clMsg || dbMsg.role !== clMsg.role || dbMsg.content !== clMsg.content) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            maxOverlap = L;
+            break;
+        }
+    }
+
+    const nonOverlappingDb = dbMessages.slice(0, n - maxOverlap);
+    return [...nonOverlappingDb, ...clientMessages];
+};
+
 // @desc    Upload a file
 // @route   POST /api/chat/upload
 // @access  Private
@@ -131,12 +163,19 @@ router.post('/sessions', protect, async (req, res) => {
         const existingSession = sessionId
             ? await ChatSession.findById(sessionId, req.user.id, { includeDeleted: true })
             : null;
-        const shouldSaveAsDraft = isDraft === true && (normalizedMessages.length > 1 || (unsentText && unsentText.trim()));
-        const resolvedTitle = title || existingSession?.title || deriveTitleFromMessages(normalizedMessages);
+
+        const mergedMessages = existingSession
+            ? mergeMessages(existingSession.messages, normalizedMessages)
+            : normalizedMessages;
+
+        const shouldSaveAsDraft = isDraft === true
+            && (existingSession ? existingSession.isDraft === true : true)
+            && (mergedMessages.length > 1 || (unsentText && unsentText.trim()));
+        const resolvedTitle = title || existingSession?.title || deriveTitleFromMessages(mergedMessages);
         const shouldPreserveDraftExpiry = shouldSaveAsDraft
             && existingSession?.isDraft === true
             && existingSession?.deleted !== true
-            && hasSameConversationPayload(existingSession, normalizedMessages, resolvedTitle)
+            && hasSameConversationPayload(existingSession, mergedMessages, resolvedTitle)
             && existingSession?.unsentText === unsentText;
         const updatedAt = shouldPreserveDraftExpiry
             ? (existingSession?.updatedAt || existingSession?.createdAt || new Date())
@@ -153,7 +192,7 @@ router.post('/sessions', protect, async (req, res) => {
         const session = new ChatSession({
             id: sessionId || existingSession?.id || null,
             userId: req.user.id,
-            messages: normalizedMessages,
+            messages: mergedMessages,
             title: resolvedTitle,
             createdAt: existingSession?.createdAt || updatedAt,
             updatedAt,
@@ -262,6 +301,27 @@ router.delete('/sessions/:id/draft', protect, async (req, res) => {
         res.json({ message: 'Draft deleted' });
     } catch (error) {
         console.error('Delete draft error:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// @desc    Update a specific session title
+// @route   PATCH /api/chat/sessions/:id/title
+// @access  Private
+router.patch('/sessions/:id/title', protect, async (req, res) => {
+    try {
+        const { title } = req.body;
+        if (!title || !title.trim()) {
+            return res.status(400).json({ message: 'Title is required' });
+        }
+        const session = await ChatSession.updateTitleById(req.params.id, req.user.id, title.trim());
+        if (session) {
+            res.json(session.toJSON());
+        } else {
+            res.status(404).json({ message: 'Session not found' });
+        }
+    } catch (error) {
+        console.error('Update session title error:', error);
         res.status(500).json({ message: error.message });
     }
 });
