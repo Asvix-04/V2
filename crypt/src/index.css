@@ -238,3 +238,15 @@ svg:focus {
   outline: none !important;
   border: none !important;
 }
+
+@layer components {
+  /* Scrollable container for chat/conversation view */
+  .chat-scroll-container {
+    @apply flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+  }
+  
+  /* Inner centered width constraint for standard chat conversation flow */
+  .chat-conversation-container {
+    @apply mx-auto w-full max-w-[900px];
+  }
+}

@@ -12,6 +12,7 @@ import { cn } from "../lib/utils";
 import { ChatInput } from "../components/ui/ChatInput";
 import { MessageBubble } from "../components/ui/MessageBubble";
 import { DeepResearchLogo } from "../components/ui/DeepResearchLogo";
+import { ResearchDocument } from "../components/ui/ResearchDocument";
 import GlobeChatIcon from "../components/icons/GlobeChatIcon";
 import { Sidebar } from "../components/layout/Sidebar";
 import api from "../lib/api";
@@ -101,6 +102,8 @@ export function DeepResearchPage() {
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth >= 1024);
+  const [expandedMessage, setExpandedMessage] = React.useState(null);
+  const sidebarWasOpenRef = React.useRef(window.innerWidth >= 1024);
   const [isStarredOpen, setIsStarredOpen] = React.useState(true);
   const [isDeepResearchOpen, setIsDeepResearchOpen] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -177,7 +180,18 @@ export function DeepResearchPage() {
     if (isLoading) return; // Do not overwrite active messages state during a research cycle
     if (currentSessionId) {
       const s = deepResearchChats.find(c => c.id === currentSessionId);
-      setMessages(s ? (s.messages || []) : []);
+      if (s && s.messages) {
+        // Hydrate all assistant messages that are not errors to have isResearchReport: true
+        const hydrated = s.messages.map(m => {
+          if (m.role === "assistant" && !m.isError) {
+            return { ...m, isResearchReport: true };
+          }
+          return m;
+        });
+        setMessages(hydrated);
+      } else {
+        setMessages([]);
+      }
     } else {
       setMessages([]);
     }
@@ -195,6 +209,10 @@ export function DeepResearchPage() {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  React.useEffect(() => {
+    setExpandedMessage(null);
+  }, [currentSessionId]);
 
   // ── Model Selector ────────────────────────────────────────────────────────
   const [selectedModel, setSelectedModel] = React.useState(() => {
@@ -356,6 +374,7 @@ export function DeepResearchPage() {
       const assistantMsg = {
         role: "assistant",
         content: data.answer,
+        isResearchReport: true, // Mark explicitly as report!
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       };
 
@@ -417,7 +436,7 @@ export function DeepResearchPage() {
         const quotaData = error.response.data;
         setQuota(quotaData);
         alert(quotaData.message || "Monthly Deep Research limit reached.");
-        loadQuota().catch(() => {});
+        loadQuota().catch(() => { });
       } else {
         alert(error.response?.data?.message || error.message || "Deep Research generation failed.");
       }
@@ -462,7 +481,7 @@ export function DeepResearchPage() {
 
 
       {/* ── Main Area ──────────────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col relative">
+      <div className="flex flex-1 flex-col relative min-w-0 overflow-hidden">
 
         {/* ── Header — 3-column grid ensures mode switch is perfectly centered ── */}
         <div className={cn(
@@ -530,68 +549,50 @@ export function DeepResearchPage() {
             </AnimatePresence>
           </div>
 
-          {/* RIGHT column — Model Selector */}
-          {/* <div className="flex items-center justify-end">
-            <div className="relative min-w-0">
-              <button
-                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                className="flex items-center gap-1 sm:gap-2 px-1 sm:px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group max-w-full"
-              >
-                <span className="text-base sm:text-lg font-bold tracking-tight truncate block">
-                  {selectedModel.name}
-                </span>
-                <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
-              </button>
-
-              <AnimatePresence>
-                {isModelDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setIsModelDropdownOpen(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="max-sm:fixed max-sm:top-[60px] max-sm:left-3 max-sm:right-3 max-sm:w-auto sm:absolute sm:top-full sm:right-0 sm:mt-2 sm:w-72 p-2 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
-                    >
-                      <div className="space-y-1">
-                        {MODELS.map((model) => (
-                          <button
-                            key={model.id}
-                            onClick={() => { setSelectedModel(model); setIsModelDropdownOpen(false); }}
-                            className={cn(
-                              "w-full flex items-start gap-3 max-sm:p-4 sm:p-3 rounded-xl transition-all text-left",
-                              selectedModel.id === model.id
-                                ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
-                                : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
-                            )}
-                          >
-                            <div className={cn("mt-0.5 shrink-0", model.color)}>
-                              <model.icon className="max-sm:h-5 max-sm:w-5 sm:h-4 sm:w-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className={cn("max-sm:text-sm sm:text-xs font-bold leading-none mb-1 truncate", selectedModel.id === model.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
-                                {model.name}
-                              </p>
-                              <p className="max-sm:text-xs sm:text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
-                                {model.description}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-          </div> */}
-
+          {/* RIGHT column — balanced placeholder */}
+          <div className="flex items-center justify-end" />
         </div>
 
 
         {/* ── Content Body ───────────────────────────────────────────── */}
         <AnimatePresence mode="wait">
-          {messages.length === 0 && !isLoading ? (
+          {expandedMessage ? (
+            <motion.div
+              key="expanded-document"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 15 }}
+              className="flex-1 flex flex-col bg-zinc-50 dark:bg-zinc-950 overflow-hidden relative"
+            >
+              {/* Back bar header */}
+              <div className="flex items-center justify-between px-6 py-3.5 border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-900 z-40 shrink-0 shadow-sm">
+                <button
+                  onClick={() => {
+                    setExpandedMessage(null);
+                    setIsSidebarOpen(sidebarWasOpenRef.current);
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-zinc-500 hover:text-zinc-850 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5 transition-all flex items-center gap-2 text-xs font-bold select-none"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Back to Chat</span>
+                </button>
+              </div>
+
+              {/* Main scroll container for full view */}
+              <div className="flex-1 overflow-y-auto px-4 py-8 sm:px-8 custom-scrollbar-layout scroll-smooth">
+                <div className="mx-auto w-full max-w-[1150px]">
+                  <ResearchDocument
+                    message={expandedMessage}
+                    isExpanded={true}
+                    onToggleExpand={() => {
+                      setExpandedMessage(null);
+                      setIsSidebarOpen(sidebarWasOpenRef.current);
+                    }}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          ) : messages.length === 0 && !isLoading ? (
 
             /* ── Landing Page ───────────────────────────────────── */
             <motion.div
@@ -814,11 +815,25 @@ export function DeepResearchPage() {
               className="flex flex-col flex-1 overflow-hidden"
             >
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:px-3 max-sm:py-4 sm:p-8">
-                <div className="mx-auto w-full max-w-[900px] max-sm:space-y-6 sm:space-y-8">
+              <div className="chat-scroll-container px-3 py-4 sm:p-8">
+                <div className="chat-conversation-container space-y-6 sm:space-y-8">
                   {messages.map((msg, idx) => (
-                    <div key={idx} id={`dr-message-${idx}`}>
-                      <MessageBubble message={msg} isIncognito={false} />
+                    <div key={idx} id={`dr-message-${idx}`} className={msg.isResearchReport ? "w-full py-1 sm:py-2" : ""}>
+                      {msg.isResearchReport ? (
+                        <ResearchDocument
+                          message={msg}
+                          isExpanded={false}
+                          onToggleExpand={(expand) => {
+                            if (expand) {
+                              sidebarWasOpenRef.current = isSidebarOpen;
+                              setIsSidebarOpen(false);
+                              setExpandedMessage(msg);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <MessageBubble message={msg} isIncognito={false} />
+                      )}
                     </div>
                   ))}
 
@@ -827,7 +842,7 @@ export function DeepResearchPage() {
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="w-full max-w-[85%] rounded-2xl border border-indigo-200/60 dark:border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-950/10 p-5 sm:p-6 shadow-sm"
+                      className="w-full rounded-2xl border border-indigo-200/60 dark:border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-950/10 p-4 sm:p-6 shadow-sm"
                     >
                       <div className="flex items-center gap-2.5 mb-4">
                         <Loader2 className="h-5 w-5 text-indigo-500 animate-spin" />
