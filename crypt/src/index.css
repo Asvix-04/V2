@@ -250,3 +250,62 @@ svg:focus {
     @apply mx-auto w-full max-w-[900px];
   }
 }
+
+/* ─────────────────────────────────────────────
+   CHAT INPUT TEXTAREA — Custom scrollbar
+   Desktop only (≥768px). Neutral zinc tones to
+   blend with the input pill. Native scrollbar
+   is preserved on mobile.
+───────────────────────────────────────────── */
+
+/* Firefox */
+@media (min-width: 768px) {
+  .chat-input-textarea {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(113, 113, 122, 0.45) transparent; /* zinc-500 @ 45% */
+  }
+}
+
+/* Chromium (Chrome, Edge, Brave, Safari) */
+@media (min-width: 768px) {
+  .chat-input-textarea::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .chat-input-textarea::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 9999px;
+  }
+
+  /* Resting thumb — visible but subtle */
+  .chat-input-textarea::-webkit-scrollbar-thumb {
+    background: rgba(113, 113, 122, 0.35); /* zinc-500 */
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 0.2s ease;
+  }
+
+  /* Hover */
+  .chat-input-textarea::-webkit-scrollbar-thumb:hover {
+    background: rgba(113, 113, 122, 0.6); /* zinc-500 brighter */
+  }
+
+  /* Active drag */
+  .chat-input-textarea::-webkit-scrollbar-thumb:active {
+    background: rgba(161, 161, 170, 0.75); /* zinc-400 */
+  }
+
+  /* Dark mode — slightly lighter thumb so it reads on dark backgrounds */
+  .dark .chat-input-textarea::-webkit-scrollbar-thumb {
+    background: rgba(161, 161, 170, 0.25); /* zinc-400 @ 25% */
+  }
+
+  .dark .chat-input-textarea::-webkit-scrollbar-thumb:hover {
+    background: rgba(161, 161, 170, 0.5);
+  }
+
+  .dark .chat-input-textarea::-webkit-scrollbar-thumb:active {
+    background: rgba(212, 212, 216, 0.65); /* zinc-300 */
+  }
+}

@@ -3,13 +3,18 @@ import { cn } from "../../lib/utils";
 import { MdSend, MdAttachFile, MdMic, MdMicOff, MdGraphicEq } from "react-icons/md";
 import api from "../../lib/api";
 
+// Maximum height before the textarea stops growing and scrolls internally.
+// 200px ≈ ~8 lines at 14px — matches ChatGPT / Claude behaviour.
+const MAX_HEIGHT = 200;
+
 export const ChatInput = React.forwardRef(({ className, onSend, disabled, initialValue = "", onChangeText, isIncognito, ...props }, ref) => {
     const [value, setValue] = React.useState(initialValue);
     const [isListening, setIsListening] = React.useState(false);
     const [isUploading, setIsUploading] = React.useState(false);
     const [isFocused, setIsFocused] = React.useState(false);
 
-    const textareaRef = React.useRef(null);
+    // Internal ref used for height measurement.
+    const internalRef = React.useRef(null);
     const recognitionRef = React.useRef(null);
     const fileInputRef = React.useRef(null);
 
@@ -21,6 +26,30 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, initia
     const activePlaceholder = isMobileScreen
         ? "Message..."
         : (props.placeholder || "Ask a question...");
+
+    // ── Auto-resize ─────────────────────────────────────────────────────────
+    // useLayoutEffect fires synchronously before paint, eliminating flicker.
+    // Re-runs on every value change so height tracks content in both directions.
+    React.useLayoutEffect(() => {
+        const el = internalRef.current;
+        if (!el) return;
+        // 1. Reset so scrollHeight reflects natural content height, not the
+        //    previously set style.height — required for the element to shrink.
+        el.style.height = "auto";
+        // 2. Measure.
+        const scrollH = el.scrollHeight;
+        // 3. Clamp and apply.
+        el.style.height = `${Math.min(scrollH, MAX_HEIGHT)}px`;
+        // 4. Only show a scrollbar once content exceeds the cap.
+        el.style.overflowY = scrollH > MAX_HEIGHT ? "auto" : "hidden";
+    }, [value]);
+
+    // Compose the forwarded ref with the internal measurement ref.
+    const setRef = React.useCallback((node) => {
+        internalRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+    }, [ref]);
 
     React.useEffect(() => {
         setValue(initialValue);
@@ -84,8 +113,11 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, initia
         <form
             onSubmit={handleSubmit}
             className={cn(
-                // The single pill — always one shape, no layout changes
-                "flex items-center w-full px-3 transition-all duration-200",
+                // items-end keeps the attach / send buttons anchored to the
+                // bottom of the pill as the textarea grows — matching ChatGPT.
+                // py-2 provides the vertical rhythm; the textarea's py-3 adds
+                // internal spacing so single-line text sits centred.
+                "flex items-end w-full px-3 py-2 transition-all duration-200",
                 "min-h-[56px] rounded-[2rem]",
                 isIncognito
                     // Incognito: dark steel-gray, matches incognito surface
@@ -99,20 +131,21 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, initia
                 className
             )}
             style={isIncognito ? {
-                backgroundColor: 'rgba(30,42,58,0.9)',
-                borderColor: 'rgba(255,255,255,0.08)',
-                backdropFilter: 'blur(12px)',
+                backgroundColor: "rgba(30,42,58,0.9)",
+                borderColor: "rgba(255,255,255,0.08)",
+                backdropFilter: "blur(12px)",
             } : undefined}
         >
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
-            {/* LEFT — Attach */}
+            {/* LEFT — Attach: mb-1 gives the icon the same optical bottom gap
+                as the textarea's py-3 so the baseline aligns on single-line. */}
             <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading || disabled}
                 className={cn(
-                    "shrink-0 flex items-center justify-center h-10 w-10 rounded-full transition-all duration-150 active:scale-95",
+                    "shrink-0 flex items-center justify-center h-10 w-10 rounded-full transition-all duration-150 active:scale-95 mb-1",
                     isIncognito
                         ? "text-slate-400 hover:text-slate-200 hover:bg-white/8"
                         : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/10",
@@ -123,9 +156,14 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, initia
                 <MdAttachFile className="text-[22px] rotate-45" />
             </button>
 
-            {/* CENTER — Text input */}
+            {/* CENTER — Auto-growing textarea.
+                - rows={1} sets the browser intrinsic height; useLayoutEffect
+                  immediately overrides it with scrollHeight.
+                - max-h-* removed — JS is the sole height authority.
+                - py-3 centres single-line text inside the 56px pill.
+                - overflowY is applied directly via the ref (hidden / auto). */}
             <textarea
-                ref={ref || textareaRef}
+                ref={setRef}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -134,17 +172,18 @@ export const ChatInput = React.forwardRef(({ className, onSend, disabled, initia
                 placeholder={isFocused ? activePlaceholder : ""}
                 rows={1}
                 className={cn(
-                    "flex-1 min-w-0 bg-transparent border-0 px-3 py-2 text-sm caret-accent focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none resize-none max-h-32 self-center",
+                    "chat-input-textarea flex-1 min-w-0 bg-transparent border-0 px-3 py-3 text-sm leading-5 caret-accent focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none resize-none",
                     isIncognito
                         ? "text-slate-200 placeholder:text-slate-500"
                         : "text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
                 )}
-                style={{ minHeight: "24px" }}
+                style={{ minHeight: "24px", overflowY: "hidden" }}
                 disabled={disabled}
             />
 
-            {/* RIGHT — Mic + Talk (idle) OR Send (active) */}
-            <div className="flex items-center gap-1 shrink-0 ml-1">
+            {/* RIGHT — Mic + Talk (idle) OR Send (active).
+                mb-1 mirrors the attach button baseline. */}
+            <div className="flex items-center gap-1 shrink-0 ml-1 mb-1">
                 {/* Mic button — show when not active on mobile, always on desktop */}
                 <button
                     type="button"

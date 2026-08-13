@@ -1580,8 +1580,25 @@ export function ChatPage() {
 
         const initSessions = async () => {
             console.log("ChatPage: initSessions executed");
-            // Don't blank the page back out if we already showed cached content above.
-            if (!hadCachedContent) {
+
+            // Classify startup: determines if the user is loading a brand-new fresh chat welcome screen
+            const urlSessionId = searchParams.get("sessionId");
+            const lastActiveSessionId = lastActiveSessionKey ? localStorage.getItem(lastActiveSessionKey) : null;
+            const storedDraft = getStoredActiveDraft();
+            const pendingDraft = readPendingDraftSnapshot();
+            const likelySessionId = urlSessionId
+                || lastActiveSessionId
+                || storedDraft?.sessionId
+                || pendingDraft?.sessionId;
+
+            const cached = likelySessionId ? getCachedSessionMessages(likelySessionId) : null;
+            const hasCachedMessages = !!(cached && Array.isArray(cached.messages) && cached.messages.length > 0);
+
+            const isRestoreSession = !!(likelySessionId || hasCachedMessages);
+
+            // Only show restoring spinner if this is a Restore Session scenario (not a Fresh Chat)
+            // and we do not have messages already loaded from layout effect cache.
+            if (isRestoreSession && !hadCachedContent) {
                 setIsRestoringSession(true);
             }
             try {

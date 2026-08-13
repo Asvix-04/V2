@@ -137,44 +137,44 @@ export function DashboardPage() {
             {/* ── Utility row: Quick Stats + Retrieve Chats ──────── */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Quick Stats */}
-                <Card className="p-5 space-y-4 border-border-base dark:border-white/5 lg:col-span-1">
-                    <div className="flex items-center space-x-3">
-                        <div className="h-10 w-10 rounded-full bg-accent/10 dark:bg-white/5 flex items-center justify-center">
-                            <Settings className="h-5 w-5 text-foreground-muted" />
+                <Card className="pt-4 px-4 pb-5 sm:pt-5 sm:px-5 sm:pb-7 space-y-3 sm:space-y-4 border-border-base dark:border-white/5 lg:col-span-1">
+                    <div className="flex items-center space-x-2 sm:space-x-3">
+                        <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-accent/10 dark:bg-white/5 flex items-center justify-center shrink-0">
+                            <Settings className="h-4 w-4 sm:h-5 sm:w-5 text-foreground-muted" />
                         </div>
                         <div>
-                            <h3 className="font-medium text-foreground">Quick Stats</h3>
-                            <p className="text-xs text-foreground-muted">Last 7 days</p>
+                            <h3 className="font-medium text-sm sm:text-base text-foreground">Quick Stats</h3>
+                            <p className="text-[11px] sm:text-xs text-foreground-muted">Last 7 days</p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="text-center p-3 rounded-lg bg-accent/5 dark:bg-white/5">
-                            <div className="text-2xl font-bold text-accent">85%</div>
-                            <div className="text-[10px] uppercase tracking-wider text-foreground-muted mt-1">Mastery</div>
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                        <div className="text-center p-2 sm:p-3 rounded-md sm:rounded-lg bg-accent/5 dark:bg-white/5">
+                            <div className="text-xl sm:text-2xl font-bold text-accent">85%</div>
+                            <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-foreground-muted mt-0.5 sm:mt-1">Mastery</div>
                         </div>
-                        <div className="text-center p-3 rounded-lg bg-accent/5 dark:bg-white/5">
-                            <div className="text-2xl font-bold text-foreground dark:text-white">12</div>
-                            <div className="text-[10px] uppercase tracking-wider text-foreground-muted mt-1">Hours</div>
+                        <div className="text-center p-2 sm:p-3 rounded-md sm:rounded-lg bg-accent/5 dark:bg-white/5">
+                            <div className="text-xl sm:text-2xl font-bold text-foreground dark:text-white">12</div>
+                            <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-foreground-muted mt-0.5 sm:mt-1">Hours</div>
                         </div>
                     </div>
                 </Card>
 
                 {/* Retrieve Chats */}
-                <Card className="p-5 border-border-base dark:border-white/5 lg:col-span-2 flex flex-col">
+                <Card className="p-4 sm:p-5 border-border-base dark:border-white/5 lg:col-span-2 flex flex-col">
                     <div
                         className="flex flex-col cursor-pointer"
                         onClick={() => !isTeacher && setShowDeleted(!showDeleted)}
                     >
                         <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-3">
-                                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${isTeacher ? 'bg-green-400/10 text-green-400' : 'bg-orange-400/10 text-orange-400'}`}>
-                                    <FileText className="h-5 w-5" />
+                            <div className="flex items-center space-x-2 sm:space-x-3">
+                                <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center shrink-0 ${isTeacher ? 'bg-green-400/10 text-green-400' : 'bg-orange-400/10 text-orange-400'}`}>
+                                    <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
                                 </div>
-                                <div>
-                                    <h3 className="font-medium text-foreground">
+                                <div className="min-w-0">
+                                    <h3 className="font-medium text-sm sm:text-base text-foreground truncate">
                                         {isTeacher ? "Export Reports" : "Retrieve Chats"}
                                     </h3>
-                                    <p className="text-xs text-foreground-muted">
+                                    <p className="text-[11px] sm:text-xs text-foreground-muted leading-normal truncate">
                                         {isTeacher
                                             ? "Access your saved content."
                                             : "Retrieve or restore your deleted chats."}
@@ -182,8 +182,8 @@ export function DashboardPage() {
                                 </div>
                             </div>
                             {!isTeacher && (
-                                <div className="flex items-center space-x-2">
-                                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-orange-400/10 text-orange-400">
+                                <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+                                    <span className="text-[10px] sm:text-xs font-medium px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-md sm:rounded-full bg-orange-400/10 text-orange-400">
                                         {deletedSessions.length} Deleted
                                     </span>
                                     {showDeleted
@@ -217,7 +217,7 @@ export function DashboardPage() {
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
-                                                className="h-8 w-8 p-0 text-accent hover:text-accent-bright hover:bg-accent/10"
+                                                className="h-11 w-11 sm:h-8 sm:w-8 p-0 text-accent hover:text-accent-bright hover:bg-accent/10"
                                                 onClick={() => handleRestore(session.id)}
                                                 title="Restore Chat"
                                             >

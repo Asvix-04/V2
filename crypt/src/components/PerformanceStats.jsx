@@ -12,11 +12,11 @@ import {
 import GlobeChatIcon from './icons/GlobeChatIcon';
 
 const MetricTooltip = ({ info }) => (
-    <div className="group/tooltip relative inline-block z-50">
+    <div className="group/tooltip sm:relative inline-block z-50">
         <div className="flex items-center justify-center w-4 h-4 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/20 hover:border-black/20 dark:hover:border-white/30 transition-all cursor-help active:scale-95">
             <span className="text-[10px] font-bold text-foreground-muted group-hover/tooltip:text-foreground">i</span>
         </div>
-        <div className="absolute bottom-full right-0 mb-3 w-60 p-3 bg-white/95 dark:bg-black/95 backdrop-blur-2xl border border-black/10 dark:border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0">
+        <div className="absolute bottom-full left-4 right-4 sm:left-auto sm:right-0 mb-3 w-auto sm:w-60 p-3 bg-white/95 dark:bg-black/95 backdrop-blur-2xl border border-black/10 dark:border-white/20 rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-300 z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-none translate-y-2 group-hover/tooltip:translate-y-0">
             <p className="text-[11px] leading-relaxed text-foreground font-medium">
                 {info}
             </p>
