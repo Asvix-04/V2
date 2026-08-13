@@ -81,6 +81,13 @@ const GREETING_SENTENCES = [
 const ACTIVE_DRAFT_STORAGE_PREFIX = "digilab-active-draft:";
 const PENDING_DRAFT_STORAGE_PREFIX = "digilab-pending-draft:";
 const LAST_ACTIVE_SESSION_PREFIX = "digilab-last-active-session:";
+// Cache of a session's last-fetched messages, keyed per session. Lets a repeat
+// visit to /chat show the previous content instantly (stale-while-revalidate)
+// instead of blanking the whole page behind a spinner every single time —
+// ChatPage remounts from scratch on every navigation (see App.jsx's
+// key={location.pathname}), so without this, "going back" always looked
+// identical to opening the page for the very first time.
+const SESSION_MESSAGES_CACHE_PREFIX = "digilab-session-messages:";
 
 const CHAT_SESSION_SOURCE = {
     DRAFTS: "drafts",
@@ -983,6 +990,32 @@ export function ChatPage() {
         return parseStoredActiveDraft(localStorage.getItem(activeDraftStorageKey));
     }, [activeDraftStorageKey]);
 
+    // sessionStorage cache of {messages, hasMore} per session, so a repeat
+    // visit within the same browser tab can render instantly and refresh in
+    // the background instead of blanking behind a spinner. sessionStorage
+    // (not localStorage) so it naturally clears when the tab/browser closes.
+    const getCachedSessionMessages = React.useCallback((sessionId) => {
+        if (!sessionId) return null;
+        try {
+            const raw = sessionStorage.getItem(SESSION_MESSAGES_CACHE_PREFIX + sessionId);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    }, []);
+
+    const setCachedSessionMessages = React.useCallback((sessionId, messages, hasMore) => {
+        if (!sessionId) return;
+        try {
+            sessionStorage.setItem(
+                SESSION_MESSAGES_CACHE_PREFIX + sessionId,
+                JSON.stringify({ messages, hasMore })
+            );
+        } catch {
+            // storage full/disabled — safe to skip, just no instant-load next time
+        }
+    }, []);
+
     const rememberActiveDraft = React.useCallback((sessionId, source) => {
         if (!activeDraftStorageKey || !sessionId) return;
         localStorage.setItem(activeDraftStorageKey, JSON.stringify({ sessionId, source }));
@@ -1430,8 +1463,11 @@ export function ChatPage() {
 
         try {
             const res = await api.get(`/chat/sessions/${session.id}/messages?offset=0&limit=75`);
-            setMessages(res.data.messages || [INITIAL_MESSAGE]);
-            setHasMore(res.data.hasMore || false);
+            const fetchedMessages = res.data.messages || [INITIAL_MESSAGE];
+            const fetchedHasMore = res.data.hasMore || false;
+            setMessages(fetchedMessages);
+            setHasMore(fetchedHasMore);
+            setCachedSessionMessages(session.id, fetchedMessages, fetchedHasMore);
         } catch (err) {
             console.error("Failed to fetch session messages:", err);
             setMessages([INITIAL_MESSAGE]);
@@ -1444,15 +1480,68 @@ export function ChatPage() {
             clearStoredDraft(session.id);
         }
 
-        try { await chatbotApi.clearHistory(); } catch (err) {
+        // Fire-and-forget: nothing in the UI depends on this completing, and it's the
+        // one call in this chain that round-trips all the way to the Python AI backend
+        // on Hugging Face — awaiting it just makes the user stare at a loading spinner
+        // for a network hop that doesn't affect what's on screen.
+        chatbotApi.clearHistory().catch((err) => {
             console.error("Failed to clear AI memory:", err);
-        }
+        });
 
         if (window.innerWidth < 1024) setIsSidebarOpen(false);
     };
 
+    // Runs synchronously right after mount, before the browser paints — so if
+    // we have a cached copy of the target session, it's already on screen for
+    // the very first frame. A plain useEffect below (which the network fetch
+    // needs to be) only runs AFTER paint, so relying on that alone still means
+    // one visible frame of the empty "new chat" state before it corrects
+    // itself — exactly what made navigating back to /chat look like it had
+    // started a new conversation.
+    React.useLayoutEffect(() => {
+        if (isGuest) return;
+        const urlSessionId = searchParams.get("sessionId");
+        const likelySessionId = urlSessionId
+            || (lastActiveSessionKey ? localStorage.getItem(lastActiveSessionKey) : null);
+        if (!likelySessionId) return;
+
+        const cached = getCachedSessionMessages(likelySessionId);
+        if (cached && Array.isArray(cached.messages) && cached.messages.length > 0) {
+            setMessages(cached.messages);
+            setHasMore(!!cached.hasMore);
+            setIsRestoringSession(false);
+            // Critical: currentSessionId must be set here too, not just the
+            // messages. Without it, sending a message before the background
+            // restoration below finishes would go out with sessionId: null,
+            // which the backend treats as "create a new session" — producing
+            // a duplicate instead of continuing this one.
+            setCurrentSessionId(likelySessionId);
+            setCurrentSessionSource(searchParams.get("source") || null);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isGuest]);
+
     React.useEffect(() => {
         console.log("ChatPage: Unified useEffect triggered. isGuest:", isGuest);
+
+        // Stale-while-revalidate: ChatPage fully remounts from scratch on every
+        // navigation (see App.jsx's key={location.pathname}), so without this,
+        // returning to a chat you were just in looks identical to opening the
+        // page for the very first time — full spinner, full re-fetch. The
+        // useLayoutEffect above already showed cached content (if any) before
+        // this ran; re-check the same cache here just to know whether to skip
+        // the blocking spinner below.
+        let hadCachedContent = false;
+        if (!isGuest) {
+            const urlSessionId = searchParams.get("sessionId");
+            const likelySessionId = urlSessionId
+                || (lastActiveSessionKey ? localStorage.getItem(lastActiveSessionKey) : null);
+            if (likelySessionId) {
+                const cached = getCachedSessionMessages(likelySessionId);
+                hadCachedContent = !!(cached && Array.isArray(cached.messages) && cached.messages.length > 0);
+            }
+        }
+
         const checkHealth = async () => {
             try {
                 await chatbotApi.checkHealth();
@@ -1467,22 +1556,44 @@ export function ChatPage() {
 
         const initSessions = async () => {
             console.log("ChatPage: initSessions executed");
-            setIsRestoringSession(true);
+            // Don't blank the page back out if we already showed cached content above.
+            if (!hadCachedContent) {
+                setIsRestoringSession(true);
+            }
             try {
                 if (!isGuest) {
-                    const res = await api.get('/chat/sessions');
-                    const fetchedSessions = Array.isArray(res.data) ? res.data : [];
+                    // Neither of these depends on the other, so run them in parallel
+                    // instead of waiting for /chat/sessions to finish before even
+                    // starting /research/sessions.
+                    const [chatRes, researchRes] = await Promise.allSettled([
+                        api.get('/chat/sessions'),
+                        api.get('/research/sessions'),
+                    ]);
+                    // React StrictMode (dev only) intentionally runs this effect twice
+                    // in a row (mount → cleanup → mount) to surface exactly this kind
+                    // of bug. Without this check, both invocations independently reach
+                    // handleSelectSession and each sets messages from a fresh fetch —
+                    // usually harmless since both replace the same value, but any
+                    // interleaving between the two concurrent async chains can produce
+                    // duplicated-looking content. Bail out here if a newer copy of this
+                    // effect has already started.
+                    if (ignore) return;
+
+                    const fetchedSessions = chatRes.status === 'fulfilled' && Array.isArray(chatRes.value.data)
+                        ? chatRes.value.data
+                        : [];
                     setSessions(fetchedSessions);
                     setHasMoreSessions(false);
 
-                    try {
-                        const resResearch = await api.get('/research/sessions');
-                        setDeepResearchChats(Array.isArray(resResearch.data) ? resResearch.data : []);
-                    } catch (err) {
-                        console.error("Failed to fetch research sessions:", err);
+                    if (researchRes.status === 'fulfilled') {
+                        setDeepResearchChats(Array.isArray(researchRes.value.data) ? researchRes.value.data : []);
+                    } else {
+                        console.error("Failed to fetch research sessions:", researchRes.reason);
                     }
 
                     const restoredDraft = await flushPendingDraftSnapshot(fetchedSessions);
+                    if (ignore) return;
+
                     const hydratedSessions = restoredDraft?.session
                         ? [restoredDraft.session, ...fetchedSessions.filter((session) => session.id !== restoredDraft.session.id)]
                         : fetchedSessions;
@@ -1508,6 +1619,7 @@ export function ChatPage() {
                         const initialSession = hydratedSessions.find((session) => session.id === sessionId);
 
                         if (initialSession) {
+                            if (ignore) return;
                             await handleSelectSession(initialSession.id, sessionSource, initialSession);
                         } else {
                             if (sessionId) {
@@ -1522,12 +1634,18 @@ export function ChatPage() {
             } catch (err) {
                 console.error("Failed to fetch sessions from DB:", err);
             } finally {
-                setIsRestoringSession(false);
+                if (!ignore) {
+                    setIsRestoringSession(false);
+                }
             }
         };
 
+        let ignore = false;
         checkHealth();
         initSessions();
+        return () => {
+            ignore = true;
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isGuest]);
 
