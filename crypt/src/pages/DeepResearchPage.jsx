@@ -17,6 +17,8 @@ import GlobeChatIcon from "../components/icons/GlobeChatIcon";
 import { Sidebar } from "../components/layout/Sidebar";
 import api from "../lib/api";
 import { chatbotApi } from "../lib/chatbotApi";
+import { useSession } from "../context/SessionContext";
+import { useUI } from "../context/UIContext";
 
 // ─── Shared Constants ─────────────────────────────────────────────────────────
 
@@ -100,8 +102,23 @@ export function DeepResearchPage() {
   const isGuest = !user;
   const isTeacher = user?.role === "teacher";
 
+  // Redirect unauthenticated users to /login immediately
+  React.useEffect(() => {
+    if (isGuest) {
+      navigate("/login", { replace: true });
+    }
+  }, [isGuest, navigate]);
+
+  const { isSidebarOpen, setIsSidebarOpen } = useUI();
+  const {
+    sessions,
+    deepResearchChats,
+    setDeepResearchChats,
+    refreshSessions,
+    refreshResearch
+  } = useSession();
+
   // ── Sidebar ───────────────────────────────────────────────────────────────
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth >= 1024);
   const [expandedMessage, setExpandedMessage] = React.useState(null);
   const sidebarWasOpenRef = React.useRef(window.innerWidth >= 1024);
   const [isStarredOpen, setIsStarredOpen] = React.useState(true);
@@ -109,30 +126,17 @@ export function DeepResearchPage() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [activeMenuId, setActiveMenuId] = React.useState(null);
 
-  // ── Sessions (regular chat — for sidebar) ─────────────────────────────────
-  const [sessions, setSessions] = React.useState([]);
-
   React.useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await api.get("/chat/sessions");
-        setSessions(res.data || []);
-      } catch { }
-      try {
-        const res = await api.get("/research/sessions");
-        setDeepResearchChats(res.data || []);
-      } catch { }
-    };
-    load();
-  }, []);
+    refreshSessions();
+    refreshResearch();
+  }, [refreshSessions, refreshResearch]);
 
   // ── Starred Chats (read from localStorage — sidebar display only) ─────────
   const [starredChats] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem("starredChats") || "[]"); } catch { return []; }
   });
 
-  // ── Deep Research Chats ───────────────────────────────────────────────────
-  const [deepResearchChats, setDeepResearchChats] = React.useState([]);
+
 
   React.useEffect(() => {
     const handleSync = async () => {
@@ -458,26 +462,30 @@ export function DeepResearchPage() {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
-  return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans">
+  React.useEffect(() => {
+    const handleNewSession = () => handleNewResearch();
+    const handleSelectSessionEvent = (e) => navigate(`/chat?sessionId=${e.detail.id}`);
+    const handleDeleteResearchEvent = (e) => handleDeleteResearch(e.detail.id, e.detail.originalEvent);
 
-      {/* ── Sidebar ────────────────────────────────────────────────────── */}
-      <Sidebar
-        mode="research"
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
-        user={user}
-        isGuest={isGuest}
-        isTeacher={isTeacher}
-        sessions={sessions}
-        starredChats={starredChats}
-        deepResearchChats={deepResearchChats}
-        currentSessionId={currentSessionId}
-        onNewSession={handleNewResearch}
-        onSelectSession={(id) => navigate(`/chat?sessionId=${id}`)}
-        onDeleteResearch={handleDeleteResearch}
-      />
+    window.addEventListener("page-new-session", handleNewSession);
+    window.addEventListener("page-select-session", handleSelectSessionEvent);
+    window.addEventListener("page-delete-research", handleDeleteResearchEvent);
+
+    return () => {
+      window.removeEventListener("page-new-session", handleNewSession);
+      window.removeEventListener("page-select-session", handleSelectSessionEvent);
+      window.removeEventListener("page-delete-research", handleDeleteResearchEvent);
+    };
+  }, [handleNewResearch, handleDeleteResearch, navigate]);
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+  // Prevent any flash of the research UI while redirecting
+  if (isGuest) return null;
+
+  return (
+    <div className="relative flex flex-1 min-w-0 h-full w-full overflow-hidden bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans">
+
+
 
 
       {/* ── Main Area ──────────────────────────────────────────────────── */}
@@ -739,68 +747,6 @@ export function DeepResearchPage() {
                   Deep Research processes web sources in real-time. Verify important scientific claims.
                 </p>
 
-                {/* Mobile collapsible footer pill */}
-                <div className="sm:hidden w-full flex flex-col items-center mt-3 relative">
-                  <div
-                    onClick={() => setIsMobileFooterExpanded(e => !e)}
-                    className="w-10 h-1.5 rounded-full bg-zinc-300 dark:bg-white/20 cursor-pointer transition-all hover:bg-zinc-400 dark:hover:bg-white/30"
-                  />
-                  <AnimatePresence>
-                    {isMobileFooterExpanded && !isTyping && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -15, height: 0 }}
-                        animate={{ opacity: 1, y: 0, height: "auto" }}
-                        exit={{ opacity: 0, y: -15, height: 0 }}
-                        transition={{ duration: 0.25, ease: "easeOut" }}
-                        className="flex flex-col items-center justify-center overflow-visible pt-4 w-full"
-                      >
-                        <div className="relative" style={{ zIndex: 60 }}>
-                          <button
-                            onClick={() => setIsLangDropdownOpen(o => !o)}
-                            className="flex items-center justify-center gap-1.5 px-4 py-1.5 min-h-[36px] rounded-full text-[13px] font-medium border border-slate-200 dark:border-white/10 bg-white/90 dark:bg-white/5 text-slate-700 dark:text-zinc-300 hover:border-accent/40 hover:text-accent dark:hover:border-accent/50 dark:hover:text-white transition-all shadow-sm backdrop-blur-md"
-                          >
-                            <span className="text-[14px]">{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.flag}</span>
-                            <span>{TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || "English"}</span>
-                            <ChevronDown className={cn("h-3.5 w-3.5 opacity-60 transition-transform", isLangDropdownOpen && "rotate-180")} />
-                          </button>
-                          <AnimatePresence>
-                            {isLangDropdownOpen && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 10, scale: 0.95, x: "-50%" }}
-                                animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
-                                exit={{ opacity: 0, y: 10, scale: 0.95, x: "-50%" }}
-                                transition={{ duration: 0.15 }}
-                                style={{ transformOrigin: "bottom center" }}
-                                className="absolute left-1/2 bottom-full mb-3 w-[280px] rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl shadow-2xl p-2 z-[100]"
-                              >
-                                <div className="max-h-[300px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                  {TRANSLATE_LANGUAGES.map(lang => (
-                                    <button
-                                      key={lang.code || "en"}
-                                      onClick={() => { setSelectedLanguage(lang.code); setIsLangDropdownOpen(false); }}
-                                      className={cn(
-                                        "flex items-center gap-4 w-full px-4 py-3.5 rounded-xl text-[14px] font-medium transition-all",
-                                        selectedLanguage === lang.code
-                                          ? "bg-accent text-white shadow-md"
-                                          : "text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-accent dark:hover:text-white"
-                                      )}
-                                    >
-                                      <span className="text-xl">{lang.flag}</span>
-                                      <span>{lang.label}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                        <p className="mt-3 mb-1 text-center text-[11px] text-zinc-400/80 dark:text-zinc-500 max-w-[280px] leading-relaxed tracking-wide">
-                          Deep Research processes web sources in real-time. Verify important scientific claims.
-                        </p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
               </div>
             </motion.div>
 

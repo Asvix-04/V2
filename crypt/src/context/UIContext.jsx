@@ -18,6 +18,8 @@ export function UIProvider({ children }) {
         localStorage.setItem("theme", theme);
     }, [theme]);
 
+    const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 1024);
+
     const setTheme = (newTheme) => {
         setThemeState(newTheme);
     };
@@ -25,7 +27,9 @@ export function UIProvider({ children }) {
     return (
         <UIContext.Provider value={{
             theme,
-            setTheme
+            setTheme,
+            isSidebarOpen,
+            setIsSidebarOpen
         }}>
             {children}
         </UIContext.Provider>

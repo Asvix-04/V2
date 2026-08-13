@@ -56,8 +56,8 @@ const getQuotaStatus = async (req, res) => {
         if (used >= limit) {
             const oldestLog = activeLogs[0];
             const renewDate = new Date(oldestLog.requestedAt);
-            // renewDate.setDate(renewDate.getDate() + 30);
-            renewDate.setMinutes(renewDate.getMinutes() + 2);
+            renewDate.setDate(renewDate.getDate() + 30);
+            // renewDate.setMinutes(renewDate.getMinutes() + 2);
             renewAt = renewDate.toISOString();
             message = `Monthly Deep Research limit reached. Your quota renews on ${formatDate(renewDate)}.`;
         }
@@ -104,8 +104,8 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
             const snapshot = await transaction.get(queryRef);
 
             const thirtyDaysAgo = new Date();
-            // thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            thirtyDaysAgo.setMinutes(thirtyDaysAgo.getMinutes() - 2);
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            // thirtyDaysAgo.setMinutes(thirtyDaysAgo.getMinutes() - 2);
 
             const activeLogs = snapshot.docs
                 .map(doc => {
@@ -145,8 +145,8 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
         if (used >= limit) {
             const oldestLog = updatedLogs[0];
             const renewDate = new Date(oldestLog.requestedAt);
-            // renewDate.setDate(renewDate.getDate() + 30);
-            renewDate.setMinutes(renewDate.getMinutes() + 2);
+            renewDate.setDate(renewDate.getDate() + 30);
+            // renewDate.setMinutes(renewDate.getMinutes() + 2);
             renewAt = renewDate.toISOString();
             message = `Monthly Deep Research limit reached. Your quota renews on ${formatDate(renewDate)}.`;
         }
@@ -168,8 +168,8 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
         if (error.code === 'LIMIT_EXCEEDED') {
             const oldestLog = error.activeLogs.sort((a, b) => a.requestedAt - b.requestedAt)[0];
             const renewDate = new Date(oldestLog.requestedAt);
-            // renewDate.setDate(renewDate.getDate() + 30);
-            renewDate.setMinutes(renewDate.getMinutes() + 2);
+            renewDate.setDate(renewDate.getDate() + 30);    
+            // renewDate.setMinutes(renewDate.getMinutes() + 2);
 
             return res.status(429).json({
                 message: `Monthly Deep Research limit reached. Your quota renews on ${formatDate(renewDate)}.`,

@@ -36,8 +36,8 @@ class DeepResearchUsage {
         const usageRef = db.collection('deep_research_usage');
 
         const thirtyDaysAgo = new Date();
-        // thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - windowDays);
-        thirtyDaysAgo.setMinutes(thirtyDaysAgo.getMinutes() - 2);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - windowDays);
+        // thirtyDaysAgo.setMinutes(thirtyDaysAgo.getMinutes() - 2);
 
         try {
             // Firestore single field query (no composite index required)

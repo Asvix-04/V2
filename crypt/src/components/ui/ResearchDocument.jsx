@@ -20,9 +20,12 @@ import {
   Quote,
   PanelLeft,
   Maximize2,
-  Minimize2
+  Minimize2,
+  CheckCircle2
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { Document, Paragraph, TextRun, HeadingLevel, Packer } from "docx";
+import jsPDF from "jspdf";
 
 // ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
 
@@ -422,10 +425,143 @@ export function ResearchDocument({ message, isExpanded = false, onToggleExpand }
   const [isOutlineOpen, setIsOutlineOpen] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeHeadingId, setActiveHeadingId] = useState("");
+  const [toast, setToast] = useState(null); // { message, type }
   const containerRef = useRef(null);
   const headingRefs = useRef({});
   const isProgrammaticScrollRef = useRef(false);
   const scrollTimeoutRef = useRef(null);
+  const toastTimeoutRef = useRef(null);
+
+  const showToast = useCallback((message, type = "success") => {
+    setToast({ message, type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  // ─── Export / Share action handlers ──────────────────────────────────────
+
+  const handleCopyText = useCallback(async () => {
+    setIsMenuOpen(false);
+    const raw = message.content || "";
+    try {
+      await navigator.clipboard.writeText(raw);
+      showToast("Report text copied to clipboard");
+    } catch {
+      showToast("Failed to copy — please try again", "error");
+    }
+  }, [message.content, showToast]);
+
+  const handleExportMarkdown = useCallback(() => {
+    setIsMenuOpen(false);
+    const raw = message.content || "";
+    const safeTitle = (extractTitle(raw) || "research-report")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .toLowerCase();
+    const blob = new Blob([raw], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeTitle}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Markdown file downloaded");
+  }, [message.content, showToast]);
+
+  const handleExportWord = useCallback(async () => {
+    setIsMenuOpen(false);
+    const raw = message.content || "";
+    const safeTitle = (extractTitle(raw) || "research-report")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .toLowerCase();
+
+    // Convert markdown lines to docx Paragraphs
+    const lines = raw.split("\n");
+    const paragraphs = lines.map((line) => {
+      const h1 = line.match(/^#\s+(.+)/);
+      const h2 = line.match(/^##\s+(.+)/);
+      const h3 = line.match(/^###\s+(.+)/);
+      const h4 = line.match(/^####\s+(.+)/);
+      const plain = line.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1");
+      if (h1) return new Paragraph({ text: h1[1].replace(/\*\*/g, ""), heading: HeadingLevel.HEADING_1 });
+      if (h2) return new Paragraph({ text: h2[1].replace(/\*\*/g, ""), heading: HeadingLevel.HEADING_2 });
+      if (h3) return new Paragraph({ text: h3[1].replace(/\*\*/g, ""), heading: HeadingLevel.HEADING_3 });
+      if (h4) return new Paragraph({ text: h4[1].replace(/\*\*/g, ""), heading: HeadingLevel.HEADING_4 });
+      if (!plain.trim()) return new Paragraph({ text: "" });
+      return new Paragraph({ children: [new TextRun({ text: plain })] });
+    });
+
+    const doc = new Document({ sections: [{ properties: {}, children: paragraphs }] });
+    try {
+      const buffer = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(buffer);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeTitle}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Word document downloaded");
+    } catch {
+      showToast("Failed to generate Word file", "error");
+    }
+  }, [message.content, showToast]);
+
+  const handleExportPDF = useCallback(() => {
+    setIsMenuOpen(false);
+    const raw = message.content || "";
+    const safeTitle = (extractTitle(raw) || "research-report")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .toLowerCase();
+
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 48;
+    const maxWidth = pageWidth - margin * 2;
+    let y = margin;
+
+    const lines = raw.split("\n");
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) { y += 8; return; }
+
+      let fontSize = 11;
+      let isBold = false;
+      let text = trimmed;
+
+      if (/^####\s/.test(trimmed)) { text = trimmed.replace(/^####\s+/, ""); fontSize = 12; isBold = true; }
+      else if (/^###\s/.test(trimmed)) { text = trimmed.replace(/^###\s+/, ""); fontSize = 13; isBold = true; }
+      else if (/^##\s/.test(trimmed)) { text = trimmed.replace(/^##\s+/, ""); fontSize = 15; isBold = true; }
+      else if (/^#\s/.test(trimmed)) { text = trimmed.replace(/^#\s+/, ""); fontSize = 18; isBold = true; }
+      else { text = trimmed.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1"); }
+
+      doc.setFontSize(fontSize);
+      doc.setFont("helvetica", isBold ? "bold" : "normal");
+
+      const splitLines = doc.splitTextToSize(text, maxWidth);
+      const lineHeight = fontSize * 1.45;
+
+      if (y + splitLines.length * lineHeight > doc.internal.pageSize.getHeight() - margin) {
+        doc.addPage();
+        y = margin;
+      }
+
+      doc.text(splitLines, margin, y);
+      y += splitLines.length * lineHeight + (isBold ? 4 : 2);
+    });
+
+    doc.save(`${safeTitle}.pdf`);
+    showToast("PDF downloaded");
+  }, [message.content, showToast]);
+
+  const handleShareLink = useCallback(async () => {
+    setIsMenuOpen(false);
+    const url = window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Report link copied to clipboard");
+    } catch {
+      showToast("Failed to copy link", "error");
+    }
+  }, [showToast]);
 
   // Reset element refs on each render pass to prevent memory leaks/dangling refs
   headingRefs.current = {};
@@ -781,35 +917,35 @@ export function ResearchDocument({ message, isExpanded = false, onToggleExpand }
                       <div className="absolute right-0 mt-2 w-48 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                         <button
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-zinc-650 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-white/5 text-left transition-colors"
-                          onClick={() => { setIsMenuOpen(false); alert("Copy to clipboard is disabled in this version."); }}
+                          onClick={handleCopyText}
                         >
                           <Copy className="h-3.5 w-3.5" />
                           <span>Copy report text</span>
                         </button>
                         <button
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-zinc-655 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-white/5 text-left transition-colors"
-                          onClick={() => { setIsMenuOpen(false); alert("Download MD is disabled in this version."); }}
+                          onClick={handleExportMarkdown}
                         >
                           <FileDown className="h-3.5 w-3.5" />
                           <span>Export as Markdown</span>
                         </button>
                         <button
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-zinc-655 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-white/5 text-left transition-colors"
-                          onClick={() => { setIsMenuOpen(false); alert("Export to Word is disabled in this version."); }}
+                          onClick={handleExportWord}
                         >
                           <FileDown className="h-3.5 w-3.5" />
                           <span>Export as Word</span>
                         </button>
                         <button
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-zinc-655 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-white/5 text-left transition-colors"
-                          onClick={() => { setIsMenuOpen(false); alert("Export to PDF is disabled in this version."); }}
+                          onClick={handleExportPDF}
                         >
                           <FileDown className="h-3.5 w-3.5" />
                           <span>Export as PDF</span>
                         </button>
                         <button
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-zinc-655 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-white/5 text-left transition-colors"
-                          onClick={() => { setIsMenuOpen(false); alert("Sharing is disabled in this version."); }}
+                          onClick={handleShareLink}
                         >
                           <Share2 className="h-3.5 w-3.5" />
                           <span>Share report link</span>
@@ -947,6 +1083,25 @@ export function ResearchDocument({ message, isExpanded = false, onToggleExpand }
         </article>
 
       </div>
+
+      {/* ── Toast notification ── */}
+      {toast && (
+        <div
+          className={cn(
+            "fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-2xl text-sm font-semibold",
+            "animate-in fade-in slide-in-from-bottom-3 duration-200",
+            toast.type === "error"
+              ? "bg-red-600 text-white"
+              : "bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900"
+          )}
+        >
+          {toast.type === "error"
+            ? <AlertCircle className="h-4 w-4 shrink-0" />
+            : <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400 dark:text-emerald-600" />
+          }
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

@@ -22,8 +22,8 @@ const checkResearchQuota = async (req, res, next) => {
             // Calculate renewal date based on oldest log in the active 30-day window
             const oldestLog = activeLogs[0];
             const renewAt = new Date(oldestLog.requestedAt);
-            // renewAt.setDate(renewAt.getDate() + 30);
-            renewAt.setMinutes(renewAt.getMinutes() + 2);
+            renewAt.setDate(renewAt.getDate() + 30);
+            // renewAt.setMinutes(renewAt.getMinutes() + 2);
 
             const formattedDate = formatDate(renewAt);
             return res.status(429).json({

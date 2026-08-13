@@ -27,6 +27,9 @@ import { LanguageProvider } from "./context/LanguageContext";
 import { DocumentProvider } from "./context/DocumentContext";
 import { RoadmapProvider } from "./context/RoadmapContext";
 
+import { ChatLayout } from "./layouts/ChatLayout";
+import { SessionProvider } from "./context/SessionContext";
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -114,15 +117,17 @@ function AnimatedRoutes() {
   const location = useLocation();
 
   return (
-    <Routes location={location} key={location.pathname}>
+    <Routes location={location}>
       {/* Authentication Routes (No Header/Footer) */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-      {/* Standalone Pages */}
-      <Route path="/chat" element={<ChatPage />} />
-      <Route path="/deep-research" element={<DeepResearchPage />} />
+      {/* Persistent Sidebar Layout Group */}
+      <Route element={<ChatLayout />}>
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/deep-research" element={<DeepResearchPage />} />
+      </Route>
 
       {/* Main Layout Routes (With Header/Footer) */}
       <Route element={<Layout />}>
@@ -156,7 +161,9 @@ function App() {
             <BrowserRouter>
               <ScrollToTop />
               <ErrorBoundary>
-                <AnimatedRoutes />
+                <SessionProvider>
+                  <AnimatedRoutes />
+                </SessionProvider>
               </ErrorBoundary>
             </BrowserRouter>
           </RoadmapProvider>

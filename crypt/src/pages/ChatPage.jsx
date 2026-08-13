@@ -20,6 +20,8 @@ import { ChatInput } from "../components/ui/ChatInput";
 import { MessageBubble } from "../components/ui/MessageBubble";
 
 import { PageTransition } from "../components/ui/PageTransition";
+import { useSession } from "../context/SessionContext";
+import { useUI } from "../context/UIContext";
 
 import { VoiceOverlay } from "../components/ui/VoiceOverlay";
 import { DeepResearchLogo } from "../components/ui/DeepResearchLogo";
@@ -550,17 +552,31 @@ export function ChatPage() {
     const isGuest = !user;
     const dashboardPath = isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard");
 
+    const { isSidebarOpen, setIsSidebarOpen } = useUI();
+    const {
+        sessions,
+        setSessions,
+        deepResearchChats,
+        setDeepResearchChats,
+        currentSessionId,
+        setCurrentSessionId,
+        currentSessionSource,
+        setCurrentSessionSource,
+        hasMoreSessions,
+        setHasMoreSessions,
+        isLoadingMoreSessions,
+        setIsLoadingMoreSessions,
+        isRestoringSession,
+        setIsRestoringSession
+    } = useSession();
+
     const [messages, setMessages] = React.useState([INITIAL_MESSAGE]);
-    const [sessions, setSessions] = React.useState([]);
     const sessionsRef = React.useRef(sessions);
     React.useEffect(() => {
         sessionsRef.current = sessions;
     }, [sessions]);
 
-    const [deepResearchChats, setDeepResearchChats] = React.useState([]);
     const [isDeepResearchOpen, setIsDeepResearchOpen] = React.useState(true);
-    const [hasMoreSessions, setHasMoreSessions] = React.useState(true);
-    const [isLoadingMoreSessions, setIsLoadingMoreSessions] = React.useState(false);
 
     React.useEffect(() => {
         const handleSync = async () => {
@@ -576,8 +592,6 @@ export function ChatPage() {
         };
     }, [isGuest]);
 
-    const [currentSessionId, setCurrentSessionId] = React.useState(null);
-    const [currentSessionSource, setCurrentSessionSource] = React.useState(null);
     const [draftMenuSessionId, setDraftMenuSessionId] = React.useState(null);
     const unsentTextRef = React.useRef("");
     const [initialInputText, setInitialInputText] = React.useState("");
@@ -610,7 +624,6 @@ export function ChatPage() {
     const [isConnected, setIsConnected] = React.useState(false);
 
     const [isCheckingConnection, setIsCheckingConnection] = React.useState(true);
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth >= 1024);
     const [isStarredOpen, setIsStarredOpen] = React.useState(true);
 
     // UI Polish & Sidebar states
@@ -727,7 +740,7 @@ export function ChatPage() {
         try { return localStorage.getItem('disappearingMode') === 'true'; } catch { return false; }
     });
 
-    const [isRestoringSession, setIsRestoringSession] = React.useState(!!searchParams.get("sessionId"));
+    // isRestoringSession is now retrieved from SessionContext
 
     const normalStateCache = React.useRef((() => {
         try {
@@ -841,11 +854,22 @@ export function ChatPage() {
 
     React.useEffect(() => {
         localStorage.setItem('starredChats', JSON.stringify(starredChats));
+        window.dispatchEvent(new CustomEvent("starred-chats-updated"));
     }, [starredChats]);
 
     React.useEffect(() => {
         localStorage.setItem('disappearingMode', String(isDisappearingMode));
     }, [isDisappearingMode]);
+
+    React.useEffect(() => {
+        window.dispatchEvent(new CustomEvent("sidebar-incognito-change", { detail: { isIncognito } }));
+    }, [isIncognito]);
+
+    React.useEffect(() => {
+        window.dispatchEvent(new CustomEvent("sidebar-disappearing-change", { detail: { isDisappearingMode } }));
+    }, [isDisappearingMode]);
+
+
 
     const toggleStar = (id, e) => {
         e.stopPropagation();
@@ -2083,9 +2107,46 @@ export function ChatPage() {
         return resolveSessionSource(session, currentSessionSource) === source;
     };
 
+    React.useEffect(() => {
+        const handleNewSession = () => handleNewChat();
+        const handleSelectSessionEvent = (e) => handleSelectSession(e.detail.id);
+        const handleDeleteSessionEvent = (e) => handleDeleteSession(e.detail.id, e.detail.originalEvent);
+        const handleToggleStarEvent = (e) => toggleStar(e.detail.id, e.detail.originalEvent);
+        const handleRenameSessionEvent = (e) => handleRenameSubmit(e.detail.id, e.detail.title);
+        const handleClearHistoryEvent = () => handleClearHistory();
+        const handleLoadMoreEvent = () => loadMoreSessions();
+        const handleIncognitoToggleEvent = () => handleIncognitoToggle();
+        const handleDisappearingToggleEvent = (e) => {
+            const nextVal = typeof e.detail.value === "boolean" ? e.detail.value : !isDisappearingMode;
+            setIsDisappearingMode(nextVal);
+        };
+
+        window.addEventListener("page-new-session", handleNewSession);
+        window.addEventListener("page-select-session", handleSelectSessionEvent);
+        window.addEventListener("page-delete-session", handleDeleteSessionEvent);
+        window.addEventListener("page-toggle-star", handleToggleStarEvent);
+        window.addEventListener("page-rename-session", handleRenameSessionEvent);
+        window.addEventListener("page-clear-history", handleClearHistoryEvent);
+        window.addEventListener("page-load-more", handleLoadMoreEvent);
+        window.addEventListener("page-incognito-toggle", handleIncognitoToggleEvent);
+        window.addEventListener("page-disappearing-toggle", handleDisappearingToggleEvent);
+
+        return () => {
+            window.removeEventListener("page-new-session", handleNewSession);
+            window.removeEventListener("page-select-session", handleSelectSessionEvent);
+            window.removeEventListener("page-delete-session", handleDeleteSessionEvent);
+            window.removeEventListener("page-toggle-star", handleToggleStarEvent);
+            window.removeEventListener("page-rename-session", handleRenameSessionEvent);
+            window.removeEventListener("page-clear-history", handleClearHistoryEvent);
+            window.removeEventListener("page-load-more", handleLoadMoreEvent);
+            window.removeEventListener("page-incognito-toggle", handleIncognitoToggleEvent);
+            window.removeEventListener("page-disappearing-toggle", handleDisappearingToggleEvent);
+        };
+    }, [handleNewChat, handleSelectSession, handleDeleteSession, handleRenameSubmit, handleClearHistory, loadMoreSessions, handleIncognitoToggle, isDisappearingMode]);
+
     return (
 
-        <PageTransition className="relative flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+        <PageTransition className="relative flex flex-1 min-w-0 h-full w-full overflow-hidden bg-slate-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
 
 
 
@@ -2143,34 +2204,7 @@ export function ChatPage() {
 
 
 
-            {/* Sidebar - Context / History */}
-            <Sidebar
-                mode="chat"
-                isSidebarOpen={isSidebarOpen}
-                setIsSidebarOpen={setIsSidebarOpen}
-                user={user}
-                isGuest={isGuest}
-                isTeacher={isTeacher}
-                sessions={sessions}
-                starredChats={starredChats}
-                deepResearchChats={deepResearchChats}
-                currentSessionId={currentSessionId}
-                onNewSession={handleNewChat}
-                onSelectSession={handleSelectSession}
-                onDeleteSession={handleDeleteSession}
-                onDeleteResearch={handleDeleteResearch}
-                onToggleStar={toggleStar}
-                onRenameSubmit={handleRenameSubmit}
-                onClearHistory={handleClearHistory}
-                isIncognito={isIncognito}
-                onIncognitoToggle={handleIncognitoToggle}
-                isDisappearingMode={isDisappearingMode}
-                setIsDisappearingMode={setIsDisappearingMode}
-                t={t}
-                hasMoreSessions={hasMoreSessions}
-                isLoadingMoreSessions={isLoadingMoreSessions}
-                onLoadMoreSessions={loadMoreSessions}
-            />
+
 
 
 
