@@ -4,6 +4,7 @@ import { Sidebar } from "../components/layout/Sidebar";
 import { useSession } from "../context/SessionContext";
 import { useUI } from "../context/UIContext";
 import { useLanguage } from "../context/LanguageContext";
+import api from "../lib/api";
 
 export function ChatLayout() {
     const location = useLocation();
@@ -11,6 +12,7 @@ export function ChatLayout() {
     const { isSidebarOpen, setIsSidebarOpen } = useUI();
     const {
         sessions,
+        setSessions,
         deepResearchChats,
         currentSessionId,
         hasMoreSessions,
@@ -35,18 +37,11 @@ export function ChatLayout() {
                 setIsIncognito(e.detail.isIncognito);
             }
         };
-        const handleDisappearingChange = (e) => {
-            if (e.detail && typeof e.detail.isDisappearingMode === "boolean") {
-                setIsDisappearingMode(e.detail.isDisappearingMode);
-            }
-        };
 
         window.addEventListener("sidebar-incognito-change", handleIncognitoChange);
-        window.addEventListener("sidebar-disappearing-change", handleDisappearingChange);
 
         return () => {
             window.removeEventListener("sidebar-incognito-change", handleIncognitoChange);
-            window.removeEventListener("sidebar-disappearing-change", handleDisappearingChange);
         };
     }, []);
 
@@ -81,13 +76,13 @@ export function ChatLayout() {
             if (e.key === "starredChats") {
                 try {
                     setStarredChats(JSON.parse(e.newValue || "[]"));
-                } catch {}
+                } catch { }
             }
         };
         const handleToggleStarChange = () => {
             try {
                 setStarredChats(JSON.parse(localStorage.getItem("starredChats") || "[]"));
-            } catch {}
+            } catch { }
         };
 
         window.addEventListener("storage", handleStorageChange);
@@ -103,8 +98,8 @@ export function ChatLayout() {
         window.dispatchEvent(new CustomEvent("page-new-session"));
     }, []);
 
-    const handleSelectSession = React.useCallback((id) => {
-        window.dispatchEvent(new CustomEvent("page-select-session", { detail: { id } }));
+    const handleSelectSession = React.useCallback((id, session) => {
+        window.dispatchEvent(new CustomEvent("page-select-session", { detail: { id, session } }));
     }, []);
 
     const handleDeleteSession = React.useCallback((id, e) => {
@@ -135,9 +130,29 @@ export function ChatLayout() {
         window.dispatchEvent(new CustomEvent("page-incognito-toggle"));
     }, []);
 
-    const handleDisappearingToggle = React.useCallback((val) => {
-        window.dispatchEvent(new CustomEvent("page-disappearing-toggle", { detail: { value: val } }));
-    }, []);
+    const handleDisappearingToggle = React.useCallback(async (val) => {
+        setIsDisappearingMode(val);
+        if (currentSessionId && !isGuest && !isIncognito) {
+            const session = sessions.find(s => s.id === currentSessionId);
+            // Update in-memory sessions list immediately
+            setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, disappearingMode: val } : s));
+
+            // Persist explicitly to backend
+            try {
+                const ttlMs = 24 * 60 * 60 * 1000;
+                await api.post('/chat/sessions', {
+                    sessionId: currentSessionId,
+                    disappearingMode: val,
+                    isDraft: session ? session.isDraft === true : false,
+                    unsentText: session ? session.unsentText : "",
+                    title: session ? session.title : undefined,
+                    expiresAt: val ? new Date(Date.now() + ttlMs).toISOString() : null
+                });
+            } catch (err) {
+                console.error("Failed to persist toggle state to backend:", err);
+            }
+        }
+    }, [currentSessionId, sessions, setSessions, isGuest, isIncognito]);
 
     return (
         <div className="relative flex h-screen w-full overflow-hidden bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans">
@@ -171,7 +186,7 @@ export function ChatLayout() {
             />
 
             {/* Inner page panel renders here */}
-            <Outlet />
+            <Outlet context={{ isDisappearingMode, setIsDisappearingMode }} />
         </div>
     );
 }

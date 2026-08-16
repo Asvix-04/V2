@@ -193,7 +193,13 @@ export function Sidebar({
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => setIsDisappearingMode?.(!isDisappearingMode)}
+                                        onClick={() => {
+                                            if (isGuest) {
+                                                window.dispatchEvent(new CustomEvent("page-show-limit-modal"));
+                                            } else {
+                                                setIsDisappearingMode?.(!isDisappearingMode);
+                                            }
+                                        }}
                                         className={cn(
                                             "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
                                             isDisappearingMode ? "bg-orange-500" : "bg-zinc-300 dark:bg-zinc-700"
@@ -257,7 +263,7 @@ export function Sidebar({
                                                                         <button
                                                                             onClick={() => {
                                                                                 if (renamingSessionId !== session.id) {
-                                                                                    onSelectSession(session.id);
+                                                                                    onSelectSession(session.id, session);
                                                                                     if (window.innerWidth < 1024) setIsSidebarOpen(false);
                                                                                 }
                                                                             }}
@@ -490,7 +496,7 @@ export function Sidebar({
                                                                 <button
                                                                     onClick={() => {
                                                                         if (renamingSessionId !== session.id) {
-                                                                            onSelectSession(session.id);
+                                                                            onSelectSession(session.id, session);
                                                                             if (window.innerWidth < 1024) setIsSidebarOpen(false);
                                                                         }
                                                                     }}
@@ -645,7 +651,7 @@ export function Sidebar({
                         {/* Profile Card Bottom Bar (Fixed) */}
                         <div className="mt-auto border-t border-slate-200/80 dark:border-white/5 p-3.5 bg-slate-50/80 dark:bg-zinc-950/50 shrink-0">
                             <Link
-                                to="/profile"
+                                to={isGuest ? "/login" : "/profile"}
                                 onClick={() => setIsSidebarOpen(false)}
                                 className="flex w-full items-center gap-3 rounded-xl p-2.5 transition-all hover:bg-blue-50/60 dark:hover:bg-white/5 group bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-white/5 shadow-sm hover:shadow-md hover:border-blue-200/60 duration-205 cursor-pointer"
                             >
@@ -739,7 +745,13 @@ export function Sidebar({
                     {/* Disappearing Messages Toggle (Chat mode only) */}
                     {!isIncognito && mode === "chat" && (
                         <button
-                            onClick={() => setIsDisappearingMode?.(!isDisappearingMode)}
+                            onClick={() => {
+                                if (isGuest) {
+                                    window.dispatchEvent(new CustomEvent("page-show-limit-modal"));
+                                } else {
+                                    setIsDisappearingMode?.(!isDisappearingMode);
+                                }
+                            }}
                             className={cn(
                                 "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mb-4 cursor-pointer",
                                 isDisappearingMode
@@ -813,7 +825,7 @@ export function Sidebar({
                     {!isIncognito && (
                         <div className="mt-auto">
                             <Link
-                                to="/profile"
+                                to={isGuest ? "/login" : "/profile"}
                                 className="h-10 w-10 flex items-center justify-center rounded-full ring-2 transition-all overflow-hidden bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-blue-100 dark:ring-blue-900/30 hover:ring-blue-200 dark:hover:ring-blue-900/50 cursor-pointer"
                                 title="Profile"
                             >

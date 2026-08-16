@@ -16,7 +16,7 @@ const STATUS_LABELS = {
 };
 
 // ─── Main Component ──────────────────────────────────────────────────────────
-export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage = null, isIncognito = false }) {
+export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage = null, isIncognito = false, onQuotaExceeded = null }) {
     // State
     const [voiceStatus, setVoiceStatus] = useState('idle'); // idle | listening | processing | speaking
     const [error, setError] = useState(null);
@@ -141,6 +141,7 @@ export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage
                     transcription: result.transcript || '', 
                     answer: result.answer || '',
                     audioBase64: result.audio_base64 || null,
+                    guestQuota: result.guestQuota || null
                 });
             }
 
@@ -155,10 +156,15 @@ export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage
             setVoiceStatus('idle');
         } catch (err) {
             console.error('Speech-to-speech error:', err);
-            setError('Failed to process voice. Please try again.');
+            setError(err.response?.data?.detail || 'Failed to process voice. Please try again.');
             setVoiceStatus('error');
+            if (err.response?.status === 429 || err.response?.data?.detail === 'guest_quota_exceeded') {
+                if (onQuotaExceeded) {
+                    onQuotaExceeded();
+                }
+            }
         }
-    }, [responseLanguage, onVoiceMessage]);
+    }, [responseLanguage, onVoiceMessage, onQuotaExceeded]);
 
     // ── Helpers ───────────────────────────────────────────────────────────
     const blobToBase64 = (blob) => new Promise((resolve, reject) => {

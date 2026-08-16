@@ -1,6 +1,7 @@
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const bridgeMetrics = require('../lib/bridgeMetrics');
+const { reserveQuota, compensateQuota, getGuestQuotaData } = require('../middleware/guestQuotaMiddleware');
 
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
 
@@ -50,10 +51,26 @@ function _onProxyError(endpoint, error, startedAt, userId = 'guest') {
 exports.speechToSpeech = async (req, res) => {
     const start = Date.now();
     const userId = getUserId(req);
+    let reservedQuotaObj = null;
+    let reserved = false;
+
+    if (req.isGuest) {
+        try {
+            reservedQuotaObj = await reserveQuota(req.guestId);
+            reserved = true;
+        } catch (err) {
+            if (err.message === 'limit_exceeded') {
+                return res.status(429).json({ message: 'Guest message limit exceeded. Please log in.', detail: 'guest_quota_exceeded' });
+            }
+            return res.status(503).json({ message: 'Service unavailable' });
+        }
+    }
+
     try {
         const { audio_base64, mime_type, response_language_code, use_history } = req.body;
 
         if (!audio_base64) {
+            if (reserved) await compensateQuota(req.guestId);
             return res.status(400).json({ message: 'No audio data provided' });
         }
 
@@ -77,10 +94,14 @@ exports.speechToSpeech = async (req, res) => {
             audio_base64: response.data.audio_base64,
             detected_language: response.data.detected_language,
             sources: response.data.sources,
-            validation: response.data.validation
+            validation: response.data.validation,
+            guestQuota: reservedQuotaObj
         });
 
     } catch (error) {
+        if (reserved) {
+            await compensateQuota(req.guestId);
+        }
         console.error('Speech-to-Speech Proxy Error:', error.response?.data || error.message);
         _onProxyError('/speech-to-speech', error, start, userId);
         const errorDetail = error.response?.data?.detail || error.message;
@@ -93,10 +114,31 @@ exports.speechToSpeech = async (req, res) => {
 exports.chat = async (req, res) => {
     const start = Date.now();
     const userId = getUserId(req);
+    let reservedQuotaObj = null;
+    let reserved = false;
+
+    if (req.isGuest) {
+        try {
+            reservedQuotaObj = await reserveQuota(req.guestId);
+            reserved = true;
+        } catch (err) {
+            if (err.message === 'limit_exceeded') {
+                return res.status(429).json({ message: 'Guest message limit exceeded. Please log in.', detail: 'guest_quota_exceeded' });
+            }
+            return res.status(503).json({ message: 'Service unavailable' });
+        }
+    }
+
     try {
         const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId });
-        res.json(response.data);
+        res.json({
+            ...response.data,
+            guestQuota: reservedQuotaObj
+        });
     } catch (error) {
+        if (reserved) {
+            await compensateQuota(req.guestId);
+        }
         console.error('Chat Proxy Error:', error.response?.data || error.message);
         _onProxyError('/chat', error, start, userId);
         res.status(500).json({ message: 'Chat failed', detail: error.response?.data?.detail || error.message });
@@ -108,19 +150,69 @@ exports.chat = async (req, res) => {
 exports.chatSimple = async (req, res) => {
     const start = Date.now();
     const userId = getUserId(req);
+    let reservedQuotaObj = null;
+    let reserved = false;
+
+    if (req.isGuest) {
+        try {
+            reservedQuotaObj = await reserveQuota(req.guestId);
+            reserved = true;
+        } catch (err) {
+            if (err.message === 'limit_exceeded') {
+                return res.status(429).json({ message: 'Guest message limit exceeded. Please log in.', detail: 'guest_quota_exceeded' });
+            }
+            return res.status(503).json({ message: 'Service unavailable' });
+        }
+    }
+
     try {
         const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId });
-        res.json(response.data);
+        res.json({
+            ...response.data,
+            guestQuota: reservedQuotaObj
+        });
     } catch (error) {
+        if (reserved) {
+            await compensateQuota(req.guestId);
+        }
         console.error('Chat Simple Proxy Error:', error.response?.data || error.message);
         _onProxyError('/chat/simple', error, start, userId);
         res.status(500).json({ message: 'Chat Simple failed', detail: error.response?.data?.detail || error.message });
     }
 };
 
+// @desc    Get Guest Quota data
+// @route   GET /api/voice/guest-quota
+exports.getGuestQuota = async (req, res) => {
+    if (!req.isGuest) {
+        return res.json({ messagesUsed: 0, limit: 5, sessionStarted: false });
+    }
+    try {
+        const quota = await getGuestQuotaData(req.guestId);
+        res.json(quota);
+    } catch (err) {
+        console.error('Failed to get guest quota:', err.message);
+        res.status(503).json({ message: 'Service unavailable' });
+    }
+};
+
 // @desc    Clear History Proxy
 // @route   POST /api/voice/clear-history
 exports.clearHistory = async (req, res) => {
+    if (req.isGuest) {
+        try {
+            const quota = await getGuestQuotaData(req.guestId);
+            if (quota && quota.sessionStarted) {
+                return res.status(429).json({
+                    message: 'Guest session already started. You cannot clear history or start a new session.',
+                    detail: 'guest_quota_exceeded'
+                });
+            }
+        } catch (err) {
+            console.error('Failed to validate guest quota for clearHistory:', err.message);
+            return res.status(503).json({ message: 'Service unavailable' });
+        }
+    }
     try {
         const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`);
         res.json(response.data);
@@ -135,10 +227,26 @@ exports.clearHistory = async (req, res) => {
 exports.textToText = async (req, res) => {
     const start = Date.now();
     const userId = getUserId(req);
+    let reservedQuotaObj = null;
+    let reserved = false;
+
+    if (req.isGuest) {
+        try {
+            reservedQuotaObj = await reserveQuota(req.guestId);
+            reserved = true;
+        } catch (err) {
+            if (err.message === 'limit_exceeded') {
+                return res.status(429).json({ message: 'Guest message limit exceeded. Please log in.', detail: 'guest_quota_exceeded' });
+            }
+            return res.status(503).json({ message: 'Service unavailable' });
+        }
+    }
+
     try {
         const { question, languageCode, useHistory } = req.body;
 
         if (!question) {
+            if (reserved) await compensateQuota(req.guestId);
             return res.status(400).json({ message: 'Question is required' });
         }
 
@@ -156,10 +264,14 @@ exports.textToText = async (req, res) => {
             original_question: response.data.original_question,
             detected_language: response.data.detected_language,
             sources: response.data.sources,
-            validation: response.data.validation
+            validation: response.data.validation,
+            guestQuota: reservedQuotaObj
         });
 
     } catch (error) {
+        if (reserved) {
+            await compensateQuota(req.guestId);
+        }
         console.error('Text-to-Text Proxy Error:', error.response?.data || error.message);
         _onProxyError('/text-to-text', error, start, userId);
         const errorDetail = error.response?.data?.detail || error.message;

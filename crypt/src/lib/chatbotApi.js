@@ -103,15 +103,25 @@ chatbotClient.interceptors.request.use(
     (config) => {
         config.metadata = { startedAt: Date.now() };
         const userStr = localStorage.getItem('user');
+        let isGuest = true;
         if (userStr) {
             try {
                 const user = JSON.parse(userStr);
                 if (user && user.token) {
                     config.headers.Authorization = `Bearer ${user.token}`;
+                    isGuest = false;
                 }
             } catch (e) {
                 console.error("Error parsing user from localStorage", e);
             }
+        }
+        if (isGuest) {
+            let guestId = localStorage.getItem('digilab-guest-id');
+            if (!guestId) {
+                guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                localStorage.setItem('digilab-guest-id', guestId);
+            }
+            config.headers['X-Guest-ID'] = guestId;
         }
         return config;
     },
@@ -238,6 +248,16 @@ export const chatbotApi = {
             return response.data;
         } catch (error) {
             console.error('Chatbot textToText failed:', error);
+            throw error;
+        }
+    },
+
+    getGuestQuota: async () => {
+        try {
+            const response = await chatbotClient.get('/guest-quota');
+            return response.data;
+        } catch (error) {
+            console.error('Chatbot getGuestQuota failed:', error);
             throw error;
         }
     },

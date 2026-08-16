@@ -4,6 +4,7 @@ const { getRedisClient } = require('../config/redis');
 const DRAFT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 
+
 const toDate = (value) => {
     if (!value) return null;
     if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -289,6 +290,20 @@ class ChatSession {
                 const cached = await redisClient.get(cacheKey);
                 if (cached) {
                     let parsed = JSON.parse(cached);
+                    let hasExpired = false;
+                    parsed = parsed.filter((item) => {
+                        if (isExpired(item.expiresAt)) {
+                            hasExpired = true;
+                            db.collection('chat_sessions').doc(item.id).delete().catch(err => {
+                                console.error('Error deleting expired session from firestore:', err);
+                            });
+                            return false;
+                        }
+                        return true;
+                    });
+                    if (hasExpired) {
+                        redisClient.del(cacheKey).catch(err => {});
+                    }
                     if (options.cursor) {
                         const cursorTime = new Date(options.cursor).getTime();
                         parsed = parsed.filter((item) => {
@@ -400,6 +415,17 @@ class ChatSession {
                     await redisClient.setEx(cacheKey, 3600, JSON.stringify(sessionData));
                 } catch (err) { console.error('Redis set error:', err); }
             }
+        }
+
+        if (sessionData && isExpired(sessionData.expiresAt)) {
+            db.collection('chat_sessions').doc(id).delete().catch(err => {
+                console.error('Error deleting expired session from firestore:', err);
+            });
+            if (redisClient) {
+                redisClient.del(cacheKey).catch(err => {});
+                redisClient.del(`user_sessions:${userId}`).catch(err => {});
+            }
+            return null;
         }
 
         const messages = sessionData.messages || [];

@@ -1,7 +1,7 @@
 import * as React from "react";
 import ReactDOM from "react-dom";
 
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { Link, useSearchParams, useNavigate, useOutletContext } from "react-router-dom";
 
 import { useLanguage } from "../context/LanguageContext";
 
@@ -613,6 +613,63 @@ export function ChatPage() {
 
     const [showLimitModal, setShowLimitModal] = React.useState(false);
 
+    const [guestQuota, setGuestQuota] = React.useState(() => {
+        if (!isGuest) return { messagesUsed: 0, limit: 5, sessionStarted: false };
+        try {
+            const saved = localStorage.getItem("digilab-guest-quota");
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return {
+                    messagesUsed: typeof parsed.messagesUsed === 'number' ? parsed.messagesUsed : 0,
+                    limit: typeof parsed.limit === 'number' ? parsed.limit : 5,
+                    sessionStarted: !!parsed.sessionStarted
+                };
+            }
+        } catch (e) {
+            console.error("Error reading guest quota from localStorage", e);
+        }
+        return { messagesUsed: 0, limit: 5, sessionStarted: false };
+    });
+
+    const updateGuestQuota = React.useCallback((updater) => {
+        setGuestQuota(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
+            try {
+                localStorage.setItem("digilab-guest-quota", JSON.stringify(next));
+            } catch (e) {
+                console.error("Error saving guest quota to localStorage", e);
+            }
+            return next;
+        });
+    }, []);
+
+    // Sync guest quota from backend on mount
+    React.useEffect(() => {
+        if (!isGuest) return;
+        const fetchQuota = async () => {
+            try {
+                const res = await chatbotApi.getGuestQuota();
+                if (res) {
+                    updateGuestQuota({
+                        messagesUsed: typeof res.messagesUsed === 'number' ? res.messagesUsed : 0,
+                        limit: typeof res.limit === 'number' ? res.limit : 5,
+                        sessionStarted: !!res.sessionStarted
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to fetch guest quota from backend:", err);
+            }
+        };
+        fetchQuota();
+    }, [isGuest, updateGuestQuota]);
+
+    // Fast-trigger limit modal if guest limit reached
+    React.useEffect(() => {
+        if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
+            setShowLimitModal(true);
+        }
+    }, [isGuest, guestQuota.messagesUsed, guestQuota.limit]);
+
     const [isVoiceMode, setIsVoiceMode] = React.useState(false);
 
 
@@ -736,9 +793,7 @@ export function ChatPage() {
     const [starredChats, setStarredChats] = React.useState(() => {
         try { return JSON.parse(localStorage.getItem('starredChats') || '[]'); } catch { return []; }
     });
-    const [isDisappearingMode, setIsDisappearingMode] = React.useState(() => {
-        try { return localStorage.getItem('disappearingMode') === 'true'; } catch { return false; }
-    });
+    const { isDisappearingMode, setIsDisappearingMode } = useOutletContext();
 
     // isRestoringSession is now retrieved from SessionContext
 
@@ -858,16 +913,8 @@ export function ChatPage() {
     }, [starredChats]);
 
     React.useEffect(() => {
-        localStorage.setItem('disappearingMode', String(isDisappearingMode));
-    }, [isDisappearingMode]);
-
-    React.useEffect(() => {
         window.dispatchEvent(new CustomEvent("sidebar-incognito-change", { detail: { isIncognito } }));
     }, [isIncognito]);
-
-    React.useEffect(() => {
-        window.dispatchEvent(new CustomEvent("sidebar-disappearing-change", { detail: { isDisappearingMode } }));
-    }, [isDisappearingMode]);
 
 
 
@@ -1028,12 +1075,12 @@ export function ChatPage() {
         }
     }, []);
 
-    const setCachedSessionMessages = React.useCallback((sessionId, messages, hasMore) => {
+    const setCachedSessionMessages = React.useCallback((sessionId, messages, hasMore, disappearingMode) => {
         if (!sessionId) return;
         try {
             sessionStorage.setItem(
                 SESSION_MESSAGES_CACHE_PREFIX + sessionId,
-                JSON.stringify({ messages, hasMore })
+                JSON.stringify({ messages, hasMore, disappearingMode })
             );
         } catch {
             // storage full/disabled — safe to skip, just no instant-load next time
@@ -1187,6 +1234,7 @@ export function ChatPage() {
                 }
 
                 upsertSessionInState(savedSession);
+                setCachedSessionMessages(savedSession.id, nextMessages, savedSession.hasMore, savedSession.disappearingMode === true);
                 return savedSession;
             }
         } catch (err) {
@@ -1266,7 +1314,8 @@ export function ChatPage() {
         setFollowUpQuestions([]);
         setInitialInputText("");
         unsentTextRef.current = "";
-    }, []);
+        setIsDisappearingMode(false);
+    }, [setIsDisappearingMode]);
 
     const saveCurrentConversationAsDraft = React.useCallback(async () => {
         const currentUnsentText = unsentTextRef.current || "";
@@ -1403,6 +1452,10 @@ export function ChatPage() {
     };
 
     const handleClearHistory = async () => {
+        if (isGuest && guestQuota.sessionStarted) {
+            setShowLimitModal(true);
+            return;
+        }
         if (!window.confirm("Are you sure you want to clear all chat history?")) return;
         try {
             await chatbotApi.clearHistory();
@@ -1415,6 +1468,10 @@ export function ChatPage() {
             setSessions([]);
         } catch (err) {
             console.error("Failed to clear history:", err);
+            if (err.response?.status === 429 || err.response?.data?.detail === 'guest_quota_exceeded') {
+                setShowLimitModal(true);
+                return;
+            }
             setError("Failed to clear chat history");
         }
     };
@@ -1422,10 +1479,18 @@ export function ChatPage() {
 
 
     const handleNewChat = async () => {
+        if (isGuest && guestQuota.sessionStarted) {
+            setShowLimitModal(true);
+            return;
+        }
         try {
             await chatbotApi.clearHistory();
         } catch (err) {
             console.error("Failed to clear AI memory:", err);
+            if (err.response?.status === 429 || err.response?.data?.detail === 'guest_quota_exceeded') {
+                setShowLimitModal(true);
+                return;
+            }
         }
 
         clearStoredDraft();
@@ -1455,6 +1520,8 @@ export function ChatPage() {
     const handleSelectSession = async (sessionId, source = null, passedSession = null) => {
         const session = passedSession || sessions.find(s => s.id === sessionId);
         if (!session) return;
+
+        setIsDisappearingMode(session.disappearingMode === true);
 
         if (isIncognito) {
             setIsIncognito(false);
@@ -1487,15 +1554,32 @@ export function ChatPage() {
 
         try {
             const res = await api.get(`/chat/sessions/${session.id}/messages?offset=0&limit=75`);
+            const latestSessionId = new URLSearchParams(window.location.search).get("sessionId");
+            if (latestSessionId !== session.id) return;
+
             const fetchedMessages = res.data.messages || [INITIAL_MESSAGE];
             const fetchedHasMore = res.data.hasMore || false;
             setMessages(fetchedMessages);
             setHasMore(fetchedHasMore);
-            setCachedSessionMessages(session.id, fetchedMessages, fetchedHasMore);
+            setCachedSessionMessages(session.id, fetchedMessages, fetchedHasMore, session.disappearingMode === true);
         } catch (err) {
-            console.error("Failed to fetch session messages:", err);
-            setMessages([INITIAL_MESSAGE]);
-            setHasMore(false);
+            const latestSessionId = new URLSearchParams(window.location.search).get("sessionId");
+            if (latestSessionId === session.id) {
+                console.error("Failed to fetch session messages:", err);
+                if (err.response && err.response.status === 404) {
+                    try {
+                        sessionStorage.removeItem(SESSION_MESSAGES_CACHE_PREFIX + session.id);
+                    } catch (e) {}
+                    setSessions(prev => prev.filter(s => s.id !== session.id));
+                    resetChatSurface();
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.delete("sessionId");
+                    navigate({ search: newParams.toString() }, { replace: true });
+                    return;
+                }
+                setMessages([INITIAL_MESSAGE]);
+                setHasMore(false);
+            }
         }
 
         if (session.isDraft) {
@@ -1523,7 +1607,26 @@ export function ChatPage() {
     // itself — exactly what made navigating back to /chat look like it had
     // started a new conversation.
     React.useLayoutEffect(() => {
-        if (isGuest) return;
+        if (isGuest) {
+            if (!isIncognito) {
+                try {
+                    const guestId = localStorage.getItem("digilab-guest-id");
+                    if (guestId) {
+                        const cacheKey = `digilab-guest-messages:${guestId}`;
+                        const saved = localStorage.getItem(cacheKey);
+                        if (saved) {
+                            const parsed = JSON.parse(saved);
+                            if (parsed && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+                                setMessages(parsed.messages);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error restoring guest messages from localStorage:", e);
+                }
+            }
+            return;
+        }
         const urlSessionId = searchParams.get("sessionId");
         const likelySessionId = urlSessionId
             || (lastActiveSessionKey ? localStorage.getItem(lastActiveSessionKey) : null);
@@ -1541,9 +1644,10 @@ export function ChatPage() {
             // a duplicate instead of continuing this one.
             setCurrentSessionId(likelySessionId);
             setCurrentSessionSource(searchParams.get("source") || null);
+            setIsDisappearingMode(cached.disappearingMode === true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isGuest]);
+    }, [isGuest, setIsDisappearingMode]);
 
     React.useEffect(() => {
         console.log("ChatPage: Unified useEffect triggered. isGuest:", isGuest);
@@ -1661,13 +1765,23 @@ export function ChatPage() {
 
                         if (initialSession) {
                             if (ignore) return;
+                            const currentUrlSessionId = new URLSearchParams(window.location.search).get("sessionId");
+                            if (currentUrlSessionId !== urlSessionId) return;
                             await handleSelectSession(initialSession.id, sessionSource, initialSession);
                         } else {
+                            setIsDisappearingMode(false);
                             if (sessionId) {
+                                try {
+                                    sessionStorage.removeItem(SESSION_MESSAGES_CACHE_PREFIX + sessionId);
+                                } catch (e) {}
                                 clearStoredDraft(sessionId);
                                 if (lastActiveSessionKey && lastActiveSessionId === sessionId) {
                                     localStorage.removeItem(lastActiveSessionKey);
                                 }
+                                resetChatSurface();
+                                const newParams = new URLSearchParams(searchParams);
+                                newParams.delete("sessionId");
+                                navigate({ search: newParams.toString() }, { replace: true });
                             }
                         }
                     }
@@ -1739,7 +1853,7 @@ export function ChatPage() {
 
     const handleSend = async (text) => {
 
-        if (isGuest && messages.length >= 10) {
+        if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
 
             setShowLimitModal(true);
 
@@ -1772,6 +1886,7 @@ export function ChatPage() {
 
 
 
+
         const userMsg = {
 
             role: "user",
@@ -1792,6 +1907,10 @@ export function ChatPage() {
 
             const response = await chatbotApi.sendMessage(apiPayload, selectedModel.id);
 
+            if (isGuest && response?.guestQuota) {
+                updateGuestQuota(response.guestQuota);
+            }
+
             const assistantMsg = {
                 role: "assistant",
                 content: response.answer,
@@ -1808,6 +1927,20 @@ export function ChatPage() {
 
             const updatedMessages = [...messages, userMsg, assistantMsg];
             setMessages(updatedMessages);
+
+            if (isGuest && !isIncognito) {
+                try {
+                    const guestId = localStorage.getItem("digilab-guest-id");
+                    if (guestId) {
+                        localStorage.setItem(`digilab-guest-messages:${guestId}`, JSON.stringify({
+                            messages: updatedMessages,
+                            updatedAt: new Date().toISOString()
+                        }));
+                    }
+                } catch (e) {
+                    console.error("Error saving guest messages to localStorage:", e);
+                }
+            }
 
             if (!isGuest && !isIncognito) {
                 try {
@@ -1827,7 +1960,6 @@ export function ChatPage() {
                     console.error("Failed to save history to DB:", dbErr);
                 }
             }
-
         } catch (err) {
 
             console.error("API Error:", err);
@@ -1859,6 +1991,10 @@ export function ChatPage() {
                 }).catch(() => { });
             }
 
+            if (err.response?.status === 429 || err.response?.data?.detail === 'guest_quota_exceeded') {
+                setShowLimitModal(true);
+            }
+
         } finally {
 
             setIsLoading(false);
@@ -1869,8 +2005,17 @@ export function ChatPage() {
 
 
 
-    const handleVoiceMessage = async ({ transcription, answer, audioBase64, reference_links }) => {
+    const handleVoiceMessage = async ({ transcription, answer, audioBase64, reference_links, guestQuota: responseQuota }) => {
         if (!transcription && !answer) return;
+
+        if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
+            setShowLimitModal(true);
+            return;
+        }
+
+        if (isGuest && responseQuota) {
+            updateGuestQuota(responseQuota);
+        }
 
         const userMsg = {
             role: "user",
@@ -1888,6 +2033,20 @@ export function ChatPage() {
 
         setMessages((prev) => [...prev, userMsg, assistantMsg]);
         const updatedVoiceMsgs = [...messages, userMsg, assistantMsg];
+
+        if (isGuest && !isIncognito) {
+            try {
+                const guestId = localStorage.getItem("digilab-guest-id");
+                if (guestId) {
+                    localStorage.setItem(`digilab-guest-messages:${guestId}`, JSON.stringify({
+                        messages: updatedVoiceMsgs,
+                        updatedAt: new Date().toISOString()
+                    }));
+                }
+            } catch (e) {
+                console.error("Error saving guest messages to localStorage:", e);
+            }
+        }
 
         if (!isGuest && !isIncognito) {
             try {
@@ -1907,7 +2066,10 @@ export function ChatPage() {
     // ── Text-to-Text (Multilingual) handler ──
     const handleTranslate = async (text) => {
         if (!text || !text.trim()) return;
-        if (isGuest && messages.length >= 10) { setShowLimitModal(true); return; }
+        if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
+            setShowLimitModal(true);
+            return;
+        }
         setError(null);
         setFollowUpQuestions([]);
         const userMsg = {
@@ -1919,6 +2081,9 @@ export function ChatPage() {
         setIsLoading(true);
         try {
             const response = await chatbotApi.textToText(text, selectedLanguage);
+            if (isGuest && response?.guestQuota) {
+                updateGuestQuota(response.guestQuota);
+            }
             const assistantMsg = {
                 role: "assistant",
                 content: response.answer,
@@ -1927,6 +2092,21 @@ export function ChatPage() {
             };
             const updatedMessages = [...messages, userMsg, assistantMsg];
             setMessages(updatedMessages);
+
+            if (isGuest && !isIncognito) {
+                try {
+                    const guestId = localStorage.getItem("digilab-guest-id");
+                    if (guestId) {
+                        localStorage.setItem(`digilab-guest-messages:${guestId}`, JSON.stringify({
+                            messages: updatedMessages,
+                            updatedAt: new Date().toISOString()
+                        }));
+                    }
+                } catch (e) {
+                    console.error("Error saving guest messages to localStorage:", e);
+                }
+            }
+
             if (!isGuest && !isIncognito) {
                 try {
                     const saved = await persistSession({
@@ -1943,6 +2123,9 @@ export function ChatPage() {
             const errorMessage = err.response?.data?.detail || err.message || "Translation failed";
             setError(errorMessage);
             setMessages(prev => [...prev, { role: "assistant", content: `Sorry, translation failed: ${errorMessage}. Please try again.`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isError: true }]);
+            if (err.response?.status === 429 || err.response?.data?.detail === 'guest_quota_exceeded') {
+                setShowLimitModal(true);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -2094,8 +2277,47 @@ export function ChatPage() {
                 timers.push(window.setTimeout(() => expireDraft(session), delay));
             });
 
-        return () => { timers.forEach((timer) => window.clearTimeout(timer)); };
     }, [sessions, isGuest, currentSessionId]);
+
+    // Disappearing chat expiry: auto-remove expired disappearing chats from UI
+    React.useEffect(() => {
+        if (isGuest) return undefined;
+
+        const timers = [];
+        const expireDisappearingSession = async (session) => {
+            setSessions((prev) => prev.filter((item) => item.id !== session.id));
+            setStarredChats((prev) => prev.filter((id) => id !== session.id));
+            clearStoredDraft(session.id);
+            try {
+                sessionStorage.removeItem(SESSION_MESSAGES_CACHE_PREFIX + session.id);
+            } catch (e) {}
+
+            if (currentSessionId === session.id) {
+                resetChatSurface();
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete("sessionId");
+                navigate({ search: newParams.toString() }, { replace: true });
+            }
+
+            try {
+                await api.delete(`/chat/sessions/${session.id}`);
+            } catch (err) {
+                console.error("Failed to delete expired disappearing session:", err);
+            }
+        };
+
+        sessions
+            .filter((session) => session.disappearingMode === true && session.expiresAt)
+            .forEach((session) => {
+                const expiresAt = new Date(session.expiresAt).getTime();
+                if (Number.isNaN(expiresAt)) return;
+                const delay = expiresAt - Date.now();
+                if (delay <= 0) { expireDisappearingSession(session); return; }
+                timers.push(window.setTimeout(() => expireDisappearingSession(session), delay));
+            });
+
+        return () => { timers.forEach((timer) => window.clearTimeout(timer)); };
+    }, [sessions, isGuest, currentSessionId, resetChatSurface, searchParams, navigate, setSessions, setStarredChats]);
 
     const filteredSessions = React.useMemo(() => {
         if (!searchQuery.trim()) return sessions;
@@ -2126,17 +2348,14 @@ export function ChatPage() {
 
     React.useEffect(() => {
         const handleNewSession = () => handleNewChat();
-        const handleSelectSessionEvent = (e) => handleSelectSession(e.detail.id);
+        const handleSelectSessionEvent = (e) => handleSelectSession(e.detail.id, null, e.detail.session || null);
         const handleDeleteSessionEvent = (e) => handleDeleteSession(e.detail.id, e.detail.originalEvent);
         const handleToggleStarEvent = (e) => toggleStar(e.detail.id, e.detail.originalEvent);
         const handleRenameSessionEvent = (e) => handleRenameSubmit(e.detail.id, e.detail.title);
         const handleClearHistoryEvent = () => handleClearHistory();
         const handleLoadMoreEvent = () => loadMoreSessions();
         const handleIncognitoToggleEvent = () => handleIncognitoToggle();
-        const handleDisappearingToggleEvent = (e) => {
-            const nextVal = typeof e.detail.value === "boolean" ? e.detail.value : !isDisappearingMode;
-            setIsDisappearingMode(nextVal);
-        };
+        const handleShowLimitModalEvent = () => setShowLimitModal(true);
 
         window.addEventListener("page-new-session", handleNewSession);
         window.addEventListener("page-select-session", handleSelectSessionEvent);
@@ -2146,7 +2365,7 @@ export function ChatPage() {
         window.addEventListener("page-clear-history", handleClearHistoryEvent);
         window.addEventListener("page-load-more", handleLoadMoreEvent);
         window.addEventListener("page-incognito-toggle", handleIncognitoToggleEvent);
-        window.addEventListener("page-disappearing-toggle", handleDisappearingToggleEvent);
+        window.addEventListener("page-show-limit-modal", handleShowLimitModalEvent);
 
         return () => {
             window.removeEventListener("page-new-session", handleNewSession);
@@ -2157,9 +2376,9 @@ export function ChatPage() {
             window.removeEventListener("page-clear-history", handleClearHistoryEvent);
             window.removeEventListener("page-load-more", handleLoadMoreEvent);
             window.removeEventListener("page-incognito-toggle", handleIncognitoToggleEvent);
-            window.removeEventListener("page-disappearing-toggle", handleDisappearingToggleEvent);
+            window.removeEventListener("page-show-limit-modal", handleShowLimitModalEvent);
         };
-    }, [handleNewChat, handleSelectSession, handleDeleteSession, handleRenameSubmit, handleClearHistory, loadMoreSessions, handleIncognitoToggle, isDisappearingMode]);
+    }, [handleNewChat, handleSelectSession, handleDeleteSession, handleRenameSubmit, handleClearHistory, loadMoreSessions, handleIncognitoToggle, isGuest]);
 
     return (
 
@@ -2377,22 +2596,24 @@ export function ChatPage() {
 
                     {/* RIGHT column — Incognito toggle */}
                     <div className="flex items-center justify-end gap-2">
-                        {isIncognito ? (
-                            <button
-                                onClick={handleIncognitoToggle}
-                                title="Turn off incognito"
-                                className="flex h-[44px] w-[44px] shrink-0 items-center justify-center transition-all duration-200 rounded-full outline-none focus:outline-none text-zinc-400 hover:text-white hover:bg-white/5"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                        ) : (
-                            <button
-                                onClick={handleIncognitoToggle}
-                                title="Turn on incognito"
-                                className="flex h-[44px] w-[44px] shrink-0 items-center justify-center transition-all duration-200 rounded-full outline-none focus:outline-none text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
-                            >
-                                <IncognitoIcon className="h-7 w-7" />
-                            </button>
+                        {!isGuest && (
+                            isIncognito ? (
+                                <button
+                                    onClick={handleIncognitoToggle}
+                                    title="Turn off incognito"
+                                    className="flex h-[44px] w-[44px] shrink-0 items-center justify-center transition-all duration-200 rounded-full outline-none focus:outline-none text-zinc-400 hover:text-white hover:bg-white/5"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleIncognitoToggle}
+                                    title="Turn on incognito"
+                                    className="flex h-[44px] w-[44px] shrink-0 items-center justify-center transition-all duration-200 rounded-full outline-none focus:outline-none text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                >
+                                    <IncognitoIcon className="h-7 w-7" />
+                                </button>
+                            )
                         )}
                     </div>
 
@@ -3362,6 +3583,11 @@ export function ChatPage() {
                     onVoiceMessage={handleVoiceMessage}
 
                     isIncognito={isIncognito}
+
+                    onQuotaExceeded={() => {
+                        setIsVoiceMode(false);
+                        setShowLimitModal(true);
+                    }}
 
                 />
 

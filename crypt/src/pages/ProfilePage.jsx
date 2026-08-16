@@ -206,7 +206,7 @@ export function ProfilePage() {
     const handleSignOut = () => {
         localStorage.removeItem("user");
         localStorage.removeItem("token");
-        navigate("/");
+        window.location.href = "/";
     };
 
     // Helper to get language name
@@ -275,6 +275,24 @@ export function ProfilePage() {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
+
+    // ── Auth Guard for Guests ────────────────────────────────────────────────
+    const isGuest = (() => {
+        try {
+            const saved = localStorage.getItem('user');
+            return !(saved && saved !== 'undefined');
+        } catch {
+            return true;
+        }
+    })();
+
+    useEffect(() => {
+        if (isGuest) {
+            navigate("/login", { replace: true });
+        }
+    }, [isGuest, navigate]);
+
+    if (isGuest) return null;
 
     // Render gate removed — page renders immediately from cached localStorage data.
     // isFetching is now only used to drive the subtle background-refresh indicator below.
