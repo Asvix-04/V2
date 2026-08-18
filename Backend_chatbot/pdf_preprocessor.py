@@ -2,9 +2,18 @@ import os
 import re
 from glob import glob
 
-import pdfplumber
+import fitz  # PyMuPDF — faster and more reliable than pdfplumber
 from tqdm import tqdm
 from unidecode import unidecode
+
+# OCR support for scanned (image-based) PDFs
+try:
+    import pytesseract
+    from pdf2image import convert_from_path
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    print("⚠️  OCR not available: install pytesseract and pdf2image for scanned PDF support")
 
 PDF_DIR = "pdfs"  # Changed from "books" to match your folder
 OUTPUT_DIR = "data/txts"  # Changed to match your pipeline
@@ -398,17 +407,58 @@ def postprocess_global(text: str) -> str:
 
 # ---------- MAIN PIPELINE ----------
 
+def _ocr_page_image(pdf_path: str, page_index: int) -> str:
+    """
+    Render a single PDF page to an image and run Tesseract OCR on it.
+    Used as a fallback for scanned / image-based pages.
+    """
+    if not OCR_AVAILABLE:
+        return ""
+    try:
+        images = convert_from_path(
+            pdf_path,
+            dpi=300,               # High resolution for better OCR accuracy
+            first_page=page_index + 1,
+            last_page=page_index + 1,
+        )
+        if not images:
+            return ""
+        text = pytesseract.image_to_string(images[0], lang="eng")
+        return text
+    except Exception as e:
+        print(f"⚠️  OCR failed on page {page_index + 1}: {e}")
+        return ""
+
+
 def extract_and_clean_pdf(pdf_path: str) -> str:
     """
     Main extraction pipeline - optimized for RAG with hierarchy preservation.
+    Uses PyMuPDF (fitz) for fast, reliable text extraction (3-5x faster than pdfplumber).
+
+    OCR Fallback: If a page returns no text (scanned / image-based PDF),
+    it is automatically rendered as an image and processed with Tesseract OCR.
+    This makes both digital PDFs and scanned PDFs work seamlessly.
     """
     pages_lines = []
+    scanned_pages = 0
 
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            raw = page.extract_text() or ""
-            page_lines = preprocess_page_text(raw)
-            pages_lines.append(page_lines)
+    doc = fitz.open(pdf_path)
+    for page_index, page in enumerate(doc):
+        raw = page.get_text() or ""
+
+        # Fallback to OCR if page has no embedded text (scanned PDF)
+        if not raw.strip() and OCR_AVAILABLE:
+            print(f"   🔍 Page {page_index + 1}: no text found — running OCR...")
+            raw = _ocr_page_image(pdf_path, page_index)
+            if raw.strip():
+                scanned_pages += 1
+
+        page_lines = preprocess_page_text(raw)
+        pages_lines.append(page_lines)
+    doc.close()
+
+    if scanned_pages > 0:
+        print(f"   📷 OCR processed {scanned_pages} scanned page(s)")
 
     # Remove repeated headers / footers (preserves content headers)
     pages_lines = remove_repeated_headers_footers(pages_lines)

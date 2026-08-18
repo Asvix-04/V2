@@ -1,31 +1,47 @@
 """
-main.py — Digilab Media Literacy Chatbot.
+main.py — Digilab Media Literacy Chatbot  v3.2.0
 
-Merged version combining:
-- Downloads main.py      (CLI with follow-up questions, ask_question_with_follow_ups)
-- worker/main.py         (FastAPI API + CLI combined, model-switch API routes, reference links)
+Fixes applied vs v3.1.0:
+  [F1] Streaming endpoint now goes through chatbot pipeline
+       (safety gates + classification + history all included)
+  [F2] Duplicate HybridRetriever removed — chatbot's retriever reused
+  [F3] Streaming saves conversation history (use_history=True)
+  [F4] Per-session chatbot instances — no shared mutable state / race condition
+  [F5] CORS locked to specific origins (not wildcard *)
+  [F6] Deprecated @app.on_event replaced with lifespan context manager
+  [F7] /history endpoint requires session_id (no global history leak)
 
-Run as API server:  python main.py
-                    uvicorn main:app --reload
-Run as CLI:         python main.py --cli
+Run as API:  uvicorn main:app --reload
+Run as CLI:  python main.py --cli
 """
 
 import os
 import sys
 import base64
 import binascii
+import hashlib
+import logging
 import time
+import json
+import uuid
+from collections import OrderedDict
+from contextlib import asynccontextmanager
 from datetime import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+
+from fastapi import FastAPI, HTTPException, Request, Cookie, Response, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any, Generator
+import threading
 import uvicorn
+
 from chatbot import PDFChatbot
 from llm_client import AVAILABLE_MODELS, ModelConfig
 from sarvam_client import SarvamClient, LANGUAGE_DISPLAY
 from utils import MAX_AUDIO_BYTES, s2s_limiter
+
 try:
     from Db import find_reference_links, check_db_connection
 except ImportError:
@@ -38,37 +54,186 @@ load_dotenv()
 
 S2S_TIMING_LOG_FILE = "s2s_timing_log.txt"
 
+logger = logging.getLogger("digilab_api")
+
+
+def _fail(exc: Exception, context: str, status_code: int = 500,
+          message: str = "Internal server error") -> HTTPException:
+    """
+    Log the real exception server-side and return a generic message to the client,
+    so internal details (library names, paths, config hints) are never leaked.
+    """
+    logger.exception("%s failed: %s", context, exc)
+    return HTTPException(status_code=status_code, detail=message)
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+
+
+# Upload + input caps (env-tunable, no host-specific values baked in).
+MAX_PDF_BYTES = _env_int("MAX_PDF_BYTES", 50 * 1024 * 1024)   # 50 MB
+MAX_QUESTION_CHARS = _env_int("MAX_QUESTION_CHARS", 4000)
+MAX_SELECTION_CHARS = _env_int("MAX_SELECTION_CHARS", 5000)
+MAX_BOT_MESSAGE_CHARS = _env_int("MAX_BOT_MESSAGE_CHARS", 20000)
+MAX_AUDIO_B64_CHARS = _env_int("MAX_AUDIO_B64_CHARS", 4 * 1024 * 1024)
+
+# ─────────────────────────────────────────────────────────────
+# Session Store
+# In production replace with Redis:
+#   from redis import Redis
+#   r = Redis(); r.set(session_id, pickle.dumps(history))
+# ─────────────────────────────────────────────────────────────
+
+_sessions: Dict[str, PDFChatbot] = {}
+_session_seen: Dict[str, float] = {}          # session_id -> last-access timestamp
+_sessions_lock = threading.Lock()
+_SESSION_COOKIE = "digilab_session"
+_SESSION_MAX_AGE = _env_int("SESSION_MAX_AGE", 60 * 60 * 2)  # 2 hours
+# Hard ceiling on concurrently tracked sessions, so a stream of cookieless
+# requests cannot grow the store until the process runs out of memory.
+_MAX_SESSIONS = _env_int("MAX_SESSIONS", 1000)
+
+# Global instance initialized once to avoid 13-second startup penalty per session
+print("Initializing global chatbot instance...")
+_global_bot = PDFChatbot()
+print("Global chatbot instance ready.")
+
+
+def _evict_stale_sessions() -> None:
+    """
+    Drop sessions that have outlived the cookie, then enforce the size ceiling by
+    discarding the least-recently-used ones.
+
+    Callers must already hold _sessions_lock.
+    """
+    now = time.time()
+    for stale_id in [sid for sid, seen in _session_seen.items()
+                     if now - seen > _SESSION_MAX_AGE]:
+        _sessions.pop(stale_id, None)
+        _session_seen.pop(stale_id, None)
+
+    while len(_sessions) > _MAX_SESSIONS:
+        oldest_id = min(_session_seen, key=_session_seen.get)
+        _sessions.pop(oldest_id, None)
+        _session_seen.pop(oldest_id, None)
+
+
+def _get_or_create_session(session_id: Optional[str]) -> tuple[str, PDFChatbot]:
+    """Return (session_id, chatbot). Creates a new session if needed."""
+    with _sessions_lock:
+        _evict_stale_sessions()
+
+        if not session_id or session_id not in _sessions:
+            session_id = str(uuid.uuid4())
+            # Fast clone to avoid 13s init penalty while keeping history isolated
+            new_bot = PDFChatbot.__new__(PDFChatbot)
+            new_bot.model_config = _global_bot.model_config
+            new_bot.llm_client = _global_bot.llm_client
+            new_bot.retriever = _global_bot.retriever
+            new_bot.conversation_history = []
+            new_bot.follow_up_generator = _global_bot.follow_up_generator
+            new_bot._system_prompt = _global_bot._system_prompt
+            new_bot.streaming_llm = _global_bot.streaming_llm
+            new_bot._uploaded_docs = _global_bot._uploaded_docs
+            _sessions[session_id] = new_bot
+
+        _session_seen[session_id] = time.time()
+        return session_id, _sessions[session_id]
+
+
+def _set_session_cookie(response: Response, session_id: str) -> None:
+    response.set_cookie(
+        key=_SESSION_COOKIE,
+        value=session_id,
+        httponly=True,
+        samesite="lax",
+        max_age=_SESSION_MAX_AGE,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Lifespan  [F6: replaces deprecated @app.on_event("startup")]
+# ─────────────────────────────────────────────────────────────
+
+_sarvam_client: Optional[SarvamClient] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _sarvam_client
+
+    # Sarvam speech client (shared — stateless, thread-safe)
+    try:
+        _sarvam_client = SarvamClient()
+        print("✅ Sarvam speech client initialized")
+    except Exception as e:
+        _sarvam_client = None
+        print(f"⚠️  Sarvam unavailable: {e}")
+
+    # [F2] No separate streaming_retriever — chatbot instances reuse their own retriever
+    print("✅ Per-session chatbot instances will be created on first request")
+
+    if check_db_connection():
+        print("✅ MySQL DB connected — reference links enabled")
+    else:
+        print("⚠️  MySQL DB unavailable — reference links disabled")
+
+    yield  # app runs here
+
+    print("🔄 Shutdown — clearing session store")
+    _sessions.clear()
+
+
 # ─────────────────────────────────────────────────────────────
 # FastAPI App
 # ─────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Digilab — Media Literacy Chatbot API",
-    description="API for the IGNOU Media Literacy Course Chatbot with reference links",
-    version="3.0.0",
+    description="IGNOU Media Literacy Course Chatbot with streaming, reference links & speech",
+    version="3.2.0",
+    lifespan=lifespan,  # [F6]
 )
+
+# [F5] CORS — specific origins only
+_ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000"
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in _ALLOWED_ORIGINS],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization", "multipart/form-data"],
 )
 
-chatbot = None
-sarvam_client = None
 
 # ─────────────────────────────────────────────────────────────
 # Pydantic Models
 # ─────────────────────────────────────────────────────────────
 
 class QuestionRequest(BaseModel):
-    question: str
+    # max_length only (no min_length) so each route's existing "empty question -> 400"
+    # handling is preserved instead of turning into a 422.
+    question: str = Field(max_length=MAX_QUESTION_CHARS)
     use_history: Optional[bool] = True
+    model: Optional[str] = Field(default=None, max_length=32)
+
+class StreamingChatRequest(BaseModel):
+    question: str = Field(max_length=MAX_QUESTION_CHARS)
 
 class ModelSwitchRequest(BaseModel):
-    model_key: str  # "1", "2", or "3"
+    model_key: str = Field(max_length=32)  # "1", "2", or "3"
 
 class ReferenceLink(BaseModel):
     url: str
@@ -87,15 +252,17 @@ class HealthResponse(BaseModel):
     status: str
     message: str
     db_connected: bool
-    current_model: str
+    active_sessions: int
+    streaming_available: bool
+    current_model: str          # retained: existing clients read this from /health
 
 class SelectionRequest(BaseModel):
-    selected_text: str        # The text the user highlighted
-    full_bot_message: str     # The full bot answer it came from
+    selected_text: str = Field(max_length=MAX_SELECTION_CHARS)
+    full_bot_message: str = Field(max_length=MAX_BOT_MESSAGE_CHARS)
 
 class TextToTextRequest(BaseModel):
-    question: str
-    language_code: Optional[str] = None
+    question: str = Field(max_length=MAX_QUESTION_CHARS)
+    language_code: Optional[str] = Field(default=None, max_length=16)
     use_history: Optional[bool] = True
 
 class TextToTextResponse(BaseModel):
@@ -109,10 +276,10 @@ class TextToTextResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
 
 class SpeechToSpeechRequest(BaseModel):
-    audio_base64: str
-    mime_type: Optional[str] = "audio/wav"
+    audio_base64: str = Field(max_length=MAX_AUDIO_B64_CHARS)
+    mime_type: Optional[str] = Field(default="audio/wav", max_length=64)
     use_history: Optional[bool] = True
-    response_language_code: Optional[str] = None
+    response_language_code: Optional[str] = Field(default=None, max_length=16)
 
 class SpeechToSpeechResponse(BaseModel):
     transcript: str
@@ -124,6 +291,7 @@ class SpeechToSpeechResponse(BaseModel):
     validation: Optional[Dict[str, Any]] = None
     audio_base64: str
 
+
 # ─────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────
@@ -131,12 +299,13 @@ class SpeechToSpeechResponse(BaseModel):
 def check_txt_processing() -> bool:
     return os.path.exists("data/processed/txt_processed.flag")
 
+
 def build_metadata(result: dict, ref_links: list) -> dict:
     return {
         "total_sources": len(result["sources"]),
-        "unique_sections": len(set([s.get("full_section", "") for s in result["sources"]])),
-        "completeness_score": result.get("validation", {}).get("completeness_score") if result.get("validation") else None,
-        "content_sufficient": (result.get("validation", {}).get("completeness_score", 0) or 0) >= 7,
+        "unique_sections": len(set(s.get("full_section", "") for s in result["sources"])),
+        "completeness_score": (result.get("validation") or {}).get("completeness_score"),
+        "content_sufficient": ((result.get("validation") or {}).get("completeness_score", 0) or 0) >= 7,
         "query_expanded": len(result.get("expanded_queries", [])) > 1,
         "reference_links_found": len(ref_links),
         "top_sources": [
@@ -149,11 +318,16 @@ def build_metadata(result: dict, ref_links: list) -> dict:
         ],
     }
 
+
 def is_out_of_scope(answer_text: str) -> bool:
-    return "outside the scope" in answer_text.lower() or "outside of the scope" in answer_text.lower()
+    t = answer_text.lower()
+    return "outside the scope" in t or "outside of the scope" in t
+
 
 def get_ref_links(result: dict) -> list:
-    """Fetch reference links only for in-scope answers that have sources."""
+    if "reference_links" in result:
+        return result["reference_links"]
+        
     if not result.get("sources") or is_out_of_scope(result.get("answer", "")):
         return []
     return find_reference_links(
@@ -163,6 +337,7 @@ def get_ref_links(result: dict) -> list:
         max_links=5,
     )
 
+
 def _decode_audio_b64(audio_b64: str) -> bytes:
     if not audio_b64 or not audio_b64.strip():
         raise HTTPException(status_code=400, detail="audio_base64 cannot be empty")
@@ -171,24 +346,28 @@ def _decode_audio_b64(audio_b64: str) -> bytes:
     except (binascii.Error, ValueError):
         raise HTTPException(status_code=400, detail="Invalid base64 audio payload")
 
+
 def _encode_audio_b64(audio_bytes: bytes) -> str:
     if not audio_bytes:
         raise HTTPException(status_code=500, detail="Generated audio is empty")
     return base64.b64encode(audio_bytes).decode("utf-8")
 
+
 def _normalize_lang_for_tts(language_code: Optional[str]) -> str:
     code = (language_code or "en-IN").strip()
     return code if code in LANGUAGE_DISPLAY else "en-IN"
 
+
 def _compact_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    compact = []
-    for source in sources[:5]:
-        compact.append({
-            "section": source.get("full_section", "Unknown"),
-            "file": source.get("source_file", "N/A"),
-            "page": source.get("page", "N/A"),
-        })
-    return compact
+    return [
+        {
+            "section": s.get("full_section", "Unknown"),
+            "file": s.get("source_file", "N/A"),
+            "page": s.get("page", "N/A"),
+        }
+        for s in sources[:5]
+    ]
+
 
 def _append_s2s_timing_log(metrics: Dict[str, Any]) -> None:
     try:
@@ -199,82 +378,16 @@ def _append_s2s_timing_log(metrics: Dict[str, Any]) -> None:
                     "encode_ms | total_ms | transcript_chars | answer_chars | "
                     "response_language | detected_language\n"
                 )
-        line = (
-            f"{metrics.get('timestamp', '')} | "
-            f"{metrics.get('decode_ms', '')} | "
-            f"{metrics.get('stt_ms', '')} | "
-            f"{metrics.get('chat_ms', '')} | "
-            f"{metrics.get('tts_ms', '')} | "
-            f"{metrics.get('encode_ms', '')} | "
-            f"{metrics.get('total_ms', '')} | "
-            f"{metrics.get('transcript_chars', '')} | "
-            f"{metrics.get('answer_chars', '')} | "
-            f"{metrics.get('response_language', '')} | "
-            f"{metrics.get('detected_language', '')}\n"
-        )
+        line = " | ".join(str(metrics.get(k, "")) for k in [
+            "timestamp", "decode_ms", "stt_ms", "chat_ms", "tts_ms",
+            "encode_ms", "total_ms", "transcript_chars", "answer_chars",
+            "response_language", "detected_language",
+        ]) + "\n"
         with open(S2S_TIMING_LOG_FILE, "a", encoding="utf-8") as f:
             f.write(line)
     except Exception as e:
         print(f"Timing log write failed: {e}")
 
-def print_detailed_sources(sources: list):
-    print("\n" + "=" * 70)
-    print("📚 SOURCES USED:")
-    print("=" * 70)
-    for i, source in enumerate(sources, 1):
-        print(f"\n{i}. Section: {source.get('full_section', 'Unknown')}")
-        print(f"   File: {source.get('source_file', 'N/A')}")
-        print(f"   Page: {source.get('page', 'N/A')}")
-        print(f"   Preview: {source.get('text', '')[:100]}...")
-    print("=" * 70)
-
-def print_follow_up_questions(follow_up_questions):
-    """Print follow-up questions and return selectable options."""
-    if not follow_up_questions:
-        return {}
-
-    type_2 = follow_up_questions.get("type_2_context_aware", [])
-    status = follow_up_questions.get("status", "unknown")
-
-    if not type_2:
-        return {}
-
-    print("\n" + "=" * 70)
-    print("💡 Follow-up Questions:")
-    print("=" * 70)
-    if type_2:
-        print("\nFollow-up (type the number to ask instantly):")
-        for i, question in enumerate(type_2, 1):
-            print(f"  {i}. {question}")
-    print(f"\n   Status: {status}")
-    print("=" * 70)
-    return {str(i): question for i, question in enumerate(type_2, 1)}
-
-# ─────────────────────────────────────────────────────────────
-# Startup
-# ─────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup_event():
-    global chatbot, sarvam_client
-    try:
-        chatbot = PDFChatbot()
-        print(f"✅ Chatbot initialized — model: {chatbot.model_config.display_name}")
-    except Exception as e:
-        print(f"❌ Error initializing chatbot: {e}")
-        raise
-
-    try:
-        sarvam_client = SarvamClient()
-        print("✅ Sarvam speech client initialized")
-    except Exception as e:
-        sarvam_client = None
-        print(f"⚠️  Sarvam speech client unavailable: {e}")
-
-    if check_db_connection():
-        print("✅ MySQL DB connected — reference links enabled")
-    else:
-        print("⚠️  MySQL DB unavailable — reference links will be skipped")
 
 # ─────────────────────────────────────────────────────────────
 # Routes
@@ -284,8 +397,16 @@ async def startup_event():
 async def root():
     return {
         "message": "Digilab Media Literacy Chatbot API is running",
+        "version": "3.2.0",
         "docs": "/docs",
         "health": "/health",
+        "endpoints": {
+            "chat": "POST /chat — full response",
+            "chat_simple": "POST /chat/simple — lightweight",
+            "chat_stream": "POST /chat/stream — streaming SSE",
+            "model_switch": "POST /model/switch",
+            "model_current": "GET /model/current",
+        },
     }
 
 
@@ -293,28 +414,62 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "message": "Digilab Media Literacy Chatbot API is running",
+        "message": "Digilab API is running",
         "db_connected": check_db_connection(),
-        "current_model": chatbot.model_config.display_name if chatbot else "Not initialized",
+        "active_sessions": len(_sessions),
+        "streaming_available": True,  # always available — uses chatbot pipeline
+        "current_model": (
+            _global_bot.model_config.display_name if _global_bot else "Not initialized"
+        ),
     }
 
 
+# ─────────────────────────────────────────────────────────────
+# Chat endpoints
+# ─────────────────────────────────────────────────────────────
+
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: QuestionRequest):
+async def chat(
+    request: QuestionRequest,
+    response: Response,
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
     """Full response: answer + sources + validation + reference links."""
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+    import time
+    t0 = time.time()
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+    # [F4] Per-session chatbot
+    sid, bot = _get_or_create_session(session_id)
+    _set_session_cookie(response, sid)
+    t1 = time.time()
+    print(f"DEBUG: Setup took {t1 - t0:.4f}s")
+
     try:
-        result = chatbot.ask_question_with_follow_ups(
+        t2 = time.time()
+        result = bot.ask_question_with_follow_ups(
             question=request.question.strip(),
             use_history=request.use_history,
+            model=request.model,
+            session_id=sid
         )
+        t3 = time.time()
+        print(f"DEBUG: ask_question took {t3 - t2:.4f}s (Cache Hit: {result.get('is_cache_hit')})")
 
+        t4 = time.time()
         raw_links = get_ref_links(result)
-        ref_links = [ReferenceLink(url=l["url"], clickable=l["clickable"]) for l in raw_links]
+        ref_links = [
+            ReferenceLink(url=l["url"], clickable=l.get("title", l["url"]))
+            for l in raw_links
+        ]
+        t5 = time.time()
+        print(f"DEBUG: get_ref_links took {t5 - t4:.4f}s")
+
+        if result.get("is_cache_hit"):
+            response.headers["X-Cache"] = "HIT"
+        else:
+            response.headers["X-Cache"] = "MISS"
 
         return {
             "answer": result["answer"],
@@ -327,68 +482,159 @@ async def chat(request: QuestionRequest):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
+        raise _fail(e, "chat", message="Error processing question")
 
 
 @app.post("/chat/simple")
-async def chat_simple(request: QuestionRequest):
+async def chat_simple(
+    request: QuestionRequest,
+    response: Response,
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
     """Lightweight: answer text + reference links only."""
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+    sid, bot = _get_or_create_session(session_id)
+    _set_session_cookie(response, sid)
+
     try:
-        result = chatbot.ask_question(
+        result = bot.ask_question(
             question=request.question.strip(),
             use_history=request.use_history,
+            session_id=sid
         )
-
         ref_links = get_ref_links(result)
+
+        if result.get("is_cache_hit"):
+            response.headers["X-Cache"] = "HIT"
+        else:
+            response.headers["X-Cache"] = "MISS"
+
         return {"answer": result["answer"], "reference_links": ref_links}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
+        raise _fail(e, "chat", message="Error processing question")
 
+
+# ─────────────────────────────────────────────────────────────
+# [F1][F2][F3] STREAMING ENDPOINT — Fixed
+# ─────────────────────────────────────────────────────────────
+
+@app.post("/chat/stream")
+async def chat_stream(
+    request: StreamingChatRequest,
+    raw_request: Request,
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
+    """
+    Stream chatbot response token by token (Server-Sent Events).
+
+    [F1] Goes through full chatbot pipeline — safety gates, classification,
+         retrieval, validation all included (same as /chat).
+    [F2] Uses chatbot's own HybridRetriever — no duplicate connection.
+    [F3] History is saved after streaming completes.
+    [F4] Per-session chatbot instance.
+
+    Returns: SSE stream
+      data: {"token": "...", "done": false}
+      data: {"token": "",    "done": true}
+      data: {"error": "...", "done": true}   ← on failure
+
+    Example:
+      curl -N http://localhost:8000/chat/stream \\
+        -X POST -H "Content-Type: application/json" \\
+        -d '{"question":"What is media literacy?"}'
+    """
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    # [F4] Get session bot — but don't set cookie inside StreamingResponse
+    # (headers are already sent). We get sid here and pass bot in.
+    sid, bot = _get_or_create_session(session_id)
+
+    def generate() -> Generator[str, None, None]:
+        try:
+            print(f"🔄 Stream [{sid[:8]}]: {request.question[:60]}...")
+
+            # [F1][F2][F3] Full chatbot pipeline with streaming
+            for token in bot.ask_question_stream(
+                question=request.question.strip(),
+                use_history=True,   # [F3] history saved inside ask_question_stream
+            ):
+                yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
+
+            yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
+            print(f"✅ Stream complete [{sid[:8]}]")
+
+        except GeneratorExit:
+            # Client disconnected mid-stream — clean exit, no error
+            print(f"⚡ Client disconnected [{sid[:8]}]")
+
+        except Exception as e:
+            # Log the real cause server-side; send only a generic message downstream.
+            logger.exception("stream failed [%s]: %s", sid[:8], e)
+            print(f"❌ Stream error [{sid[:8]}]: {e}")
+            yield f"data: {json.dumps({'error': 'Internal server error', 'done': True})}\n\n"
+
+    # Set session cookie in headers before streaming starts
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",       # disable Nginx response buffering
+        "Connection": "keep-alive",
+        "Set-Cookie": (
+            f"{_SESSION_COOKIE}={sid}; HttpOnly; SameSite=lax; "
+            f"Max-Age={_SESSION_MAX_AGE}; Path=/"
+        ),
+    }
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers=headers,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Explain selection
+# ─────────────────────────────────────────────────────────────
 
 @app.post("/chat/explain-selection")
-async def explain_selection(request: SelectionRequest):
-    """
-    Explain a specific part of a bot answer that the user highlighted.
-
-    The frontend sends:
-      - selected_text:    the exact highlighted snippet
-      - full_bot_message: the full bot answer it came from
-
-    Returns a focused explanation of the selected snippet.
-    """
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+async def explain_selection(
+    request: SelectionRequest,
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
     if not request.selected_text or not request.selected_text.strip():
         raise HTTPException(status_code=400, detail="selected_text cannot be empty")
     if not request.full_bot_message or not request.full_bot_message.strip():
         raise HTTPException(status_code=400, detail="full_bot_message cannot be empty")
 
+    _, bot = _get_or_create_session(session_id)
+
     try:
-        result = chatbot.explain_selection(
+        return bot.explain_selection(
             selected_text=request.selected_text.strip(),
             full_bot_message=request.full_bot_message.strip(),
         )
-        return result  # {"explanation": "..."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating explanation: {str(e)}")
+        raise _fail(e, "explain-selection", message="Error generating explanation")
 
+
+# ─────────────────────────────────────────────────────────────
+# Model management
+# ─────────────────────────────────────────────────────────────
 
 @app.post("/model/switch")
-async def switch_model(request: ModelSwitchRequest):
-    """Switch the active LLM model. Keys: '1' = Gemini Flash, '2' = Gemini Pro, '3' = Claude Haiku."""
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+async def switch_model(
+    request: ModelSwitchRequest,
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
     if request.model_key not in AVAILABLE_MODELS:
-        raise HTTPException(status_code=400, detail=f"Invalid model key. Use '1', '2', or '3'.")
+        raise HTTPException(status_code=400, detail="Invalid model key. Use '1', '2', or '3'.")
 
+    _, bot = _get_or_create_session(session_id)
     new_config = AVAILABLE_MODELS[request.model_key]
-    chatbot.switch_model(new_config)
+    bot.switch_model(new_config)
     return {
         "status": "success",
         "message": f"Switched to {new_config.display_name}",
@@ -397,19 +643,18 @@ async def switch_model(request: ModelSwitchRequest):
 
 
 @app.get("/model/current")
-async def get_current_model():
-    """Get the currently active model."""
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+async def get_current_model(
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
+    _, bot = _get_or_create_session(session_id)
     return {
-        "model": chatbot.model_config.display_name,
-        "description": chatbot.model_config.description,
+        "model": bot.model_config.display_name,
+        "description": bot.model_config.description,
     }
 
 
 @app.get("/model/available")
 async def get_available_models():
-    """List all available models."""
     return {
         "models": [
             {"key": k, "name": v.display_name, "description": v.description}
@@ -418,66 +663,78 @@ async def get_available_models():
     }
 
 
+# ─────────────────────────────────────────────────────────────
+# History  [F7: session-scoped, no global leak]
+# ─────────────────────────────────────────────────────────────
+
 @app.post("/clear-history")
-async def clear_history():
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
-    try:
-        chatbot.clear_history()
-        return {"status": "success", "message": "Conversation history cleared"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error clearing history: {str(e)}")
+async def clear_history(
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
+    _, bot = _get_or_create_session(session_id)
+    bot.clear_history()
+    return {"status": "success", "message": "Conversation history cleared"}
 
 
 @app.get("/history")
-async def get_history():
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
-    try:
-        return {
-            "history": chatbot.conversation_history,
-            "count": len(chatbot.conversation_history),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving history: {str(e)}")
+async def get_history(
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
+    """[F7] Returns history for THIS session only — no cross-user data."""
+    if not session_id or session_id not in _sessions:
+        return {"history": [], "count": 0}
 
+    bot = _sessions[session_id]
+    return {
+        "history": bot.conversation_history,
+        "count": len(bot.conversation_history),
+    }
+
+
+# ─────────────────────────────────────────────────────────────
+# Text-to-Text (multilingual)
+# ─────────────────────────────────────────────────────────────
 
 @app.post("/text-to-text", response_model=TextToTextResponse)
-async def text_to_text(request: TextToTextRequest):
-    """Text pipeline: question (any language) → English → RAG → translate back."""
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
-    if sarvam_client is None:
+async def text_to_text(
+    request: TextToTextRequest,
+    response: Response,
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
+    if _sarvam_client is None:
         raise HTTPException(status_code=503, detail="Speech service not initialized")
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    if request.language_code:
-        language_code = _normalize_lang_for_tts(request.language_code)
-    else:
-        language_code = sarvam_client.detect_language(request.question)
+    sid, bot = _get_or_create_session(session_id)
+    _set_session_cookie(response, sid)
+
+    language_code = (
+        _normalize_lang_for_tts(request.language_code)
+        if request.language_code
+        else _sarvam_client.detect_language(request.question)
+    )
 
     question = request.question.strip()
-
     if language_code == "en-IN":
         english_question = question
     else:
         try:
-            english_question = sarvam_client.translate(
+            english_question = _sarvam_client.translate(
                 text=question,
                 target_language_code="en-IN",
                 source_language_code=language_code,
             )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+            raise _fail(e, "translate-in", message="Translation failed")
 
     try:
-        result = chatbot.ask_question(
+        result = bot.ask_question(
             question=english_question,
             use_history=request.use_history if request.use_history is not None else True,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
+        raise _fail(e, "chat generation", message="Chat generation failed")
 
     english_answer = result.get("answer", "")
     if not english_answer.strip():
@@ -487,13 +744,13 @@ async def text_to_text(request: TextToTextRequest):
         translated_answer = english_answer
     else:
         try:
-            translated_answer = sarvam_client.translate(
+            translated_answer = _sarvam_client.translate(
                 text=english_answer,
                 target_language_code=language_code,
                 source_language_code="en-IN",
             )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Answer translation failed: {str(e)}")
+            raise _fail(e, "translate-out", message="Answer translation failed")
 
     return {
         "original_question": request.question,
@@ -507,19 +764,28 @@ async def text_to_text(request: TextToTextRequest):
     }
 
 
+# ─────────────────────────────────────────────────────────────
+# Speech-to-Speech
+# ─────────────────────────────────────────────────────────────
+
 @app.post("/speech-to-speech", response_model=SpeechToSpeechResponse)
-async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request):
-    """Full pipeline: audio → transcript → chat answer → response audio."""
+async def speech_to_speech(
+    request: SpeechToSpeechRequest,
+    raw_request: Request,
+    response: Response,
+    session_id: Optional[str] = Cookie(default=None, alias=_SESSION_COOKIE),
+):
     request_start = time.perf_counter()
 
     client_ip = raw_request.client.host
     if not s2s_limiter.is_allowed(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Try again in a minute.")
 
-    if chatbot is None:
-        raise HTTPException(status_code=503, detail="Chatbot not initialized")
-    if sarvam_client is None:
+    if _sarvam_client is None:
         raise HTTPException(status_code=503, detail="Speech service not initialized")
+
+    sid, bot = _get_or_create_session(session_id)
+    _set_session_cookie(response, sid)
 
     decode_start = time.perf_counter()
     audio_bytes = _decode_audio_b64(request.audio_base64)
@@ -530,46 +796,48 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
 
     try:
         stt_start = time.perf_counter()
-        transcript, detected_language = sarvam_client.speech_to_text_bytes(
+        transcript, detected_language = _sarvam_client.speech_to_text_bytes(
             audio_bytes=audio_bytes,
             mime_type=request.mime_type or "audio/wav",
         )
         stt_ms = round((time.perf_counter() - stt_start) * 1000, 2)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        raise _fail(e, "stt", message="Transcription failed")
 
     if not transcript.strip():
         raise HTTPException(status_code=400, detail="No speech detected in audio")
 
     try:
         chat_start = time.perf_counter()
-        result = chatbot.ask_question(
+        result = bot.ask_question(
             question=transcript.strip(),
             use_history=request.use_history if request.use_history is not None else True,
         )
         chat_ms = round((time.perf_counter() - chat_start) * 1000, 2)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
+        raise _fail(e, "chat generation", message="Chat generation failed")
 
     answer = result.get("answer", "")
     if not answer.strip():
         raise HTTPException(status_code=500, detail="Generated answer is empty")
 
-    response_language = _normalize_lang_for_tts(request.response_language_code or detected_language)
+    response_language = _normalize_lang_for_tts(
+        request.response_language_code or detected_language
+    )
 
     try:
         tts_start = time.perf_counter()
         if response_language == "en-IN":
-            answer_audio = sarvam_client.text_to_speech_bytes(answer, response_language)
+            answer_audio = _sarvam_client.text_to_speech_bytes(answer, response_language)
         else:
-            answer_audio = sarvam_client.translate_to_speech_bytes(
+            answer_audio = _sarvam_client.translate_to_speech_bytes(
                 text=answer,
                 target_language_code=response_language,
                 source_language_code="en-IN",
             )
         tts_ms = round((time.perf_counter() - tts_start) * 1000, 2)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(e)}")
+        raise _fail(e, "tts", message="Speech synthesis failed")
 
     encode_start = time.perf_counter()
     audio_b64 = _encode_audio_b64(answer_audio)
@@ -603,25 +871,231 @@ async def speech_to_speech(request: SpeechToSpeechRequest, raw_request: Request)
 
 
 # ─────────────────────────────────────────────────────────────
+# PDF Upload — Job Store & Background Pipeline
+# ─────────────────────────────────────────────────────────────
+
+# In-memory store: { job_id: { status, message, files, error } }
+# Bounded: oldest job records are discarded once the ceiling is reached, so a long
+# running server cannot accumulate job entries indefinitely.
+_upload_jobs: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+_upload_jobs_lock = threading.Lock()
+_MAX_UPLOAD_JOBS = _env_int("MAX_UPLOAD_JOBS", 200)
+
+
+def _run_pdf_pipeline(job_id: str, pdf_paths: List[str]) -> None:
+    """Background thread: preprocess PDFs → index into Pinecone + Neo4j + BM25."""
+    import shutil
+    from pdf_preprocessor import extract_and_clean_pdf
+    from process_txt_pipeline import process_txt_file
+
+    def _set(status: str, message: str, error: str = ""):
+        with _upload_jobs_lock:
+            _upload_jobs[job_id].update({"status": status, "message": message, "error": error})
+
+    try:
+        txt_paths = []
+        total = len(pdf_paths)
+
+        for i, pdf_path in enumerate(pdf_paths, 1):
+            filename = os.path.basename(pdf_path)
+            stem = os.path.splitext(filename)[0]
+
+            _set("processing", f"[{i}/{total}] Extracting text from {filename}…")
+            cleaned_text = extract_and_clean_pdf(pdf_path)
+
+            txt_out_path = os.path.join("data", "txts", f"{stem}.txt")
+            os.makedirs(os.path.dirname(txt_out_path), exist_ok=True)
+            with open(txt_out_path, "w", encoding="utf-8") as f:
+                f.write(cleaned_text)
+            txt_paths.append(txt_out_path)
+
+            _set("processing", f"[{i}/{total}] Indexing {filename} into vector store…")
+            process_txt_file(txt_out_path)
+
+        _set("done", f"Successfully processed and indexed {total} PDF(s).")
+
+    except Exception as exc:
+        import traceback
+        _set("error", "Pipeline failed — see error field.", error=traceback.format_exc())
+        print(f"❌ PDF pipeline error for job {job_id}: {exc}")
+
+
+class UploadStatusResponse(BaseModel):
+    job_id: str
+    status: str   # queued | processing | done | error
+    message: str
+    files: List[str]
+    error: Optional[str] = None
+
+
+@app.post("/upload-pdf", summary="Upload & index new PDF(s)")
+async def upload_pdf(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+):
+    """
+    Upload one or more PDF files. The server will:
+    1. Save them to the /pdfs/ directory.
+    2. Extract and clean text (pdf_preprocessor.py).
+    3. Index into Pinecone + Neo4j (process_txt_pipeline.py) — in the background.
+
+    Returns a job_id you can poll via GET /upload-status/{job_id}.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided.")
+
+    pdf_save_dir = "pdfs"
+    os.makedirs(pdf_save_dir, exist_ok=True)
+
+    saved_paths = []
+    saved_names = []
+
+    for upload in files:
+        # Reduce the client-supplied name to a bare filename before it is joined to
+        # the upload directory. Backslashes are normalised first because on Linux
+        # os.path.basename() does not treat '\' as a separator, so a Windows-style
+        # path would otherwise survive intact.
+        raw_name = upload.filename or ""
+        safe_name = os.path.basename(raw_name.replace("\\", "/")).strip().lstrip(".")
+
+        if not safe_name.lower().endswith(".pdf"):
+            raise HTTPException(
+                status_code=415,
+                detail="Only PDF files are accepted (.pdf extension required)."
+            )
+        if len(safe_name) > 200:
+            raise HTTPException(status_code=400, detail="Filename is too long.")
+
+        dest = os.path.join(pdf_save_dir, safe_name)
+
+        # Stream to disk with a hard size cap so an oversize upload cannot be used
+        # to exhaust memory/disk. A rejected upload leaves nothing behind.
+        digest = hashlib.sha256()
+        total = 0
+        try:
+            with open(dest, "wb") as f:
+                while True:
+                    chunk = await upload.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_PDF_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"PDF too large. Maximum allowed is "
+                                   f"{MAX_PDF_BYTES // (1024 * 1024)} MB.",
+                        )
+                    digest.update(chunk)
+                    f.write(chunk)
+        except Exception:
+            try:
+                if os.path.exists(dest):
+                    os.remove(dest)
+            except OSError:
+                pass
+            raise
+
+        if total == 0:
+            try:
+                os.remove(dest)
+            except OSError:
+                pass
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+        # Audit trail so a document that reaches the knowledge base can be traced.
+        print(f"[Upload] accepted name={safe_name} bytes={total} sha256={digest.hexdigest()}")
+
+        saved_paths.append(dest)
+        saved_names.append(safe_name)
+
+    # Create a job record
+    job_id = str(uuid.uuid4())
+    with _upload_jobs_lock:
+        _upload_jobs[job_id] = {
+            "status": "queued",
+            "message": f"Queued {len(saved_paths)} PDF(s) for processing.",
+            "files": saved_names,
+            "error": None,
+        }
+        # Keep only the most recent job records.
+        while len(_upload_jobs) > _MAX_UPLOAD_JOBS:
+            _upload_jobs.popitem(last=False)
+
+    # Kick off the heavy pipeline in a background thread so we don't block the HTTP response
+    thread = threading.Thread(target=_run_pdf_pipeline, args=(job_id, saved_paths), daemon=True)
+    thread.start()
+
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": f"{len(saved_paths)} PDF(s) queued for processing.",
+        "files": saved_names,
+        "poll_url": f"/upload-status/{job_id}",
+    }
+
+
+@app.get("/upload-status/{job_id}", response_model=UploadStatusResponse, summary="Poll PDF upload job status")
+async def upload_status(job_id: str):
+    """
+    Poll the status of a previously submitted /upload-pdf job.
+
+    Status values:
+    - queued      — job is waiting to start
+    - processing  — pipeline is running
+    - done        — PDF(s) fully indexed and ready for chat queries
+    - error       — pipeline failed; see the 'error' field for details
+    """
+    with _upload_jobs_lock:
+        job = _upload_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")
+    return UploadStatusResponse(job_id=job_id, **job)
+
+
+# ─────────────────────────────────────────────────────────────
 # CLI Mode
 # ─────────────────────────────────────────────────────────────
 
 def select_model() -> ModelConfig:
-    """Show model selection menu and return chosen ModelConfig."""
     print("\nSelect AI Model:")
     print("  [1] ⚡ Gemini Flash    — Default (Fast, cost-efficient)")
     print("  [2] 🔬 Gemini Pro      — Research (High context, deep reasoning)")
     print("  [3] 🎯 Claude Haiku    — Fast & accurate (Anthropic)")
     print()
     while True:
-        choice = input("Enter choice (1-3) [default: 1]: ").strip()
-        if choice == "":
-            choice = "1"
+        choice = input("Enter choice (1-3) [default: 1]: ").strip() or "1"
         if choice in AVAILABLE_MODELS:
             model = AVAILABLE_MODELS[choice]
             print(f"\n✅ Selected: {model.description}")
             return model
         print("  ⚠️  Invalid choice. Enter 1, 2, or 3.")
+
+
+def print_detailed_sources(sources: list):
+    print("\n" + "=" * 70)
+    print("📚 SOURCES USED:")
+    print("=" * 70)
+    for i, source in enumerate(sources, 1):
+        print(f"\n{i}. Section: {source.get('full_section', 'Unknown')}")
+        print(f"   File:    {source.get('source_file', 'N/A')}")
+        print(f"   Page:    {source.get('page', 'N/A')}")
+        print(f"   Preview: {source.get('text', '')[:100]}...")
+    print("=" * 70)
+
+
+def print_follow_up_questions(follow_up_questions) -> dict:
+    if not follow_up_questions:
+        return {}
+    type_2 = follow_up_questions.get("type_2_context_aware", [])
+    if not type_2:
+        return {}
+    print("\n" + "=" * 70)
+    print("💡 Follow-up Questions (type the number to ask instantly):")
+    print("=" * 70)
+    for i, question in enumerate(type_2, 1):
+        print(f"  {i}. {question}")
+    print("=" * 70)
+    return {str(i): q for i, q in enumerate(type_2, 1)}
 
 
 def run_cli():
@@ -632,18 +1106,13 @@ def run_cli():
     if not check_txt_processing():
         print("\n❌ TXT file not processed yet!")
         print("Please run: python process_txt_pipeline.py")
-        print("First, make sure your TXT files are in: data/txts/")
         return
 
     print("✅ Using existing knowledge base...")
 
     db_ok = check_db_connection()
-    if db_ok:
-        print("✅ MySQL DB connected — reference links enabled")
-    else:
-        print("⚠️  MySQL DB unavailable — reference links disabled")
+    print("✅ MySQL DB connected" if db_ok else "⚠️  MySQL DB unavailable")
 
-    # Model selection at startup
     model_config = select_model()
 
     try:
@@ -655,75 +1124,48 @@ def run_cli():
     print("\n" + "=" * 60)
     print("💬 Chatbot Ready!")
     print("=" * 60)
-    print("\nCommands:")
-    print("  • Type your question to get an answer")
-    print("  • Type 'model' to switch AI model")
-    print("  • Type 'sources' to see detailed source info from last answer")
-    print("  • Type 'clear' to clear conversation history")
-    print("  • Type 'quit' to exit")
+    print("Commands: 'model' | 'sources' | 'clear' | 'quit'")
     print("=" * 60 + "\n")
 
     last_result = None
-    follow_up_option_map = {}
+    follow_up_map = {}
 
     while True:
         try:
             question = input(f"\n🎓 You [{cli_chatbot.model_config.display_name}]: ").strip()
 
+            if not question:
+                continue
             if question.lower() == "quit":
                 print("👋 Goodbye!")
                 break
-
-            # Quick-select a follow-up by number
-            if question in follow_up_option_map:
-                selected = follow_up_option_map[question]
-                print(f"\n🔗 Asking follow-up: {selected}")
-                question = selected
-
+            if question in follow_up_map:
+                question = follow_up_map[question]
+                print(f"\n🔗 Asking: {question}")
             if question.lower() == "model":
-                new_config = select_model()
-                cli_chatbot.switch_model(new_config)
-                print(f"✅ Switched to {new_config.display_name}")
+                cli_chatbot.switch_model(select_model())
                 continue
-
             if question.lower() == "clear":
                 cli_chatbot.clear_history()
-                print("✅ Conversation history cleared!")
+                print("✅ History cleared!")
                 continue
-
             if question.lower() == "sources" and last_result:
                 print_detailed_sources(last_result["sources"])
-                continue
-
-            if not question:
                 continue
 
             print("\n🤔 Thinking...")
             result = cli_chatbot.ask_question_with_follow_ups(question)
             last_result = result
 
-            # Print answer
             print("\n" + "=" * 70)
-            print("🤖 Assistant:")
+            print("🤖 Digilab:")
             print("=" * 70)
             print(result["answer"])
             print("=" * 70)
 
-            # Source summary
             if result["sources"]:
-                print(f"\n📚 Answer based on {len(result['sources'])} section(s)")
-                print("   Type 'sources' to see detailed source information")
-                unique_sections = list(set([
-                    s.get("full_section", "Unknown")[:50]
-                    for s in result["sources"]
-                ]))
-                print("\n   Sections referenced:")
-                for i, section in enumerate(unique_sections[:3], 1):
-                    print(f"   {i}. {section}...")
-            else:
-                print("\n⚠️  No relevant sources found - answer may be incomplete")
+                print(f"\n📚 {len(result['sources'])} source(s) — type 'sources' for details")
 
-            # Reference links
             if db_ok and result.get("sources") and not is_out_of_scope(result.get("answer", "")):
                 ref_links = find_reference_links(
                     sources=result["sources"],
@@ -732,15 +1174,11 @@ def run_cli():
                     max_links=5,
                 )
                 if ref_links:
-                    print("\n" + "=" * 70)
-                    print("🔗 REFERENCE LINKS:")
-                    print("=" * 70)
+                    print("\n🔗 Reference Links:")
                     for i, link in enumerate(ref_links, 1):
-                        print(f"\n{i}. {link['url']}")
-                    print("=" * 70)
+                        print(f"  {i}. {link['url']}")
 
-            # Follow-up questions
-            follow_up_option_map = print_follow_up_questions(result.get("follow_up_questions", {}))
+            follow_up_map = print_follow_up_questions(result.get("follow_up_questions", {}))
 
         except KeyboardInterrupt:
             print("\n\n👋 Goodbye!")
@@ -764,11 +1202,26 @@ if __name__ == "__main__":
             print("Please run: python process_txt_pipeline.py")
             sys.exit(1)
 
+        # Configuration, not constants: local development stays on a loopback
+        # address and production sets HOST=0.0.0.0 with auto-reload left off,
+        # without editing this file.
+        host = os.getenv("HOST", "127.0.0.1")
+        port = _env_int("PORT", 8000)
+        reload_enabled = _env_bool("UVICORN_RELOAD", False)
+
         print("\n" + "=" * 60)
-        print("🚀 Starting Digilab API Server")
+        print("🚀 Starting Digilab API Server v3.2.0")
         print("=" * 60)
-        print("📡 API:  http://localhost:8000")
-        print("📚 Docs: http://localhost:8000/docs")
+        print(f"📡 API:       http://{host}:{port}")
+        print(f"📚 Docs:      http://{host}:{port}/docs")
+        print(f"🔄 Streaming: http://{host}:{port}/chat/stream")
+        print(f"♻️  Auto-reload: {'on' if reload_enabled else 'off'} (UVICORN_RELOAD=true for dev)")
         print("=" * 60 + "\n")
 
-        uvicorn.run("main:app", host="localhost", port=8000, reload=True, log_level="info")
+        uvicorn.run(
+            "main:app",
+            host=host,
+            port=port,
+            reload=reload_enabled,
+            log_level="info",
+        )

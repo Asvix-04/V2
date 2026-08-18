@@ -57,6 +57,16 @@ AVAILABLE_MODELS = {
         pinecone_index="pdf-hybrid",
         bm25_cache_path="data/bm25_corpus_hybrid.json",
     ),
+    "5": ModelConfig(
+        id="gemini-2.5-flash",
+        display_name="DigiLab Plus",
+        api="gemini",
+        description="🏛️ DigiLab Plus",
+        default_max_tokens=2500,
+        pinecone_index="pdf-<name>",
+        bm25_cache_path="data/bm25_corpus_v2_NEW.json",
+    )
+    
 }
 
 
@@ -75,7 +85,10 @@ class UnifiedLLMClient:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError("GEMINI_API_KEY not found in .env")
-            self.client = genai.Client(api_key=api_key)
+            self.client = genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(timeout=120_000)  # 👈 
+            )
             self._genai_types = types
 
         elif model_config.api == "claude":
@@ -142,6 +155,32 @@ class UnifiedLLMClient:
         if system_instruction:
             config.system_instruction = system_instruction
 
+        # Gemini 2.5 Flash defaults to "thinking" mode, and those invisible
+        # reasoning tokens are drawn from the SAME max_output_tokens budget as
+        # the visible response. Every Flash call site in this codebase is a
+        # fast classification / JSON-extraction / short-answer task (query
+        # splitting, validation scoring, vague-follow-up detection, critic
+        # scoring, etc.) with tight budgets — as low as 5 tokens in some
+        # places. With thinking on, the model can spend the entire budget on
+        # invisible reasoning and return an empty or truncated response,
+        # which is exactly what was causing the frequent JSON-parse failures
+        # (query analyzer, orchestrator split, validation, critic) observed
+        # in testing. Gemini 2.5 Pro (used only for the final long-form
+        # synthesis, with a 16k budget) keeps its default thinking behavior —
+        # that's genuinely useful there, and Pro doesn't allow disabling it
+        # outright (minimum non-zero budget).
+        if self.config.id == "gemini-2.5-flash":
+            config.thinking_config = types.ThinkingConfig(thinking_budget=0)
+        elif self.config.id == "gemini-2.5-pro":
+            # Pro doesn't allow disabling thinking outright (min non-zero budget),
+            # and its default is dynamic/unbounded — which was observed eating deep
+            # into this app's 16k max_output_tokens synthesis calls, cutting the
+            # visible report off mid-sentence before it finished (confirmed via
+            # critic feedback: "abruptly cuts off mid-sentence" on multiple attempts
+            # of the same request). Cap it so a fixed, generous share of the budget
+            # is guaranteed to remain for the actual visible answer.
+            config.thinking_config = types.ThinkingConfig(thinking_budget=4096)
+
         for attempt in range(max_retries + 1):
             try:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -165,6 +204,13 @@ class UnifiedLLMClient:
             except Exception as e:
                 error_str = str(e)
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    # A per-day quota will not reset within the backoff window, so
+                    # retrying just burns time — bail out immediately instead.
+                    err_lower = error_str.lower()
+                    if "perday" in err_lower or "daily" in err_lower or "limit: 20" in err_lower:
+                        print("⚠️ Daily Gemini API quota exceeded. Skipping retries.")
+                        return None
+
                     if attempt < max_retries:
                         wait = 5 * (2 ** attempt)
                         print(f"⏳ Rate limited — waiting {wait}s ({attempt + 1}/{max_retries})...")

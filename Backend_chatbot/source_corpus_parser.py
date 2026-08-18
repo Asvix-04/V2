@@ -22,7 +22,9 @@ from typing import List
 from txt_processor import DocumentSection
 from utils import generate_section_id
 
-_TITLE_RE = re.compile(r'=== SOURCE:\s*(.*?)\s*===\s*$')
+# Accept both the documented SOURCE format and the COURSE corpus' FILE format.
+# The latter uses variable whitespace before the colon, e.g. `=== FILE    : ...`.
+_TITLE_RE = re.compile(r'^===\s*(?:SOURCE|FILE)\s*:\s*(.*?)\s*===\s*$')
 _DIVIDER_RE = re.compile(r'^=+$')
 
 
@@ -30,7 +32,10 @@ def parse_source_divided_file(file_path: str) -> List[DocumentSection]:
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
-    source_idxs = [i for i, l in enumerate(lines) if l.strip().startswith('=== SOURCE:')]
+    source_idxs = [
+        i for i, l in enumerate(lines)
+        if re.match(r'^===\s*(?:SOURCE|FILE)\s*:', l.strip())
+    ]
     print(f"Found {len(source_idxs)} source documents in {file_path}")
 
     sections = []

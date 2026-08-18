@@ -30,9 +30,9 @@ class PineconeChunk:
 
 
 def ingest(
-    txt_path: str = "data/txts/combined_book.txt",
-    index_name: str = "pdf-knowledge-base-v2",
-    bm25_output: str = "data/bm25_corpus_v2.json",
+    txt_path: str = "data/txts/combined_book_NEW.txt",
+    index_name: str = "pdf-knowledge-base-v2-new",
+    bm25_output: str = "data/bm25_corpus_v2_NEW.json",
 ):
     if not os.path.exists(txt_path):
         print(f"Error: file not found at {txt_path}")
@@ -44,6 +44,7 @@ def ingest(
     print(f"\nChunking {len(sections)} articles...")
     parser = TXTStructureParser()
     chunks = parser.create_chunks(sections)
+    print(len(sections), 'sections,', len(chunks), 'chunks')
 
     print(f"\nBuilding BM25 cache...")
     bm25_docs = [
