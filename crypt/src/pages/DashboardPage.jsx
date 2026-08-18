@@ -137,24 +137,24 @@ export function DashboardPage() {
             {/* ── Utility row: Quick Stats + Retrieve Chats ──────── */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Quick Stats */}
-                <Card className="pt-4 px-4 pb-5 sm:pt-5 sm:px-5 sm:pb-7 space-y-3 sm:space-y-4 border-border-base dark:border-white/5 lg:col-span-1">
-                    <div className="flex items-center space-x-2 sm:space-x-3">
+                <Card className="p-5 sm:p-6 space-y-4 sm:space-y-5 border-border-base dark:border-white/5 lg:col-span-1">
+                    <div className="flex items-center space-x-3 sm:space-x-4">
                         <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-accent/10 dark:bg-white/5 flex items-center justify-center shrink-0">
                             <Settings className="h-4 w-4 sm:h-5 sm:w-5 text-foreground-muted" />
                         </div>
-                        <div>
-                            <h3 className="font-medium text-sm sm:text-base text-foreground">Quick Stats</h3>
-                            <p className="text-[11px] sm:text-xs text-foreground-muted">Last 7 days</p>
+                        <div className="flex flex-col justify-center">
+                            <h3 className="font-medium text-sm sm:text-base text-foreground leading-tight">Quick Stats</h3>
+                            <p className="text-[11px] sm:text-xs text-foreground-muted mt-0.5 sm:mt-1">Last 7 days</p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                        <div className="text-center p-2 sm:p-3 rounded-md sm:rounded-lg bg-accent/5 dark:bg-white/5">
-                            <div className="text-xl sm:text-2xl font-bold text-accent">85%</div>
-                            <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-foreground-muted mt-0.5 sm:mt-1">Mastery</div>
+                    <div className="grid grid-cols-2 gap-3.5 sm:gap-4.5">
+                        <div className="text-center py-3 px-2 sm:py-4 sm:px-4 rounded-md sm:rounded-lg bg-accent/5 dark:bg-white/5 flex flex-col justify-center items-center">
+                            <div className="text-xl sm:text-2xl font-bold text-accent leading-none">85%</div>
+                            <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-foreground-muted mt-1.5 sm:mt-2">Mastery</div>
                         </div>
-                        <div className="text-center p-2 sm:p-3 rounded-md sm:rounded-lg bg-accent/5 dark:bg-white/5">
-                            <div className="text-xl sm:text-2xl font-bold text-foreground dark:text-white">12</div>
-                            <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-foreground-muted mt-0.5 sm:mt-1">Hours</div>
+                        <div className="text-center py-3 px-2 sm:py-4 sm:px-4 rounded-md sm:rounded-lg bg-accent/5 dark:bg-white/5 flex flex-col justify-center items-center">
+                            <div className="text-xl sm:text-2xl font-bold text-foreground dark:text-white leading-none">12</div>
+                            <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-foreground-muted mt-1.5 sm:mt-2">Hours</div>
                         </div>
                     </div>
                 </Card>
