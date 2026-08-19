@@ -121,6 +121,8 @@ export function DeepResearchPage() {
   // ── Sidebar ───────────────────────────────────────────────────────────────
   const [expandedMessage, setExpandedMessage] = React.useState(null);
   const sidebarWasOpenRef = React.useRef(window.innerWidth >= 1024);
+  const timerRef = React.useRef(null);
+  const isMountedRef = React.useRef(true);
   const [isStarredOpen, setIsStarredOpen] = React.useState(true);
   const [isDeepResearchOpen, setIsDeepResearchOpen] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -130,6 +132,16 @@ export function DeepResearchPage() {
     refreshSessions();
     refreshResearch();
   }, [refreshSessions, refreshResearch]);
+
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
   // ── Starred Chats (read from localStorage — sidebar display only) ─────────
   const [starredChats] = React.useState(() => {
@@ -332,6 +344,29 @@ export function DeepResearchPage() {
     setActiveStepIndex(0);
     setFollowUpQuestions([]);
 
+    // Clear any existing timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Start progress stages concurrently (advance index every 10 seconds)
+    timerRef.current = setInterval(() => {
+      if (isMountedRef.current) {
+        setActiveStepIndex(prev => {
+          if (prev < RESEARCH_STEPS.length - 1) {
+            return prev + 1;
+          } else {
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+            return prev;
+          }
+        });
+      }
+    }, 10000);
+
     // We'll keep a reference to the active session data for updates
     let targetId = currentSessionId;
     let session = null;
@@ -359,6 +394,13 @@ export function DeepResearchPage() {
       const response = await api.post("/research/generate", { topic: text });
       const data = response.data;
 
+      // Clear the progress timer immediately on response
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setActiveStepIndex(RESEARCH_STEPS.length);
+
       // Update quota status state
       setQuota({
         allowed: data.allowed,
@@ -369,17 +411,15 @@ export function DeepResearchPage() {
         message: data.message
       });
 
-      // 4. Play the visualization steps to maintain original UX
-      for (let i = 0; i < RESEARCH_STEPS.length; i++) {
-        await new Promise(r => setTimeout(r, i === 3 ? 1200 : 900));
-        setActiveStepIndex(prev => prev + 1);
-      }
-
       const assistantMsg = {
         role: "assistant",
         content: data.answer,
         isResearchReport: true, // Mark explicitly as report!
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        sources: data.sources || [],
+        web_sources: data.web_sources || [],
+        sub_questions: data.sub_questions || [],
+        layer_trace: data.layer_trace || []
       };
 
       // 5. Save the completed session (including assistant response) to DB
@@ -416,6 +456,12 @@ export function DeepResearchPage() {
 
     } catch (error) {
       console.error("Deep Research Generation Error:", error.message);
+
+      // Clear the progress timer immediately on error
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
 
       const errorMsg = {
         role: "assistant",

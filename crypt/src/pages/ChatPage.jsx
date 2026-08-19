@@ -1569,7 +1569,7 @@ export function ChatPage() {
                 if (err.response && err.response.status === 404) {
                     try {
                         sessionStorage.removeItem(SESSION_MESSAGES_CACHE_PREFIX + session.id);
-                    } catch (e) {}
+                    } catch (e) { }
                     setSessions(prev => prev.filter(s => s.id !== session.id));
                     resetChatSurface();
                     const newParams = new URLSearchParams(searchParams);
@@ -1773,7 +1773,7 @@ export function ChatPage() {
                             if (sessionId) {
                                 try {
                                     sessionStorage.removeItem(SESSION_MESSAGES_CACHE_PREFIX + sessionId);
-                                } catch (e) {}
+                                } catch (e) { }
                                 clearStoredDraft(sessionId);
                                 if (lastActiveSessionKey && lastActiveSessionId === sessionId) {
                                     localStorage.removeItem(lastActiveSessionKey);
@@ -2290,7 +2290,7 @@ export function ChatPage() {
             clearStoredDraft(session.id);
             try {
                 sessionStorage.removeItem(SESSION_MESSAGES_CACHE_PREFIX + session.id);
-            } catch (e) {}
+            } catch (e) { }
 
             if (currentSessionId === session.id) {
                 resetChatSurface();

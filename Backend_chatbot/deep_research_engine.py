@@ -598,6 +598,46 @@ Write the synthesized answer:"""
 # Main Engine — Ties All 5 Layers Together
 # ─────────────────────────────────────────────────────────────
 
+def _check_gap(sq, wr, chatbot):
+    answer = (wr.get('answer') or '').strip()
+    if not answer or len(answer) < 50:
+        return sq, sq, True
+    gap_prompt = (
+        f"You are a research gap analyzer.\n"
+        f"Sub-question: {sq}\n"
+        f"Current answer: {answer[:2000]}\n\n"
+        f"Identify ALL missing information in detail.\n"
+        f"List specific search queries for each gap.\n"
+        f"If answer is complete, reply with exactly: NO_GAPS"
+    )
+    gap_result = chatbot._call_llm(
+        prompt=gap_prompt,
+        system_instruction="Reply with 'NO_GAPS' if complete, or list missing information as search queries.",
+        temperature=0.1,
+        max_output_tokens=150,
+    )
+    if gap_result and "NO_GAPS" not in gap_result.upper():
+        return sq, gap_result.strip(), True
+    return sq, "", False
+
+def _check_gap_iteration2(sq, wr, chatbot):
+    answer = (wr.get('answer') or '').strip()
+    gap_prompt2 = (
+        f"Sub-question: {sq}\n"
+        f"Updated answer: {answer[:500]}\n\n"
+        f"Are there still gaps? Reply 'NO_GAPS' if complete, "
+        f"or list remaining gaps."
+    )
+    gap_result2 = chatbot._call_llm(
+        prompt=gap_prompt2,
+        system_instruction="Reply 'NO_GAPS' if complete, or list remaining gaps.",
+        temperature=0.1,
+        max_output_tokens=150,
+    )
+    if gap_result2 and "NO_GAPS" not in gap_result2.upper():
+        return gap_result2.strip(), True
+    return "", False
+
 class DeepResearchEngine:
     """
     Orchestrates the full 5-layer deep research pipeline.
@@ -611,7 +651,7 @@ class DeepResearchEngine:
         self.web_retriever = WebFallbackRetriever()
 
     async def run(self, question: str, chatbot, model: str = None,
-                  use_history: bool = False) -> DeepResearchResult:
+                  use_history: bool = False, check_cancelled_cb = None) -> DeepResearchResult:
         """
         Execute the full deep research pipeline.
         
@@ -626,6 +666,37 @@ class DeepResearchEngine:
         """
         start_time = time.perf_counter()
         from llm_client import AVAILABLE_MODELS  #👈
+        time_budget = 245.0  # Safe internal budget comfortably below 300s (e.g. 245s)
+
+        synthesis_attempts = 0
+        critic_score = 0
+        retry_triggered = False
+        num_sub_questions = 0
+        num_retrieval_ops = 0
+
+        def log_stage_timing(stage_name, start_t):
+            duration = time.perf_counter() - start_t
+            print(f"[DeepResearch Timing]\n{stage_name}: {duration:.2f}s")
+            return duration
+
+        async def check_cancellation_and_budget(stage_name: str = ""):
+            if check_cancelled_cb and await check_cancelled_cb():
+                print(f"🛑 Client disconnected — aborting before {stage_name}.")
+                return True
+            elapsed = time.perf_counter() - start_time
+            if elapsed > time_budget:
+                print(f"⏱️ Deep Research budget exceeded ({elapsed:.2f}s > {time_budget}s) before {stage_name}.")
+                raise TimeoutError(f"Deep research execution time budget exceeded ({elapsed:.2f}s > {time_budget}s) before {stage_name}.")
+            return False
+
+        if await check_cancellation_and_budget("Stage 1 (Orchestrator)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=[],
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
 
         print(f"\n{'='*60}")
         print(f"🔬 Deep Research Engine — Starting pipeline")
@@ -640,9 +711,18 @@ class DeepResearchEngine:
         print(f"🔄 Stage 1 model: {chatbot.model_config.display_name}")  # 👈 
 
         sub_questions = Orchestrator.plan(question, chatbot)
-        layer1_ms = (time.perf_counter() - layer1_start) * 1000
-        print(f"   ⏱️ Layer 1 completed in {layer1_ms:.0f}ms\n")
+        num_sub_questions = len(sub_questions)
+        log_stage_timing("Orchestrator Decision & Planning", layer1_start)
         
+        if await check_cancellation_and_budget("Stage 1.5 (Query Analyzer)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=sub_questions,
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
+
         # ── Stage 1.5: Query Analyzer (DeepSeek) ──
         print("━━━ Stage 1.5: Query Analyzer ━━━")
         query_analyzer_start = time.perf_counter()
@@ -687,9 +767,18 @@ class DeepResearchEngine:
         # remove duplicates
         seen = set()
         expanded_queries = [q for q in expanded_queries if not (q in seen or seen.add(q))]
-        print(f"📝 Total expanded queries: {len(expanded_queries)}")
-        query_analyzer_ms = (time.perf_counter() - query_analyzer_start) * 1000
-        print(f"   ⏱️ Query Analyzer completed in {query_analyzer_ms:.0f}ms\n")   
+        num_retrieval_ops = len(expanded_queries)
+        print(f"📝 Total expanded queries: {num_retrieval_ops}")
+        log_stage_timing("Query Analyzer", query_analyzer_start)
+
+        if await check_cancellation_and_budget("Layer 2 (Worker Agents)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=sub_questions,
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
 
         # ── Layer 2: Worker Agents ──
         print("━━━ Layer 2: Worker Agents ━━━")
@@ -699,10 +788,9 @@ class DeepResearchEngine:
         print(f"🔄 Stage 2 model: {chatbot.model_config.display_name}")  # 👈
 
         worker_results = await WorkerAgent.execute_parallel(
-            expanded_queries, chatbot, model="1", use_history=use_history  # 👈 change model=model to model="1"
+            expanded_queries, chatbot, model="1", use_history=use_history
         )
-        layer2_ms = (time.perf_counter() - layer2_start) * 1000
-        print(f"   ⏱️ Layer 2 completed in {layer2_ms:.0f}ms ({len(worker_results)} workers)\n")
+        log_stage_timing(f"Worker Agents RAG Retrieval ({len(worker_results)} queries)", layer2_start)
 
         # 👇 Out of scope check — same threshold as /chat (top_score < 0.040)
         top_scores = []
@@ -740,12 +828,21 @@ class DeepResearchEngine:
         for sq, wr in zip(expanded_queries, worker_results):
             verified = Verifier.check(sq, wr)
             verified_results.append(verified)
-        layer3_ms = (time.perf_counter() - layer3_start) * 1000
-        
         failed_indices = [i for i, vr in enumerate(verified_results) if vr.resolved_by == "insufficient"]
         passed_count = len(verified_results) - len(failed_indices)
+        layer3_ms = (time.perf_counter() - layer3_start) * 1000
         print(f"   ⏱️ Layer 3 completed in {layer3_ms:.0f}ms — {passed_count} passed, {len(failed_indices)} need web fallback\n")
+        log_stage_timing("Verifier", layer3_start)
         
+        if await check_cancellation_and_budget("Stage 3.5 (Gap Analysis)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=sub_questions,
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
+
         # ── Stage 3.5: Gap Analysis — Iteration 1 (DeepSeek) ──
         print("━━━ Stage 3.5: Gap Analysis — Iteration 1 ━━━")
         gap_start = time.perf_counter()
@@ -755,32 +852,36 @@ class DeepResearchEngine:
         gaps_found = []  # sub_questions that have gaps
         gap_queries = []  # specific gap queries to re-search
 
+        # Execute gap verification in parallel
+        gap_tasks = []
+        loop = asyncio.get_event_loop()
+        gap_executor = ThreadPoolExecutor(max_workers=min(len(expanded_queries), 6))
+        
         for sq, wr in zip(expanded_queries, worker_results):
-            answer = (wr.get('answer') or '').strip()
-            if not answer or len(answer) < 50:
-                gaps_found.append(sq)
-                gap_queries.append(sq)
-                continue
-            gap_prompt = (
-                f"You are a research gap analyzer.\n"
-                f"Sub-question: {sq}\n"
-                f"Current answer: {answer[:2000]}\n\n"
-                f"Identify ALL missing information in detail.\n"
-                f"List specific search queries for each gap.\n"
-                f"If answer is complete, reply with exactly: NO_GAPS"
+            gap_tasks.append(
+                loop.run_in_executor(gap_executor, _check_gap, sq, wr, chatbot)
             )
-            gap_result = chatbot._call_llm(
-                prompt=gap_prompt,
-                system_instruction="Reply with 'NO_GAPS' if complete, or list missing information as search queries.",
-                temperature=0.1,
-                max_output_tokens=150,
-            )
-            if gap_result and "NO_GAPS" not in gap_result.upper():
+            
+        gap_results = await asyncio.gather(*gap_tasks)
+        gap_executor.shutdown(wait=False)
+        
+        for sq, gap_q, has_gap in gap_results:
+            if has_gap:
                 gaps_found.append(sq)
-                gap_queries.append(gap_result.strip())
+                gap_queries.append(gap_q)
                 print(f"🔍 Gap found for: '{sq[:50]}'")
             else:
                 print(f"✅ No gaps for: '{sq[:50]}'")
+
+        if await check_cancellation_and_budget("Stage 2b (RAG Re-fetch)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=sub_questions,
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
+
         # ── RAG Re-fetch for gaps (Iteration 2) ──
         if gap_queries:
             print(f"\n━━━ Stage 2b: RAG Re-fetch for gaps ━━━")
@@ -797,36 +898,56 @@ class DeepResearchEngine:
                         if new_info and len(new_info) > 50:
                             existing = wr.get('answer', '')
                             wr['answer'] = existing + "\n\n" + new_info
+
+            if await check_cancellation_and_budget("Stage 3.5 Iteration 2 (Gap Analysis)"):
+                return DeepResearchResult(
+                    answer="⚠️ Research aborted due to client disconnection.",
+                    sub_questions=sub_questions,
+                    layer_trace=[],
+                    sources=[],
+                    web_sources=[]
+                )
+
             # ── Gap Analysis Iteration 2 (DeepSeek) ──
             print(f"\n━━━ Stage 3.5: Gap Analysis — Iteration 2 ━━━")
             chatbot.switch_model(AVAILABLE_MODELS["1"])
             print(f"🔄 Model: {chatbot.model_config.display_name}")
             remaining_gaps = []
+            
+            gap_tasks2 = []
+            gap_executor2 = ThreadPoolExecutor(max_workers=min(len(expanded_queries), 6))
+            indexed_queries = []
+            
             for sq, wr in zip(expanded_queries, worker_results):
                 if sq in gaps_found:
-                    answer = (wr.get('answer') or '').strip()
-                    gap_prompt2 = (
-                        f"Sub-question: {sq}\n"
-                        f"Updated answer: {answer[:500]}\n\n"
-                        f"Are there still gaps? Reply 'NO_GAPS' if complete, "
-                        f"or list remaining gaps."
+                    gap_tasks2.append(
+                        loop.run_in_executor(gap_executor2, _check_gap_iteration2, sq, wr, chatbot)
                     )
-                    gap_result2 = chatbot._call_llm(
-                        prompt=gap_prompt2,
-                        system_instruction="Reply 'NO_GAPS' if complete, or list remaining gaps.",
-                        temperature=0.1,
-                        max_output_tokens=150,
-                    )
-                    if gap_result2 and "NO_GAPS" not in gap_result2.upper():
-                        remaining_gaps.append(gap_result2.strip())
-                        print(f"⚠️ Still has gaps: '{sq[:50]}'")
-                    else:
-                        print(f"✅ Gaps resolved: '{sq[:50]}'")
+                    indexed_queries.append(sq)
+                    
+            gap_results2 = await asyncio.gather(*gap_tasks2)
+            gap_executor2.shutdown(wait=False)
+            
+            for sq, (gap_res, has_gap) in zip(indexed_queries, gap_results2):
+                if has_gap:
+                    remaining_gaps.append(gap_res)
+                    print(f"⚠️ Still has gaps: '{sq[:50]}'")
+                else:
+                    print(f"✅ Gaps resolved: '{sq[:50]}'")
         else:
             remaining_gaps = []
             print("✅ No gaps found — skipping Iteration 2\n")
 
-        print(f"   ⏱️ Gap Analysis completed in {(time.perf_counter()-gap_start)*1000:.0f}ms\n")
+        log_stage_timing("Gap Analysis (Iterations 1 & 2)", gap_start)
+
+        if await check_cancellation_and_budget("Layer 4 (Web Search)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=sub_questions,
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
 
         # ── Layer 4: Web Fallback Retrieval ──
         # ── Layer 4: Web Search (Perplexity) ──
@@ -864,8 +985,16 @@ class DeepResearchEngine:
         else:
             print(f"   ✅ No web search needed")
 
-        layer4_ms = (time.perf_counter() - layer4_start) * 1000
-        print(f"   ⏱️ Layer 4 completed in {layer4_ms:.0f}ms\n")
+        log_stage_timing("Web Search / Fallback Retrieval", layer4_start)
+
+        if await check_cancellation_and_budget("Stage 5 (Contradiction Worker)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=sub_questions,
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
 
         # ── Stage 5: Contradiction Worker (Gemini Flash) ──
         print("━━━ Stage 5: Contradiction Worker ━━━")
@@ -905,8 +1034,16 @@ class DeepResearchEngine:
             resolved_content = combined_content
             print(f"⚠️ Contradiction resolution failed — using original content")
 
-        stage5_ms = (time.perf_counter() - stage5_start) * 1000
-        print(f"   ⏱️ Stage 5 completed in {stage5_ms:.0f}ms\n")
+        log_stage_timing("Contradiction Worker", stage5_start)
+
+        if await check_cancellation_and_budget("Stage 6 (Synthesizer)"):
+            return DeepResearchResult(
+                answer="⚠️ Research aborted due to client disconnection.",
+                sub_questions=sub_questions,
+                layer_trace=[],
+                sources=[],
+                web_sources=[]
+            )
 
         # ── Stage 6: Synthesizer + Critic (Gemini Pro) ──
         print("━━━ Stage 6: Synthesizer + Critic ━━━")
@@ -914,13 +1051,20 @@ class DeepResearchEngine:
         chatbot.switch_model(AVAILABLE_MODELS["2"])  # Gemini Pro
         print(f"🔄 Stage 6 model: {chatbot.model_config.display_name}")
 
-        MAX_RETRIES = 5
+        MAX_RETRIES = 1
         SCORE_THRESHOLD = 8
         best_answer = ""
         best_score = 0
 
         for attempt in range(MAX_RETRIES + 1):
-            print(f"🔄 Synthesis attempt {attempt + 1}/{MAX_RETRIES + 1}")
+            synthesis_attempts = attempt + 1
+            elapsed_before_attempt = time.perf_counter() - start_time
+            remaining_budget = time_budget - elapsed_before_attempt
+            if await check_cancellation_and_budget(f"Stage 6 synthesis attempt {attempt + 1}"):
+                print(f"🛑 Client disconnected or budget exceeded — aborting Stage 6 synthesis attempt {attempt + 1}.")
+                break
+            print(f"🔄 Synthesis attempt {attempt + 1}/{MAX_RETRIES + 1} (budget remaining: {remaining_budget:.0f}s)")
+            attempt_start = time.perf_counter()
             
             # Synthesize
             synthesis_prompt = (
@@ -1014,6 +1158,8 @@ class DeepResearchEngine:
             if score > best_score:
                 best_score = score
                 best_answer = final_answer
+            critic_score = best_score
+            log_stage_timing(f"Synthesis + Critic (attempt {attempt + 1})", attempt_start)
             
             # check if threshold reached
             if score >= SCORE_THRESHOLD:
@@ -1021,7 +1167,12 @@ class DeepResearchEngine:
                 break
             
             if attempt < MAX_RETRIES:
-                print(f"⚠️ Score {score} < {SCORE_THRESHOLD} — re-fetching content...")
+                retry_triggered = True
+                remaining = time_budget - (time.perf_counter() - start_time)
+                print(f"⚠️ Score {score} < {SCORE_THRESHOLD} — re-fetching content... (budget remaining: {remaining:.0f}s)")
+                if remaining < 60:
+                    print(f"⏱️ Insufficient budget ({remaining:.0f}s) for retry — using best result so far.")
+                    break
                 
                 # parallel re-fetch — RAG + Web simultaneously
                 chatbot.switch_model(AVAILABLE_MODELS["1"])  # Gemini Flash for re-fetch
@@ -1055,12 +1206,12 @@ class DeepResearchEngine:
                     all_answers.append(f"Q: {query}\nA: {answer} [Web Source]")
                 resolved_content = "\n\n---\n\n".join(all_answers)
 
-        stage6_ms = (time.perf_counter() - stage6_start) * 1000
-        print(f"   ⏱️ Stage 6 completed in {stage6_ms:.0f}ms\n")
+        log_stage_timing("Stage 6: Synthesizer + Critic", stage6_start)
 
         final_answer = best_answer or "Unable to generate a satisfactory answer."
         # ── Build Response ──
-        total_ms = (time.perf_counter() - start_time) * 1000
+        total_elapsed = time.perf_counter() - start_time
+        total_ms = total_elapsed * 1000
 
         # collect corpus sources
         all_corpus_sources = []
@@ -1087,8 +1238,11 @@ class DeepResearchEngine:
         print(f"{'='*60}")
         print(f"🔬 Deep Research Engine — Pipeline complete")
         print(f"   Total time: {total_ms:.0f}ms")
-        print(f"   Sub-questions: {len(sub_questions)}")
-        print(f"   Final critic score: {best_score}/10")
+        print(f"   Sub-questions: {num_sub_questions}")
+        print(f"   Retrieval operations: {num_retrieval_ops}")
+        print(f"   Synthesis attempts: {synthesis_attempts}")
+        print(f"   Retry triggered: {retry_triggered}")
+        print(f"   Final critic score: {critic_score}/10")
         print(f"{'='*60}\n")
 
         return DeepResearchResult(

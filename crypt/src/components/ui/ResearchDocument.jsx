@@ -835,7 +835,7 @@ export function ResearchDocument({ message, isExpanded = false, onToggleExpand }
       {/* ── STATUS LINE (Centered above the document card) ── */}
       {isExpanded && (
         <div className="mb-4 text-xs font-semibold text-zinc-400 dark:text-zinc-550 tracking-wide select-none animate-fade-in text-center">
-          Research completed in {readingTime}m • {citationCount} citations • {headings.length + 3} searches
+          Research completed in {readingTime}m{citationCount > 0 ? ` • ${citationCount} citations` : ""}
         </div>
       )}
 

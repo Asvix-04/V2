@@ -88,6 +88,11 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5001;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+// Increase Node.js server timeouts to 6 minutes (360000ms) to accommodate the 300s downstream Deep Research execution
+server.timeout = 360000;
+server.headersTimeout = 370000;
+server.keepAliveTimeout = 370000;

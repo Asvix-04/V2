@@ -24,19 +24,19 @@ class ModelConfig:
 
 AVAILABLE_MODELS = {
     "1": ModelConfig(
-        id="gemini-2.5-flash",
-        display_name="Gemini 2.5 Flash",
+        id="gemini-3.6-flash",
+        display_name="Gemini 3.6 Flash",
         api="gemini",
-        description="⚡ Gemini 2.5 Flash — Default (Fast, cost-efficient)",
+        description="⚡ Gemini 3.6 Flash — Default (Fast, cost-efficient)",
         default_max_tokens=2500,
         pinecone_index="pdf-knowledge-base",
         bm25_cache_path="data/bm25_corpus.json",
     ),
     "2": ModelConfig(
-        id="gemini-2.5-pro",
-        display_name="Gemini 2.5 Pro",
+        id="gemini-3.1-pro-preview",
+        display_name="Gemini 3.1 Pro",
         api="gemini",
-        description="🔬 Gemini 2.5 Pro — Research (High context, deep reasoning)",
+        description="🔬 Gemini 3.1 Pro — Research (High context, deep reasoning)",
         default_max_tokens=4096,
         pinecone_index="pdf-knowledge-base-v2",
         bm25_cache_path="data/bm25_corpus_v2.json",
@@ -49,7 +49,7 @@ AVAILABLE_MODELS = {
         default_max_tokens=3000,
     ),
     "4": ModelConfig(
-        id="gemini-2.5-flash",
+        id="gemini-3.6-flash",
         display_name="DigiLab Pro",
         api="gemini",
         description="🚀 DigiLab Pro — Hybrid (Combined DigiLab + DigiLab 2.0 knowledge base)",
@@ -58,7 +58,7 @@ AVAILABLE_MODELS = {
         bm25_cache_path="data/bm25_corpus_hybrid.json",
     ),
     "5": ModelConfig(
-        id="gemini-2.5-flash",
+        id="gemini-3.6-flash",
         display_name="DigiLab Plus",
         api="gemini",
         description="🏛️ DigiLab Plus",
@@ -207,7 +207,7 @@ class UnifiedLLMClient:
                     # A per-day quota will not reset within the backoff window, so
                     # retrying just burns time — bail out immediately instead.
                     err_lower = error_str.lower()
-                    if "perday" in err_lower or "daily" in err_lower or "limit: 20" in err_lower:
+                    if "perday" in err_lower or "per day" in err_lower or "daily" in err_lower or "limit: 20" in err_lower:
                         print("⚠️ Daily Gemini API quota exceeded. Skipping retries.")
                         return None
 

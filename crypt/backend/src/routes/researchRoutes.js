@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
 const { protect } = require('../middleware/authMiddleware');
 const { checkResearchQuota } = require('../middleware/quotaMiddleware');
 const DeepResearchUsage = require('../models/DeepResearchUsage');
@@ -13,34 +14,7 @@ const formatDate = (date) => {
     return `${day} ${month} ${year}`;
 };
 
-const generateMockReport = (topic) =>
-    `# Autonomous Research Report: ${topic}
-
-## Executive Summary
-This research brief compiles the current state of knowledge regarding **${topic}**, synthesizing literature from academic journals, citation indexings, and clinical or technical trial reports.
-
-## Key Technical Dimensions
-### 1. Conceptual Architecture & Foundations
-Contemporary frameworks highlight the integration of highly localized variables to achieve optimized system throughput. In the context of **${topic}**, key foundational variables include:
-* **Algorithmic Adaptability:** Systems show high resilience under variable load thresholds.
-* **Cognitive Integration:** Contextual engines perform semantic mapping with high structural coherence.
-
-### 2. Empirical Findings & Benchmarks
-Recent comparative studies indicate a substantial paradigm shift towards autonomous evaluation:
-1. **Performance Index:** Accelerated workloads demonstrate up to a 34% reduction in end-to-end latency.
-2. **Resource Alignment:** Dynamic memory allocation maps show improved spatial density.
-3. **Accuracy Benchmarks:** Standard benchmarks report a $p$-value of $< 0.05$ across multi-modal benchmarks.
-
-### 3. Open Challenges & Scientific Gaps
-* **Constraint Boundaries:** Scalability decreases proportionally when subject to extreme localized noise.
-* **Ethics & Bias:** Computational alignment requires rigorous auditing to mitigate model alignment drift.
-
----
-
-## Academic References & Sources
-1. *International Journal of Advanced Computation & ${topic}* (2025). [Link: https://scholar.google.com]
-2. *Empirical Review on ${topic} Foundations*, Vol. 88, pp. 210-230. [Link: https://arxiv.org]
-3. *National Institute of Scientific Engineering & Synthesis Reports* (2026). [Link: https://www.science.org]`;
+// generateMockReport removed to ensure real research execution;
 
 const getQuotaStatus = async (req, res) => {
     try {
@@ -82,6 +56,8 @@ router.get('/quota', protect, getQuotaStatus);
 // @desc    Generate Deep Research report & validate monthly quota (Uses Firestore transaction to avoid concurrency double spend)
 // @route   POST /api/research/generate
 // @access  Private
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
+
 router.post('/generate', protect, checkResearchQuota, async (req, res) => {
     const { topic } = req.body;
 
@@ -96,6 +72,7 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
 
     const usageRef = db.collection('deep_research_usage');
     const limit = 3;
+    let newDocId = null;
 
     try {
         // Run atomic quota check & log creation in a transaction to prevent race conditions
@@ -105,7 +82,6 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
 
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            // thirtyDaysAgo.setMinutes(thirtyDaysAgo.getMinutes() - 2);
 
             const activeLogs = snapshot.docs
                 .map(doc => {
@@ -126,12 +102,41 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
 
             // Create new usage entry inside transaction
             const newDocRef = usageRef.doc();
+            newDocId = newDocRef.id;
             transaction.create(newDocRef, {
                 userId: req.user.id,
                 requestedAt: new Date(),
                 createdAt: new Date()
             });
         });
+
+        let data;
+        try {
+            // Service-to-service call to FastAPI backend
+            const response = await axios.post(`${PYTHON_BACKEND_URL}/deepchat`, {
+                question: topic,
+                use_history: false,
+                model: null
+            }, {
+                timeout: 300000 // 300 seconds (5 minutes) production-safe timeout
+            });
+
+            data = response.data;
+            if (!data || !data.answer) {
+                throw new Error('Downstream research service returned an empty answer');
+            }
+        } catch (apiError) {
+            // Compensate/Rollback the quota decrement for this request since generation failed
+            if (newDocId) {
+                try {
+                    await db.collection('deep_research_usage').doc(newDocId).delete();
+                    console.log(`[Deep Research] Rolled back quota entry ${newDocId} due to API/Timeout failure`);
+                } catch (rollbackError) {
+                    console.error('[Deep Research] Failed to rollback quota entry:', rollbackError.message);
+                }
+            }
+            throw apiError; // rethrow to handle in outer catch block
+        }
 
         // Fetch updated quota status after successful transaction commit
         const updatedLogs = await DeepResearchUsage.findActiveInWindow(req.user.id);
@@ -146,16 +151,16 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
             const oldestLog = updatedLogs[0];
             const renewDate = new Date(oldestLog.requestedAt);
             renewDate.setDate(renewDate.getDate() + 30);
-            // renewDate.setMinutes(renewDate.getMinutes() + 2);
             renewAt = renewDate.toISOString();
             message = `Monthly Deep Research limit reached. Your quota renews on ${formatDate(renewDate)}.`;
         }
 
-        // Generate mock RAG report content
-        const reportText = generateMockReport(topic);
-
         res.json({
-            answer: reportText,
+            answer: data.answer,
+            sources: data.sources,
+            web_sources: data.web_sources,
+            sub_questions: data.sub_questions,
+            layer_trace: data.layer_trace,
             allowed,
             used,
             remaining,
@@ -169,7 +174,6 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
             const oldestLog = error.activeLogs.sort((a, b) => a.requestedAt - b.requestedAt)[0];
             const renewDate = new Date(oldestLog.requestedAt);
             renewDate.setDate(renewDate.getDate() + 30);    
-            // renewDate.setMinutes(renewDate.getMinutes() + 2);
 
             return res.status(429).json({
                 message: `Monthly Deep Research limit reached. Your quota renews on ${formatDate(renewDate)}.`,
@@ -181,8 +185,21 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
             });
         }
 
-        console.error('Error generating deep research:', error.message);
-        res.status(500).json({ message: error.message });
+        console.error('[Deep Research] Error generating deep research:', error.message);
+
+        if (axios.isAxiosError(error)) {
+            if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+                return res.status(504).json({ message: 'Downstream research service timed out. Please try again later.' });
+            }
+            if (error.code === 'ECONNREFUSED' || !error.response) {
+                return res.status(502).json({ message: 'Downstream research service is currently unavailable. Please try again later.' });
+            }
+            const status = error.response.status;
+            const message = error.response.data?.detail || error.response.data?.message || 'Downstream research service error';
+            return res.status(status >= 400 && status < 500 ? 400 : 502).json({ message });
+        }
+
+        res.status(500).json({ message: error.message || 'Unexpected server error occurred during Deep Research generation.' });
     }
 });
 
