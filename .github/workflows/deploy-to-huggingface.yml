@@ -1,0 +1,61 @@
+name: Deploy to Hugging Face Space
+
+# Runs automatically whenever this branch is pushed — mirrors how Render
+# auto-redeploys the Node backend. Hugging Face Spaces don't watch external
+# GitHub repos on their own, so this workflow does the actual push to the
+# Space's own git repository on your behalf.
+on:
+  push:
+    branches:
+      - ignou_updates
+  # Lets you manually trigger a redeploy from the GitHub Actions tab without
+  # needing a new commit — handy the first time you're testing this.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: asvix/digilab
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+
+          # Clone the Space's own repo into a separate folder — it has its
+          # own git history, independent from this GitHub repo.
+          git clone "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" hf_space
+
+          # Mirror this repo's files into the Space folder, but leave these
+          # alone (same exclusions we used doing this by hand):
+          #   .git, .github, .claude — not part of the app
+          #   node_modules, __pycache__, .venv, venv, dist — rebuilt by the
+          #     Space's own Docker build, don't need to ship pre-built
+          #   data — large corpus/BM25 files; not tracked in this repo and
+          #     shouldn't be deleted from the Space if already present there
+          #   README.md — the Space's own README carries HF's required
+          #     metadata block (title/sdk/etc.); this repo's README is a
+          #     different, generic one and would break the Space if it
+          #     overwrote it
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.claude' \
+            --exclude='node_modules' \
+            --exclude='__pycache__' \
+            --exclude='.venv' \
+            --exclude='venv' \
+            --exclude='dist' \
+            --exclude='data' \
+            --exclude='README.md' \
+            ./ hf_space/
+
+          cd hf_space
+          git add .
+          git commit -m "Auto-deploy from GitHub ${{ github.sha }}" || echo "Nothing changed, skipping commit"
+          git push
