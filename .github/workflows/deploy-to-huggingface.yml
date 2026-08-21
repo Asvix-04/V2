@@ -41,6 +41,11 @@ jobs:
           #   crypt/backend/uploads — runtime user-uploaded files (PDFs,
           #     images). Hugging Face's git server rejects pushes containing
           #     binary files outright, so this must stay out of the mirror.
+          #   crypt/src/assets — static image assets (team photos, hero
+          #     backgrounds). Small and rarely changes; already correctly on
+          #     the Space from the original manual setup, but re-committing
+          #     it here trips the same binary-file rejection as uploads did.
+          #     If these images ever change, push that update manually.
           #   README.md — the Space's own README carries HF's required
           #     metadata block (title/sdk/etc.); this repo's README is a
           #     different, generic one and would break the Space if it
@@ -56,6 +61,7 @@ jobs:
             --exclude='dist' \
             --exclude='data' \
             --exclude='crypt/backend/uploads' \
+            --exclude='crypt/src/assets' \
             --exclude='README.md' \
             ./ hf_space/
 
