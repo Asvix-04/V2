@@ -38,6 +38,9 @@ jobs:
           #     Space's own Docker build, don't need to ship pre-built
           #   data — large corpus/BM25 files; not tracked in this repo and
           #     shouldn't be deleted from the Space if already present there
+          #   crypt/backend/uploads — runtime user-uploaded files (PDFs,
+          #     images). Hugging Face's git server rejects pushes containing
+          #     binary files outright, so this must stay out of the mirror.
           #   README.md — the Space's own README carries HF's required
           #     metadata block (title/sdk/etc.); this repo's README is a
           #     different, generic one and would break the Space if it
@@ -52,6 +55,7 @@ jobs:
             --exclude='venv' \
             --exclude='dist' \
             --exclude='data' \
+            --exclude='crypt/backend/uploads' \
             --exclude='README.md' \
             ./ hf_space/
 
