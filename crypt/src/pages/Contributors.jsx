@@ -14,7 +14,7 @@ import ishaanImg from "../assets/ishan.jpeg";
 import anupamaImg from "../assets/anupama.png";
 import abdulImg from "../assets/abdul.jpeg";
 import yashImg from "../assets/user.png";
-import tejashriImg from "../assets/tejashri.png";
+import tejashriImg from "../assets/Tejashri.png";
 import dhivyaImg from "../assets/user.png";
 import BhartenduJhaImg from "../assets/bharat.jpeg";
 import ankitImg from "../assets/ankit.png";

@@ -19,6 +19,11 @@ Backend_chatbot/chatbot.backup_*.py
 # build output
 crypt/dist/
 
+# runtime user-uploaded files (PDFs, images from the chat attachment feature) —
+# these are binary and Hugging Face's git server rejects pushes containing
+# binary files outright, so they must never be tracked/committed
+crypt/backend/uploads/
+
 # server logs
 *.log
 crypt/backend/bridge.log
