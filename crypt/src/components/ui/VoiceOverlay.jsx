@@ -138,7 +138,7 @@ export function VoiceOverlay({ isOpen, onClose, onVoiceMessage, responseLanguage
             // Notify parent to add to chat history
             if (onVoiceMessage && result) {
                 onVoiceMessage({
-                    transcription: result.transcript || '', 
+                    transcription: result.transcript || '',
                     answer: result.answer || '',
                     audioBase64: result.audio_base64 || null,
                     guestQuota: result.guestQuota || null

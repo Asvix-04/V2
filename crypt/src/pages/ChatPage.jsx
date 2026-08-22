@@ -576,6 +576,17 @@ export function ChatPage() {
         sessionsRef.current = sessions;
     }, [sessions]);
 
+    // Authoritative synchronous reference to the active session ID to eliminate
+    // async React state race conditions across timers, persistence, and lifecycle events.
+    const currentSessionIdRef = React.useRef(currentSessionId);
+    React.useEffect(() => {
+        currentSessionIdRef.current = currentSessionId;
+    }, [currentSessionId]);
+
+    // Mutex promise to guarantee exactly one in-flight session creation request
+    // when multiple callers trigger persistence while currentSessionId is null.
+    const sessionCreationPromiseRef = React.useRef(null);
+
     const [isDeepResearchOpen, setIsDeepResearchOpen] = React.useState(true);
 
     React.useEffect(() => {
@@ -1209,39 +1220,110 @@ export function ChatPage() {
     const persistSession = React.useCallback(async ({ sessionId, nextMessages, title, isDraft = false, unsentText }) => {
         if (isGuest || isIncognito) return null;
         try {
-            const requestedTitle = title || getConversationTitle(nextMessages, sessionId);
-            const res = await api.post('/chat/sessions', {
-                sessionId: sessionId || null,
-                messages: nextMessages,
-                title: requestedTitle,
-                isDraft,
-                unsentText,
-                disappearingMode: isDisappearingMode,
-                expiresAt: isDisappearingMode ? new Date(Date.now() + DISAPPEARING_CHAT_TTL_MS).toISOString() : null
-            });
-            if (res.data) {
-                let savedSession = isDraft
-                    ? res.data
-                    : makeTodaySession(res.data, nextMessages, requestedTitle);
+            // Strip audioBase64 from the database persistence payload.
+            // Live React state retains audioBase64 for local playback, but Express body-parser (100kB)
+            // will reject it with HTTP 413 if sent over the wire.
+            const cleanMessages = Array.isArray(nextMessages)
+                ? nextMessages.map(({ audioBase64, ...rest }) => rest)
+                : [];
+            const targetSessionId = sessionId || currentSessionIdRef.current;
+            const requestedTitle = title || getConversationTitle(nextMessages, targetSessionId);
 
-                if (!isDraft && res.data.isDraft) {
-                    try {
-                        const archiveRes = await api.post(`/chat/sessions/${savedSession.id}/archive`);
-                        savedSession = makeTodaySession(archiveRes.data || savedSession, nextMessages, requestedTitle);
-                    } catch (err) {
-                        console.error("Failed to move chat out of drafts:", err);
+            // Case 1: Updating an existing session
+            if (targetSessionId) {
+                const res = await api.post('/chat/sessions', {
+                    sessionId: targetSessionId,
+                    messages: cleanMessages,
+                    title: requestedTitle,
+                    isDraft,
+                    unsentText,
+                    disappearingMode: isDisappearingMode,
+                    expiresAt: isDisappearingMode ? new Date(Date.now() + DISAPPEARING_CHAT_TTL_MS).toISOString() : null
+                });
+                if (res.data) {
+                    let savedSession = isDraft
+                        ? res.data
+                        : makeTodaySession(res.data, nextMessages, requestedTitle);
+
+                    if (!isDraft && res.data.isDraft) {
+                        try {
+                            const archiveRes = await api.post(`/chat/sessions/${savedSession.id}/archive`);
+                            savedSession = makeTodaySession(archiveRes.data || savedSession, nextMessages, requestedTitle);
+                        } catch (err) {
+                            console.error("Failed to move chat out of drafts:", err);
+                        }
                     }
-                }
 
-                upsertSessionInState(savedSession);
-                setCachedSessionMessages(savedSession.id, nextMessages, savedSession.hasMore, savedSession.disappearingMode === true);
-                return savedSession;
+                    currentSessionIdRef.current = savedSession.id;
+                    upsertSessionInState(savedSession);
+                    setCachedSessionMessages(savedSession.id, nextMessages, savedSession.hasMore, savedSession.disappearingMode === true);
+                    return savedSession;
+                }
+                return null;
             }
+
+            // Case 2: A session creation request is already in-flight — await and reuse its allocated ID
+            if (sessionCreationPromiseRef.current) {
+                const inFlightSaved = await sessionCreationPromiseRef.current;
+                if (inFlightSaved?.id) {
+                    return await persistSession({
+                        sessionId: inFlightSaved.id,
+                        nextMessages,
+                        title: requestedTitle,
+                        isDraft,
+                        unsentText
+                    });
+                }
+            }
+
+            // Case 3: Create a new session with concurrency mutex protection
+            const creationPromise = (async () => {
+                try {
+                    const res = await api.post('/chat/sessions', {
+                        sessionId: null,
+                        messages: cleanMessages,
+                        title: requestedTitle,
+                        isDraft,
+                        unsentText,
+                        disappearingMode: isDisappearingMode,
+                        expiresAt: isDisappearingMode ? new Date(Date.now() + DISAPPEARING_CHAT_TTL_MS).toISOString() : null
+                    });
+                    if (res.data) {
+                        let savedSession = isDraft
+                            ? res.data
+                            : makeTodaySession(res.data, nextMessages, requestedTitle);
+
+                        if (!isDraft && res.data.isDraft) {
+                            try {
+                                const archiveRes = await api.post(`/chat/sessions/${savedSession.id}/archive`);
+                                savedSession = makeTodaySession(archiveRes.data || savedSession, nextMessages, requestedTitle);
+                            } catch (err) {
+                                console.error("Failed to move chat out of drafts:", err);
+                            }
+                        }
+
+                        // Immediately update synchronous ref before any other caller can race
+                        currentSessionIdRef.current = savedSession.id;
+                        clearPendingDraftSnapshot();
+                        upsertSessionInState(savedSession);
+                        setCachedSessionMessages(savedSession.id, nextMessages, savedSession.hasMore, savedSession.disappearingMode === true);
+                        return savedSession;
+                    }
+                } catch (err) {
+                    console.error('Failed to persist session:', err);
+                } finally {
+                    sessionCreationPromiseRef.current = null;
+                }
+                return null;
+            })();
+
+            sessionCreationPromiseRef.current = creationPromise;
+            return await creationPromise;
         } catch (err) {
             console.error('Failed to persist session:', err);
         }
         return null;
-    }, [isGuest, isIncognito, getConversationTitle, upsertSessionInState, isDisappearingMode]);
+    }, [isGuest, isIncognito, getConversationTitle, upsertSessionInState, isDisappearingMode, clearPendingDraftSnapshot]);
 
     const flushPendingDraftSnapshot = React.useCallback(async (existingSessions = sessionsRef.current) => {
         const snapshot = readPendingDraftSnapshot();
@@ -1307,6 +1389,8 @@ export function ChatPage() {
 
     const resetChatSurface = React.useCallback(() => {
         setMessages([INITIAL_MESSAGE]);
+        currentSessionIdRef.current = null;
+        sessionCreationPromiseRef.current = null;
         setCurrentSessionId(null);
         setCurrentSessionSource(null);
         setError(null);
@@ -1321,16 +1405,17 @@ export function ChatPage() {
         const currentUnsentText = unsentTextRef.current || "";
         if (isGuest || isIncognito || isLoading || messages.length <= 1) return null;
 
-        let generatedTitle = getConversationTitle(messages, currentSessionId);
+        const activeId = currentSessionIdRef.current || currentSessionId;
+        let generatedTitle = getConversationTitle(messages, activeId);
         if ((!generatedTitle || generatedTitle === "New Chat" || generatedTitle === "Chat session") && currentUnsentText) {
             generatedTitle = currentUnsentText.substring(0, 30) + (currentUnsentText.length > 30 ? "..." : "");
         }
 
-        const existingSession = currentSessionId ? sessions.find(s => s.id === currentSessionId) : null;
+        const existingSession = activeId ? sessions.find(s => s.id === activeId) : null;
         const nextIsDraft = existingSession ? existingSession.isDraft === true : false;
 
         const saved = await persistSession({
-            sessionId: currentSessionId,
+            sessionId: activeId,
             nextMessages: messages,
             title: generatedTitle,
             isDraft: nextIsDraft,
@@ -1338,13 +1423,14 @@ export function ChatPage() {
         });
 
         if (saved && !currentSessionId) {
+            currentSessionIdRef.current = saved.id;
             setCurrentSessionId(saved.id);
             const newParams = new URLSearchParams(searchParams);
             newParams.set("sessionId", saved.id);
             navigate({ search: newParams.toString() }, { replace: true });
         }
         return saved;
-    }, [isGuest, isIncognito, messages, currentSessionId, persistSession, getConversationTitle, isLoading, searchParams, navigate]);
+    }, [isGuest, isIncognito, messages, currentSessionId, persistSession, getConversationTitle, isLoading, searchParams, navigate, sessions]);
 
     const scheduleAutoSave = React.useCallback(() => {
         if (autoSaveTimerRef.current) {
@@ -1479,6 +1565,10 @@ export function ChatPage() {
 
 
     const handleNewChat = async () => {
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+        }
         if (isGuest && guestQuota.sessionStarted) {
             setShowLimitModal(true);
             return;
@@ -1493,6 +1583,8 @@ export function ChatPage() {
             }
         }
 
+        currentSessionIdRef.current = null;
+        sessionCreationPromiseRef.current = null;
         clearStoredDraft();
         clearPendingDraftSnapshot();
         if (lastActiveSessionKey) {
@@ -1530,6 +1622,7 @@ export function ChatPage() {
         }
 
         const sessionSource = resolveSessionSource(session, source);
+        currentSessionIdRef.current = session.id;
         setCurrentSessionId(session.id);
         setCurrentSessionSource(sessionSource);
         setError(null);
@@ -1852,61 +1945,39 @@ export function ChatPage() {
     };
 
     const handleSend = async (text) => {
-
-        if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
-
-            setShowLimitModal(true);
-
-            return;
-
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
         }
 
-
+        if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
+            setShowLimitModal(true);
+            return;
+        }
 
         setError(null);
         setFollowUpQuestions([]);
 
-
-
         let displayContent = text;
-
         let apiPayload = text;
 
-
-
         if (quotedText) {
-
             displayContent = `> "${quotedText}"\n\n${text}`;
-
             apiPayload = `The user has highlighted the following specific text:\n"""\n${quotedText}\n"""\n\nUser's prompt: "${text}"\n\nINSTRUCTION: Please focus your response strictly on explaining, elaborating, or answering the user's prompt entirely within the context of the highlighted text. Do not provide a general overview of the broader topic.`;
-
             setQuotedText(null);
-
         }
 
-
-
-
         const userMsg = {
-
             role: "user",
-
             content: displayContent,
-
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-
         };
 
         setMessages((prev) => [...prev, userMsg]);
-
-
-
         setIsLoading(true);
 
         try {
-
             const response = await chatbotApi.sendMessage(apiPayload, selectedModel.id);
-
             if (isGuest && response?.guestQuota) {
                 updateGuestQuota(response.guestQuota);
             }
@@ -1919,11 +1990,8 @@ export function ChatPage() {
                 referenceLinks: response.reference_links
             };
 
-            // Extract follow-up questions from backend response
             const followUps = response?.follow_up_questions?.type_2_context_aware || response?.type_2_context_aware || response?.follow_ups || [];
             setFollowUpQuestions(followUps.slice(0, 3));
-
-
 
             const updatedMessages = [...messages, userMsg, assistantMsg];
             setMessages(updatedMessages);
@@ -1944,14 +2012,17 @@ export function ChatPage() {
 
             if (!isGuest && !isIncognito) {
                 try {
+                    const targetSessionId = currentSessionIdRef.current || currentSessionId;
                     const saved = await persistSession({
-                        sessionId: currentSessionId,
+                        sessionId: targetSessionId,
                         nextMessages: updatedMessages,
-                        title: getConversationTitle(updatedMessages, currentSessionId),
+                        title: getConversationTitle(updatedMessages, targetSessionId),
                         isDraft: false
                     });
                     if (saved && !currentSessionId) {
+                        currentSessionIdRef.current = saved.id;
                         setCurrentSessionId(saved.id);
+                        clearPendingDraftSnapshot();
                         const newParams = new URLSearchParams(searchParams);
                         newParams.set("sessionId", saved.id);
                         navigate({ search: newParams.toString() }, { replace: true });
@@ -2006,6 +2077,11 @@ export function ChatPage() {
 
 
     const handleVoiceMessage = async ({ transcription, answer, audioBase64, reference_links, guestQuota: responseQuota }) => {
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+        }
+
         if (!transcription && !answer) return;
 
         if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
@@ -2050,13 +2126,21 @@ export function ChatPage() {
 
         if (!isGuest && !isIncognito) {
             try {
+                const targetSessionId = currentSessionIdRef.current || currentSessionId;
                 const saved = await persistSession({
-                    sessionId: currentSessionId,
+                    sessionId: targetSessionId,
                     nextMessages: updatedVoiceMsgs,
-                    title: getConversationTitle(updatedVoiceMsgs, currentSessionId),
+                    title: getConversationTitle(updatedVoiceMsgs, targetSessionId),
                     isDraft: false
                 });
-                if (saved && !currentSessionId) setCurrentSessionId(saved.id);
+                if (saved && !currentSessionId) {
+                    currentSessionIdRef.current = saved.id;
+                    setCurrentSessionId(saved.id);
+                    clearPendingDraftSnapshot();
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set("sessionId", saved.id);
+                    navigate({ search: newParams.toString() }, { replace: true });
+                }
             } catch (dbErr) {
                 console.error("Failed to save voice chat to DB:", dbErr);
             }
@@ -2065,6 +2149,11 @@ export function ChatPage() {
 
     // ── Text-to-Text (Multilingual) handler ──
     const handleTranslate = async (text) => {
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+        }
+
         if (!text || !text.trim()) return;
         if (isGuest && guestQuota.messagesUsed >= guestQuota.limit) {
             setShowLimitModal(true);
@@ -2102,20 +2191,26 @@ export function ChatPage() {
                             updatedAt: new Date().toISOString()
                         }));
                     }
-                } catch (e) {
-                    console.error("Error saving guest messages to localStorage:", e);
-                }
+                } catch (e) { console.error("Error saving guest messages to localStorage:", e); }
             }
 
             if (!isGuest && !isIncognito) {
                 try {
+                    const targetSessionId = currentSessionIdRef.current || currentSessionId;
                     const saved = await persistSession({
-                        sessionId: currentSessionId,
+                        sessionId: targetSessionId,
                         nextMessages: updatedMessages,
-                        title: getConversationTitle(updatedMessages, currentSessionId),
+                        title: getConversationTitle(updatedMessages, targetSessionId),
                         isDraft: false
                     });
-                    if (saved && !currentSessionId) setCurrentSessionId(saved.id);
+                    if (saved && !currentSessionId) {
+                        currentSessionIdRef.current = saved.id;
+                        setCurrentSessionId(saved.id);
+                        clearPendingDraftSnapshot();
+                        const newParams = new URLSearchParams(searchParams);
+                        newParams.set("sessionId", saved.id);
+                        navigate({ search: newParams.toString() }, { replace: true });
+                    }
                 } catch (dbErr) { console.error("Failed to save translated chat to DB:", dbErr); }
             }
         } catch (err) {
@@ -2201,10 +2296,11 @@ export function ChatPage() {
         }
 
         const persistCurrentConversationDraft = () => {
+            const activeId = currentSessionIdRef.current || currentSessionId;
             const snapshot = writePendingDraftSnapshot({
-                sessionId: currentSessionId,
+                sessionId: activeId,
                 nextMessages: messages,
-                title: getConversationTitle(messages, currentSessionId),
+                title: getConversationTitle(messages, activeId),
                 source: currentSessionSource,
             });
 
