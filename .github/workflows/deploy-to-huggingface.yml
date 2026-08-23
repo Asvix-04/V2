@@ -27,9 +27,16 @@ jobs:
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
 
-          # Clone the Space's own repo into a separate folder — it has its
-          # own git history, independent from this GitHub repo.
-          git clone "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" hf_space
+          # Clone the Space's own repo OUTSIDE this checkout (into the
+          # runner's temp dir, a sibling of ./, not a subdirectory of it).
+          # Cloning it as a subdirectory of ./ was the original design here
+          # and caused a real bug: since rsync's source below is "./", a
+          # clone living inside "./" gets swept up as part of its own
+          # source and copied back into itself on every run — producing
+          # hf_space/hf_space/hf_space/... nesting that got worse with each
+          # deploy. Keeping the clone outside "./" entirely rules that out.
+          HF_SPACE_DIR="${RUNNER_TEMP}/hf_space"
+          git clone "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" "${HF_SPACE_DIR}"
 
           # Mirror this repo's files into the Space folder, but leave these
           # alone (same exclusions we used doing this by hand):
@@ -63,9 +70,9 @@ jobs:
             --exclude='crypt/backend/uploads' \
             --exclude='crypt/src/assets' \
             --exclude='README.md' \
-            ./ hf_space/
+            ./ "${HF_SPACE_DIR}/"
 
-          cd hf_space
+          cd "${HF_SPACE_DIR}"
           git add .
           git commit -m "Auto-deploy from GitHub ${{ github.sha }}" || echo "Nothing changed, skipping commit"
           git push
