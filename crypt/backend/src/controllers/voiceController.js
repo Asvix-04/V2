@@ -12,7 +12,46 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8
  * IMPORTANT: each proxy records a failure to bridgeMetrics ONLY when Python
  * is unreachable (no HTTP response). If Python responds with an error code,
  * Python's own metrics_logger has already recorded it — we don't double-count.
+ *
+ * PYTHON_BACKEND_URL points at different things depending on where this Node
+ * service is deployed:
+ *   - On Hugging Face, Node and Python run in the same container, so it's
+ *     http://127.0.0.1:8000 — pure Python, no middleware in the way.
+ *   - On Render, Python doesn't run locally at all, so this has to be the
+ *     Hugging Face Space's PUBLIC url — which is NOT pure Python, it's the
+ *     exact same combined Node+Python container, meaning this outbound call
+ *     also passes through that Space's own classifyUser/guest-check
+ *     middleware before ever reaching Python. Without a guest header of its
+ *     own, that middleware rejects this server-to-server call the same way
+ *     it would reject a real guest browser request with no credentials.
+ *     This header exists purely to satisfy that check on the receiving
+ *     side — it has no bearing on who the real user is; that's carried
+ *     separately via `user_id` in the request body.
+ *
+ * IMPORTANT: this must carry the REAL caller's own identity, not one shared
+ * constant. A single hardcoded guest id here would bucket every request from
+ * every user (and every deployment) under one shared guest quota on the
+ * receiving side — which is exactly what happened: it silently exhausted
+ * after normal testing traffic, then blocked every real user afterward.
+ * Forwarding the original Authorization header (if logged in) or this
+ * request's own guestId (if not) keeps each real user's quota isolated and
+ * correct on whichever side actually enforces it.
  */
+function pythonProxyHeaders(req) {
+    // Always include a per-user-unique X-Guest-ID fallback, even when we also
+    // forward Authorization. If the receiving side's JWT_SECRET ever differs
+    // from this service's (e.g. Render vs. Hugging Face configured
+    // separately), its own classifyUser will fail to verify our forwarded
+    // token and fall through to its guest path — and needs a guest id to
+    // fall back to right there, or it 400s exactly like the original bug.
+    // Keying it to this user's own id keeps that fallback isolated per user
+    // instead of one shared bucket.
+    const headers = { 'X-Guest-ID': req.guestId || `user-${getUserId(req)}` };
+    if (req.headers.authorization) {
+        headers.Authorization = req.headers.authorization;
+    }
+    return headers;
+}
 
 /**
  * Soft-decode the JWT from the Authorization header to identify the user.
@@ -86,7 +125,7 @@ exports.speechToSpeech = async (req, res) => {
             use_history: use_history !== false,
             response_language_code: response_language_code || 'en-IN',
             user_id: userId
-        });
+        }, { headers: pythonProxyHeaders(req) });
 
         res.json({
             transcript: response.data.transcript,
@@ -130,7 +169,7 @@ exports.chat = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId });
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
@@ -166,7 +205,7 @@ exports.chatSimple = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId });
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
@@ -214,7 +253,7 @@ exports.clearHistory = async (req, res) => {
         }
     }
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`);
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`, {}, { headers: pythonProxyHeaders(req) });
         res.json(response.data);
     } catch (error) {
         console.error('Clear History Proxy Error:', error.response?.data || error.message);
@@ -257,7 +296,7 @@ exports.textToText = async (req, res) => {
             language_code: languageCode || 'en-IN',
             use_history: useHistory !== false,
             user_id: userId
-        });
+        }, { headers: pythonProxyHeaders(req) });
 
         res.json({
             answer: response.data.answer,
@@ -322,7 +361,7 @@ exports.recordClientError = (req, res) => {
 
 exports.healthCheck = async (req, res) => {
     try {
-        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000 });
+        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: pythonProxyHeaders(req) });
         res.json({
             status: 'healthy',
             service: 'Integrated-AI-Bridge',

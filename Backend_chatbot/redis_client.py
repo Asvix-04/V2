@@ -80,16 +80,25 @@ class RedisManager:
     """Centralized cache manager for Global Response Caching and session memory."""
     def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0, default_ttl: int = 86400):
         self.default_ttl = default_ttl  # Default 24 hours
-        
+
         self.use_local = True
         self.client = None
-        
+
         redis_host = os.getenv("REDIS_HOST", host)
         redis_port = int(os.getenv("REDIS_PORT", port))
-        
+        # Hosted Redis providers (e.g. Upstash) require a password and TLS;
+        # local dev (e.g. Memurai with no auth configured) needs neither, so
+        # both default to "off" and stay backward-compatible either way.
+        redis_password = os.getenv("REDIS_PASSWORD") or None
+        redis_ssl = os.getenv("REDIS_SSL", "false").strip().lower() == "true"
+
         if REDIS_AVAILABLE:
             try:
-                self.client = redis.Redis(host=redis_host, port=redis_port, db=db, decode_responses=True)
+                self.client = redis.Redis(
+                    host=redis_host, port=redis_port, db=db,
+                    password=redis_password, ssl=redis_ssl,
+                    decode_responses=True,
+                )
                 self.client.ping()
                 self.use_local = False
                 print(f"✅ Connected to Redis cache at {redis_host}:{redis_port}")

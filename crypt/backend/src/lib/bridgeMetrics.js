@@ -249,6 +249,12 @@ async function computeSummary(window = '30d', userId = null) {
         const { data } = await axios.get(`${PYTHON_BACKEND_URL}/metrics/summary`, {
             params,
             timeout: 5000,
+            // Same reason as voiceController.js's PYTHON_PROXY_HEADERS: when
+            // PYTHON_BACKEND_URL is Hugging Face's public URL (Render's case),
+            // this call also passes through that Space's own guest-check
+            // middleware before reaching Python, and gets rejected without
+            // some credential of its own.
+            headers: { 'X-Guest-ID': 'internal-node-proxy' },
         });
         return { ...data, _source: 'python' };
     } catch (e) {
