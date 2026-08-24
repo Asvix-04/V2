@@ -27,8 +27,22 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8
  *     This header exists purely to satisfy that check on the receiving
  *     side — it has no bearing on who the real user is; that's carried
  *     separately via `user_id` in the request body.
+ *
+ * IMPORTANT: this must carry the REAL caller's own identity, not one shared
+ * constant. A single hardcoded guest id here would bucket every request from
+ * every user (and every deployment) under one shared guest quota on the
+ * receiving side — which is exactly what happened: it silently exhausted
+ * after normal testing traffic, then blocked every real user afterward.
+ * Forwarding the original Authorization header (if logged in) or this
+ * request's own guestId (if not) keeps each real user's quota isolated and
+ * correct on whichever side actually enforces it.
  */
-const PYTHON_PROXY_HEADERS = { 'X-Guest-ID': 'internal-node-proxy' };
+function pythonProxyHeaders(req) {
+    if (req.headers.authorization) {
+        return { Authorization: req.headers.authorization };
+    }
+    return { 'X-Guest-ID': req.guestId || 'unknown-guest' };
+}
 
 /**
  * Soft-decode the JWT from the Authorization header to identify the user.
@@ -102,7 +116,7 @@ exports.speechToSpeech = async (req, res) => {
             use_history: use_history !== false,
             response_language_code: response_language_code || 'en-IN',
             user_id: userId
-        }, { headers: PYTHON_PROXY_HEADERS });
+        }, { headers: pythonProxyHeaders(req) });
 
         res.json({
             transcript: response.data.transcript,
@@ -146,7 +160,7 @@ exports.chat = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId }, { headers: PYTHON_PROXY_HEADERS });
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
@@ -182,7 +196,7 @@ exports.chatSimple = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId }, { headers: PYTHON_PROXY_HEADERS });
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
@@ -230,7 +244,7 @@ exports.clearHistory = async (req, res) => {
         }
     }
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`, {}, { headers: PYTHON_PROXY_HEADERS });
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`, {}, { headers: pythonProxyHeaders(req) });
         res.json(response.data);
     } catch (error) {
         console.error('Clear History Proxy Error:', error.response?.data || error.message);
@@ -273,7 +287,7 @@ exports.textToText = async (req, res) => {
             language_code: languageCode || 'en-IN',
             use_history: useHistory !== false,
             user_id: userId
-        }, { headers: PYTHON_PROXY_HEADERS });
+        }, { headers: pythonProxyHeaders(req) });
 
         res.json({
             answer: response.data.answer,
@@ -338,7 +352,7 @@ exports.recordClientError = (req, res) => {
 
 exports.healthCheck = async (req, res) => {
     try {
-        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: PYTHON_PROXY_HEADERS });
+        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: pythonProxyHeaders(req) });
         res.json({
             status: 'healthy',
             service: 'Integrated-AI-Bridge',
