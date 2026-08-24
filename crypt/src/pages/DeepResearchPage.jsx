@@ -93,12 +93,15 @@ export function DeepResearchPage() {
   const currentSessionId = searchParams.get("session");
 
   // ── User ─────────────────────────────────────────────────────────────────
-  const user = React.useMemo(() => {
-    try {
-      const saved = localStorage.getItem("user");
-      return (saved && saved !== "undefined") ? JSON.parse(saved) : null;
-    } catch { return null; }
-  }, []);
+  // Not memoized — same reasoning as ChatPage.jsx: a useMemo(..., []) here
+  // reads localStorage exactly once for this component's lifetime, so it
+  // can stay frozen as "guest" even after a real login that didn't happen
+  // to remount this exact page. Cheap enough to just read fresh each render.
+  let user = null;
+  try {
+    const saved = localStorage.getItem("user");
+    user = (saved && saved !== "undefined") ? JSON.parse(saved) : null;
+  } catch { /* ignore */ }
   const isGuest = !user;
   const isTeacher = user?.role === "teacher";
 

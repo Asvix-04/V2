@@ -529,23 +529,23 @@ export function ChatPage() {
 
 
 
-    const user = React.useMemo(() => {
-
-        try {
-
-            const saved = localStorage.getItem("user");
-
-            return (saved && saved !== "undefined") ? JSON.parse(saved) : null;
-
-        } catch (e) {
-
-            console.error("Error parsing user data", e);
-
-            return null;
-
-        }
-
-    }, []);
+    // Deliberately NOT memoized: this used to be `useMemo(() => ..., [])`,
+    // which reads localStorage exactly once for the lifetime of this
+    // component instance and never again. Since logging in happens via a
+    // separate flow that doesn't always force this exact component to
+    // remount, that meant `user` (and everything derived from it, like
+    // isGuest and the 10-message guest limit) could stay permanently frozen
+    // on "not logged in" even after a real, successful login — while
+    // requests elsewhere (which read localStorage fresh per-call) correctly
+    // saw the logged-in user. Parsing this small object is cheap enough to
+    // just do on every render instead of trying to cache it.
+    let user = null;
+    try {
+        const saved = localStorage.getItem("user");
+        user = (saved && saved !== "undefined") ? JSON.parse(saved) : null;
+    } catch (e) {
+        console.error("Error parsing user data", e);
+    }
 
     const isTeacher = user?.role === "teacher";
 
