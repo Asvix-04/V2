@@ -38,10 +38,19 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8
  * correct on whichever side actually enforces it.
  */
 function pythonProxyHeaders(req) {
+    // Always include a per-user-unique X-Guest-ID fallback, even when we also
+    // forward Authorization. If the receiving side's JWT_SECRET ever differs
+    // from this service's (e.g. Render vs. Hugging Face configured
+    // separately), its own classifyUser will fail to verify our forwarded
+    // token and fall through to its guest path — and needs a guest id to
+    // fall back to right there, or it 400s exactly like the original bug.
+    // Keying it to this user's own id keeps that fallback isolated per user
+    // instead of one shared bucket.
+    const headers = { 'X-Guest-ID': req.guestId || `user-${getUserId(req)}` };
     if (req.headers.authorization) {
-        return { Authorization: req.headers.authorization };
+        headers.Authorization = req.headers.authorization;
     }
-    return { 'X-Guest-ID': req.guestId || 'unknown-guest' };
+    return headers;
 }
 
 /**
