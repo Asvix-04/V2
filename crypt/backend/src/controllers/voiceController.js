@@ -12,7 +12,23 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8
  * IMPORTANT: each proxy records a failure to bridgeMetrics ONLY when Python
  * is unreachable (no HTTP response). If Python responds with an error code,
  * Python's own metrics_logger has already recorded it — we don't double-count.
+ *
+ * PYTHON_BACKEND_URL points at different things depending on where this Node
+ * service is deployed:
+ *   - On Hugging Face, Node and Python run in the same container, so it's
+ *     http://127.0.0.1:8000 — pure Python, no middleware in the way.
+ *   - On Render, Python doesn't run locally at all, so this has to be the
+ *     Hugging Face Space's PUBLIC url — which is NOT pure Python, it's the
+ *     exact same combined Node+Python container, meaning this outbound call
+ *     also passes through that Space's own classifyUser/guest-check
+ *     middleware before ever reaching Python. Without a guest header of its
+ *     own, that middleware rejects this server-to-server call the same way
+ *     it would reject a real guest browser request with no credentials.
+ *     This header exists purely to satisfy that check on the receiving
+ *     side — it has no bearing on who the real user is; that's carried
+ *     separately via `user_id` in the request body.
  */
+const PYTHON_PROXY_HEADERS = { 'X-Guest-ID': 'internal-node-proxy' };
 
 /**
  * Soft-decode the JWT from the Authorization header to identify the user.
@@ -86,7 +102,7 @@ exports.speechToSpeech = async (req, res) => {
             use_history: use_history !== false,
             response_language_code: response_language_code || 'en-IN',
             user_id: userId
-        });
+        }, { headers: PYTHON_PROXY_HEADERS });
 
         res.json({
             transcript: response.data.transcript,
@@ -130,7 +146,7 @@ exports.chat = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId });
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId }, { headers: PYTHON_PROXY_HEADERS });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
@@ -166,7 +182,7 @@ exports.chatSimple = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId });
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId }, { headers: PYTHON_PROXY_HEADERS });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
@@ -214,7 +230,7 @@ exports.clearHistory = async (req, res) => {
         }
     }
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`);
+        const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`, {}, { headers: PYTHON_PROXY_HEADERS });
         res.json(response.data);
     } catch (error) {
         console.error('Clear History Proxy Error:', error.response?.data || error.message);
@@ -257,7 +273,7 @@ exports.textToText = async (req, res) => {
             language_code: languageCode || 'en-IN',
             use_history: useHistory !== false,
             user_id: userId
-        });
+        }, { headers: PYTHON_PROXY_HEADERS });
 
         res.json({
             answer: response.data.answer,
@@ -322,7 +338,7 @@ exports.recordClientError = (req, res) => {
 
 exports.healthCheck = async (req, res) => {
     try {
-        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000 });
+        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: PYTHON_PROXY_HEADERS });
         res.json({
             status: 'healthy',
             service: 'Integrated-AI-Bridge',
