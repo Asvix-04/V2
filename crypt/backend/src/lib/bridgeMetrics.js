@@ -242,19 +242,27 @@ function _computeFromBridgeOnly(window, userId) {
 // separate deployments in production (no shared filesystem), so this must go
 // over the network rather than reading Python's log file by local path.
 // Falls back to the bridge's own local failure log if Python is unreachable.
-async function computeSummary(window = '30d', userId = null) {
+//
+// `authHeader` (the ORIGINAL caller's own Authorization header, if any) must
+// be forwarded here — this used to send only a fixed internal marker, which
+// meant that on Render (where PYTHON_BACKEND_URL is Hugging Face's public
+// url and this call also passes through that Space's own Node layer), every
+// dashboard request looked like the same anonymous guest to Hugging Face,
+// no matter who was actually logged in on the frontend. That Node layer
+// resolves its own notion of "who is this" from Authorization, and returned
+// the SAME shared aggregate to every real user. Forwarding the real token
+// lets it resolve the real per-user id itself, same as the chat proxy does.
+async function computeSummary(window = '30d', userId = null, authHeader = null) {
     try {
         const params = { window };
         if (userId) params.user_id = userId;
+        const headers = authHeader
+            ? { Authorization: authHeader }
+            : { 'X-Guest-ID': userId ? `user-${userId}` : 'internal-node-proxy' };
         const { data } = await axios.get(`${PYTHON_BACKEND_URL}/metrics/summary`, {
             params,
             timeout: 5000,
-            // Same reason as voiceController.js's PYTHON_PROXY_HEADERS: when
-            // PYTHON_BACKEND_URL is Hugging Face's public URL (Render's case),
-            // this call also passes through that Space's own guest-check
-            // middleware before reaching Python, and gets rejected without
-            // some credential of its own.
-            headers: { 'X-Guest-ID': 'internal-node-proxy' },
+            headers,
         });
         return { ...data, _source: 'python' };
     } catch (e) {
