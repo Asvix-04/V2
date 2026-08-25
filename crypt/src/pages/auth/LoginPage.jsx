@@ -25,6 +25,17 @@ export function LoginPage() {
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(location.state?.message || "");
 
+    // Surface the reason we landed here when api.js/chatbotApi.js redirect
+    // back to login after an expired/invalid JWT (see their response
+    // interceptors) — otherwise the user just silently reappears at login
+    // with no idea their session died mid-use.
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        if (params.get('sessionExpired') === '1') {
+            setError('Your session expired. Please log in again.');
+        }
+    }, [location.search]);
+
     // 1. Identification: Check if user exists
     const handleIdentification = async (e) => {
         e.preventDefault();

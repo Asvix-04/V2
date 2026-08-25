@@ -325,7 +325,11 @@ exports.getMetricsSummary = async (req, res) => {
     try {
         const window = req.query.window || '30d';
         const userId = getUserId(req);
-        const summary = await bridgeMetrics.computeSummary(window, userId);
+        // Forward the real caller's own Authorization header so that, when
+        // PYTHON_BACKEND_URL points at Hugging Face's public url (Render's
+        // case), HF's own Node layer resolves the SAME real per-user identity
+        // instead of treating every dashboard request as one shared guest.
+        const summary = await bridgeMetrics.computeSummary(window, userId, req.headers.authorization);
         res.json(summary);
     } catch (error) {
         console.error('Metrics summary failed:', error.message);

@@ -132,6 +132,15 @@ chatbotClient.interceptors.request.use(
 // the bridge had no chance to record the failure — so we report it from here.
 // When the bridge DID respond with a 4xx/5xx, the bridge (or Python) already
 // recorded it, so we don't re-report.
+//
+// It also catches the same dead-JWT case as api.js: a 401 on a request that
+// DID carry an Authorization header means the stored token expired/is
+// invalid, not that the user's chat history/metrics vanished. Left
+// unhandled, this silently keeps sending the same dead token on every chat
+// message, session-history fetch, and metrics poll forever (see the
+// repeated "Auth error: jwt expired" log spam) while the UI just shows
+// empty state, which reads as "my data got deleted".
+let _chatbotRedirectingToLogin = false;
 chatbotClient.interceptors.response.use(
     (response) => response,
     (error) => {
@@ -144,6 +153,17 @@ chatbotClient.interceptors.response.use(
                 _reportError(url || 'unknown', error, startedAt);
             }
         } catch { /* never let reporting throw */ }
+
+        const status = error?.response?.status;
+        const hadToken = !!error?.config?.headers?.Authorization;
+        if (status === 401 && hadToken && !_chatbotRedirectingToLogin) {
+            _chatbotRedirectingToLogin = true;
+            try { localStorage.removeItem('user'); } catch { /* ignore */ }
+            if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+                window.location.href = '/login?sessionExpired=1';
+            }
+        }
+
         return Promise.reject(error);
     }
 );
