@@ -65,9 +65,27 @@ class ChatSession {
 
         ChatSession.clearDraftExpiryTimer(id);
 
-        const delay = Math.max(0, expiresAt.getTime() - Date.now());
+        // Node's setTimeout stores its delay as a 32-bit signed integer, so it
+        // can't hold more than ~24.8 days (2^31 - 1 ms) — but DRAFT_TTL_MS is
+        // 30 days. Passing the full remaining time straight through silently
+        // overflowed: Node clamped it down to ~1ms and fired almost
+        // instantly, the draft wasn't actually expired yet so this rescheduled
+        // itself with the same still-30-days-away date, which overflowed and
+        // fired instantly again — an infinite tight loop, which is exactly
+        // what those repeated TimeoutOverflowWarning log lines were. Capping
+        // the delay and re-checking once it elapses (without touching the
+        // database unless the real expiry has actually passed) chains
+        // multiple safe-sized waits instead.
+        const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+        const remaining = Math.max(0, expiresAt.getTime() - Date.now());
+        const delay = Math.min(remaining, MAX_TIMEOUT_MS);
         const timer = setTimeout(async () => {
             ChatSession.draftExpiryTimers.delete(id);
+            if (Date.now() < expiresAt.getTime()) {
+                // Only reached the cap, not the real expiry yet — wait out the rest.
+                ChatSession.scheduleDraftExpiry(id, expiresAt);
+                return;
+            }
             const db = getFirestore();
             if (!db) return;
             try {
