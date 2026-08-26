@@ -54,9 +54,15 @@ router.get('/metrics/summary', voiceController.getMetricsSummary);
 // @access  Public
 router.post('/metrics/event', voiceController.recordClientError);
 
+// @route   POST /deepchat
+// @desc    Deep Research Chat Proxy
+// @access  Public (classifyUser support)
+router.post('/deepchat', classifyUser, voiceController.deepChat);
+
 // @route   GET /api/voice/health
 // @desc    Check voice service health
 // @access  Public
 router.get('/health', voiceController.healthCheck);
 
 module.exports = router;
+

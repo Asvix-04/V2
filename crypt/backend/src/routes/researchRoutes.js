@@ -3,6 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 const { protect } = require('../middleware/authMiddleware');
 const { checkResearchQuota } = require('../middleware/quotaMiddleware');
+const { pythonProxyHeaders } = require('../controllers/voiceController');
 const DeepResearchUsage = require('../models/DeepResearchUsage');
 const { getFirestore } = require('../config/db');
 
@@ -118,6 +119,7 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
                 use_history: false,
                 model: null
             }, {
+                headers: pythonProxyHeaders(req),
                 timeout: 300000 // 300 seconds (5 minutes) production-safe timeout
             });
 
@@ -196,7 +198,7 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
             }
             const status = error.response.status;
             const message = error.response.data?.detail || error.response.data?.message || 'Downstream research service error';
-            return res.status(status >= 400 && status < 500 ? 400 : 502).json({ message });
+            return res.status(status >= 400 && status < 500 ? status : 502).json({ message });
         }
 
         res.status(500).json({ message: error.message || 'Unexpected server error occurred during Deep Research generation.' });

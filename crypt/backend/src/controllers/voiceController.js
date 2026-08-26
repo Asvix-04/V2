@@ -363,6 +363,31 @@ exports.recordClientError = (req, res) => {
     }
 };
 
+// @desc    Deep Research Chat Proxy
+// @route   POST /deepchat
+exports.deepChat = async (req, res) => {
+    const start = Date.now();
+    const userId = getUserId(req);
+
+    try {
+        const response = await axios.post(
+            `${PYTHON_BACKEND_URL}/deepchat`,
+            req.body,
+            {
+                headers: pythonProxyHeaders(req),
+                timeout: 300000 // 300 seconds (5 minutes) production-safe timeout
+            }
+        );
+        res.json(response.data);
+    } catch (error) {
+        console.error('DeepChat Proxy Error:', error.response?.data || error.message);
+        _onProxyError('/deepchat', error, start, userId);
+        const status = error.response?.status || 500;
+        const message = error.response?.data?.detail || error.response?.data?.message || 'Deep research proxy failed';
+        res.status(status).json(error.response?.data || { message, detail: error.message });
+    }
+};
+
 exports.healthCheck = async (req, res) => {
     try {
         const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: pythonProxyHeaders(req) });
@@ -379,3 +404,6 @@ exports.healthCheck = async (req, res) => {
         });
     }
 };
+
+exports.pythonProxyHeaders = pythonProxyHeaders;
+
