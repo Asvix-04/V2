@@ -11,6 +11,7 @@ class User {
         this.googleId = data.googleId || null;
         this.githubId = data.githubId || null;
         this.profilePhoto = data.profilePhoto || null;
+        this.emailVerified = data.emailVerified !== undefined ? Boolean(data.emailVerified) : undefined;
         this.createdAt = data.createdAt || new Date();
     }
 
@@ -60,15 +61,19 @@ class User {
         try {
             if (this.id) {
                 // Update existing user
-                await usersRef.doc(this.id).update({
+                const updateData = {
                     name: this.name,
                     email: this.email,
                     role: this.role,
                     updatedAt: new Date()
-                });
+                };
+                if (this.emailVerified !== undefined) {
+                    updateData.emailVerified = this.emailVerified;
+                }
+                await usersRef.doc(this.id).update(updateData);
             } else {
                 // Create new user
-                const docRef = await usersRef.add({
+                const docData = {
                     name: this.name,
                     email: this.email,
                     password: this.password,
@@ -77,7 +82,11 @@ class User {
                     githubId: this.githubId,
                     profilePhoto: this.profilePhoto,
                     createdAt: new Date()
-                });
+                };
+                if (this.emailVerified !== undefined) {
+                    docData.emailVerified = this.emailVerified;
+                }
+                const docRef = await usersRef.add(docData);
                 this.id = docRef.id;
             }
             return this;

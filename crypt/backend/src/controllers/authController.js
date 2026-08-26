@@ -22,6 +22,79 @@ const generateToken = (id) => {
     });
 };
 
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds
+const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+
+// Helper to generate OTP, enforce 60s server-side rate limit, store in Firestore, and send via Resend
+async function generateAndSendOtp(email, isSignup = false) {
+    const db = getFirestore();
+    const otpRef = db.collection('otps').doc(email);
+    const existingDoc = await otpRef.get();
+
+    if (existingDoc.exists) {
+        const existingData = existingDoc.data();
+        if (existingData.lastSentAt) {
+            const lastSentTime = existingData.lastSentAt.toDate ? existingData.lastSentAt.toDate().getTime() : new Date(existingData.lastSentAt).getTime();
+            const elapsed = Date.now() - lastSentTime;
+            if (elapsed < OTP_RESEND_COOLDOWN_MS) {
+                const remainingSec = Math.ceil((OTP_RESEND_COOLDOWN_MS - elapsed) / 1000);
+                const error = new Error(`Please wait ${remainingSec}s before requesting another verification code.`);
+                error.status = 429;
+                error.remainingSec = remainingSec;
+                throw error;
+            }
+        }
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+    const lastSentAt = new Date();
+
+    await otpRef.set({
+        email,
+        otp,
+        expiresAt,
+        lastSentAt,
+        attempts: 0
+    });
+
+    if (!resend) {
+        console.warn('OTP requested but Resend is not configured.');
+        const error = new Error('Email service is currently unavailable. Please contact support.');
+        error.status = 503;
+        throw error;
+    }
+
+    const subject = isSignup ? 'Your Digilab Verification Code' : 'Your Digilab Login OTP';
+    const actionText = isSignup ? 'complete your registration on' : 'sign in to';
+
+    const { data, error } = await resend.emails.send({
+        from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+        to: email,
+        subject,
+        html: `
+            <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 500px;">
+                <h2 style="color: #4F46E5;">${subject}</h2>
+                <p>Enter the following 6-digit code to ${actionText} your Digilab account:</p>
+                <h1 style="font-size: 36px; letter-spacing: 6px; color: #4F46E5; background: #F3F4F6; padding: 12px 20px; border-radius: 8px; display: inline-block;">${otp}</h1>
+                <p style="color: #6B7280; font-size: 14px;">This code will expire in 10 minutes.</p>
+                <p style="color: #9CA3AF; font-size: 12px;">If you didn't request this code, you can safely ignore this email.</p>
+            </div>
+        `
+    });
+
+    if (error) {
+        console.error('Resend full error:', JSON.stringify(error, null, 2));
+        const resendErr = new Error('Failed to send verification email');
+        resendErr.status = 500;
+        resendErr.detail = error.message || 'Unknown Resend error';
+        throw resendErr;
+    }
+
+    return true;
+}
+
 // @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
@@ -35,18 +108,36 @@ exports.register = async (req, res) => {
             return res.status(400).json({ message: errors.join(', ') });
         }
 
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
+
         // Check if user exists
-        const userExists = await User.findOne({ email });
+        const userExists = await User.findOne({ email: normalizedEmail });
         if (userExists) {
+            if (userExists.emailVerified === false) {
+                // Account was created previously but never verified.
+                // Do NOT overwrite existing password/name. Resend OTP and prompt verification.
+                try {
+                    await generateAndSendOtp(normalizedEmail, true);
+                } catch (otpErr) {
+                    const status = otpErr.status || 500;
+                    return res.status(status).json({ message: otpErr.message });
+                }
+                return res.status(200).json({
+                    message: 'Account verification pending. A new verification code has been sent to your email.',
+                    requiresVerification: true,
+                    email: userExists.email
+                });
+            }
             return res.status(400).json({ message: 'User already exists' });
         }
 
-        // Create user instance
+        // Create unverified user instance
         const user = new User({
             name,
-            email,
+            email: normalizedEmail,
             password,
-            role: role || 'student'
+            role: role || 'student',
+            emailVerified: false
         });
 
         // Hash password
@@ -55,12 +146,23 @@ exports.register = async (req, res) => {
         // Save user to Firestore
         await user.save();
 
+        // Send OTP via Resend
+        try {
+            await generateAndSendOtp(normalizedEmail, true);
+        } catch (otpErr) {
+            console.error('Registration OTP dispatch failed:', otpErr.message);
+            const status = otpErr.status || 500;
+            return res.status(status).json({
+                message: otpErr.message || 'Account created but failed to send verification email.',
+                requiresVerification: true,
+                email: user.email
+            });
+        }
+
         res.status(201).json({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            token: generateToken(user.id),
+            message: 'Verification code sent to your email. Please verify to complete registration.',
+            requiresVerification: true,
+            email: user.email
         });
 
     } catch (error) {
@@ -81,8 +183,10 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: 'Please provide email and password' });
         }
 
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
+
         // Check for user
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email: normalizedEmail });
 
         if (!user) {
             return res.status(401).json({ message: 'Invalid credentials' });
@@ -91,17 +195,26 @@ exports.login = async (req, res) => {
         // Check if password matches
         const isPasswordMatch = await user.matchPassword(password);
 
-        if (isPasswordMatch) {
-            res.json({
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                token: generateToken(user.id),
-            });
-        } else {
-            res.status(401).json({ message: 'Invalid credentials' });
+        if (!isPasswordMatch) {
+            return res.status(401).json({ message: 'Invalid credentials' });
         }
+
+        // Verification Gate: unverified accounts are blocked from obtaining a JWT
+        if (user.emailVerified === false) {
+            return res.status(403).json({
+                message: 'Please verify your email to log in.',
+                requiresVerification: true,
+                email: user.email
+            });
+        }
+
+        res.json({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            token: generateToken(user.id),
+        });
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ message: error.message });
@@ -318,61 +431,23 @@ exports.githubLogin = async (req, res) => {
 // @access  Public
 exports.sendOTP = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, isSignup } = req.body;
         if (!email) {
             return res.status(400).json({ message: 'Email is required' });
         }
 
-        // Generate 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
-
-        const db = getFirestore();
-        await db.collection('otps').doc(email).set({
-            email,
-            otp,
-            expiresAt
-        });
-
-        if (!resend) {
-            console.warn('OTP requested but Resend is not configured.');
-            return res.status(503).json({
-                message: 'Email service is currently unavailable. Please contact support.'
-            });
-        }
-
-        // Send email via Resend
-        const { data, error } = await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
-            to: email,
-            subject: 'Your Digilab Login OTP',
-            html: `
-                <div style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h2>Your Login Code</h2>
-                    <p>Enter the following 6-digit code to sign in to your Digilab account:</p>
-                    <h1 style="font-size: 32px; letter-spacing: 5px; color: #4F46E5;">${otp}</h1>
-                    <p>This code will expire in 10 minutes.</p>
-                    <p>If you didn't request this code, you can safely ignore this email.</p>
-                </div>
-            `
-        });
-
-        if (error) {
-            console.error('Resend full error:', JSON.stringify(error, null, 2));
-            return res.status(500).json({
-                message: 'Failed to send OTP email',
-                detail: error.message || 'Unknown Resend error'
-            });
-        }
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
+        await generateAndSendOtp(normalizedEmail, Boolean(isSignup));
 
         res.json({ message: 'OTP sent successfully' });
     } catch (error) {
-        console.error('Send OTP error:', error);
-        res.status(500).json({ message: error.message });
+        const status = error.status || 500;
+        console.error('Send OTP error:', error.message);
+        res.status(status).json({ message: error.message });
     }
 };
 
-// @desc    Verify OTP and log in
+// @desc    Verify OTP and log in / activate account
 // @route   POST /api/auth/verify-otp
 // @access  Public
 exports.verifyOTP = async (req, res) => {
@@ -382,41 +457,62 @@ exports.verifyOTP = async (req, res) => {
             return res.status(400).json({ message: 'Email and OTP are required' });
         }
 
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
         const db = getFirestore();
-        const otpDoc = await db.collection('otps').doc(email).get();
+        const otpRef = db.collection('otps').doc(normalizedEmail);
+        const otpDoc = await otpRef.get();
 
         if (!otpDoc.exists) {
-            return res.status(400).json({ message: 'OTP not found or expired' });
+            return res.status(400).json({ message: 'Verification code not found or expired. Please request a new code.' });
         }
 
         const otpData = otpDoc.data();
 
         // Check if expired
-        if (new Date() > otpData.expiresAt.toDate()) {
-            await db.collection('otps').doc(email).delete();
-            return res.status(400).json({ message: 'OTP has expired' });
+        const expiresAtTime = otpData.expiresAt.toDate ? otpData.expiresAt.toDate().getTime() : new Date(otpData.expiresAt).getTime();
+        if (Date.now() > expiresAtTime) {
+            await otpRef.delete();
+            return res.status(400).json({ message: 'Verification code has expired. Please request a new code.' });
+        }
+
+        // Check max attempts (5)
+        const attempts = (otpData.attempts || 0) + 1;
+        if (attempts > 5) {
+            await otpRef.delete();
+            return res.status(400).json({ message: 'Too many incorrect attempts. Please request a new verification code.' });
         }
 
         // Check if matching
-        if (otpData.otp !== otp) {
-            return res.status(400).json({ message: 'Invalid OTP code' });
+        if (otpData.otp !== String(otp).trim()) {
+            await otpRef.update({ attempts });
+            const remaining = 5 - attempts;
+            return res.status(400).json({
+                message: remaining > 0
+                    ? `Invalid verification code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+                    : 'Too many incorrect attempts. Please request a new verification code.'
+            });
         }
 
         // Success! Remove the OTP
-        await db.collection('otps').doc(email).delete();
+        await otpRef.delete();
 
         // Find or create user
-        let user = await User.findOne({ email });
+        let user = await User.findOne({ email: normalizedEmail });
 
         if (!user) {
-            // Auto-register the user if they don't exist
+            // Auto-register the user if they don't exist (login via OTP flow)
             user = new User({
-                name: email.split('@')[0],
-                email,
+                name: normalizedEmail.split('@')[0],
+                email: normalizedEmail,
                 password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
-                role: 'student'
+                role: 'student',
+                emailVerified: true
             });
             await user.save();
+        } else if (user.emailVerified === false) {
+            // Mark user as verified
+            await User.update(user.id, { emailVerified: true });
+            user.emailVerified = true;
         }
 
         res.json({
@@ -425,6 +521,7 @@ exports.verifyOTP = async (req, res) => {
             email: user.email,
             role: user.role,
             profilePhoto: user.profilePhoto,
+            emailVerified: true,
             token: generateToken(user.id),
         });
 
@@ -444,7 +541,8 @@ exports.checkUser = async (req, res) => {
             return res.status(400).json({ message: 'Email is required' });
         }
 
-        const user = await User.findOne({ email });
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : email;
+        const user = await User.findOne({ email: normalizedEmail });
 
         if (!user) {
             return res.status(404).json({ message: 'Account not found. Please sign up first.' });

@@ -21,6 +21,7 @@ export function LoginPage() {
     const [otpCode, setOtpCode] = useState("");
     const [userData, setUserData] = useState(null); // stores name, profilePhoto
 
+    const [requiresVerification, setRequiresVerification] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(location.state?.message || "");
@@ -41,6 +42,7 @@ export function LoginPage() {
         e.preventDefault();
         setLoading(true);
         setError(null);
+        setRequiresVerification(false);
         try {
             const { data } = await api.post('/auth/check-user', { email });
             setUserData(data);
@@ -76,7 +78,12 @@ export function LoginPage() {
             localStorage.setItem("user", JSON.stringify(data));
             navigate(data.role === 'teacher' ? '/workspace?mode=teacher' : '/workspace?mode=student');
         } catch (err) {
-            setError(err.response?.data?.message || "Invalid password");
+            if (err.response?.status === 403 && err.response?.data?.requiresVerification) {
+                setRequiresVerification(true);
+                setError(err.response?.data?.message || "Please verify your email to log in.");
+            } else {
+                setError(err.response?.data?.message || "Invalid password");
+            }
         } finally {
             setLoading(false);
         }
@@ -248,6 +255,25 @@ export function LoginPage() {
                 {/* STEP 3: Password Input */}
                 {step === "password" && (
                     <form onSubmit={handlePasswordLogin} className="space-y-4">
+                        {requiresVerification && (
+                            <div className="p-4 rounded-xl bg-accent/10 border border-accent/20 text-center space-y-2.5">
+                                <p className="text-xs text-foreground font-medium">
+                                    This account requires email verification.
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={handleSelectOtp}
+                                    disabled={loading}
+                                    isLoading={loading}
+                                >
+                                    Send Verification Code
+                                </Button>
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <label className="text-xs font-medium text-foreground-subtle uppercase">Password</label>
@@ -269,7 +295,10 @@ export function LoginPage() {
                         </Button>
                         <button
                             type="button"
-                            onClick={() => setStep("choice")}
+                            onClick={() => {
+                                setStep("choice");
+                                setRequiresVerification(false);
+                            }}
                             className="w-full text-xs text-foreground-muted hover:text-accent transition-colors py-2 flex items-center justify-center gap-2"
                         >
                             <ArrowLeft className="h-3 w-3" />
