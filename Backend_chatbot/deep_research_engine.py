@@ -792,26 +792,60 @@ class DeepResearchEngine:
         )
         log_stage_timing(f"Worker Agents RAG Retrieval ({len(worker_results)} queries)", layer2_start)
 
-        # 👇 Out of scope check — same threshold as /chat (top_score < 0.040)
+        # ── Scope & Relevance Gate (Aligned with chatbot.py classification) ──
+        classification = chatbot._classify_input(question)
+        bm25_available = bool(
+            getattr(getattr(chatbot, 'retriever', None), 'bm25', None)
+            and getattr(chatbot.retriever.bm25, 'ready', False)
+        )
+
         top_scores = []
         for wr in worker_results:
             vector_results = wr.get('vector_results', [])
             if vector_results:
-                top_score = max((r.get('score', 0) if isinstance(r, dict) else getattr(r, 'score', 0))
-                            for r in vector_results)
+                top_score = max(
+                    (r.get('score', 0) if isinstance(r, dict) else getattr(r, 'score', 0))
+                    for r in vector_results
+                )
                 top_scores.append(top_score)
             elif wr.get('is_cache_hit') and wr.get('top_score') is not None:
                 # Cache hits don't carry vector_results (chatbot.py strips them before caching
                 # since they hold non-serializable Pinecone objects), but the score itself is
-                # cached separately in 'top_score' — use that instead of silently treating a
-                # cached in-scope answer as a 0.0 score, which would falsely reject it here.
+                # cached separately in 'top_score'.
                 top_scores.append(wr['top_score'])
 
-        avg_top_score = sum(top_scores) / len(top_scores) if top_scores else 0
-        print(f"📊 Average top retrieval score: {avg_top_score:.4f}")
+        max_top_score = max(top_scores) if top_scores else 0.0
+        avg_top_score = sum(top_scores) / len(top_scores) if top_scores else 0.0
 
-        if avg_top_score < 0.040:
-            print("⚠️ Low retrieval score — question out of syllabus")
+        is_out_of_scope = False
+        rejection_reason = ""
+
+        if not top_scores or max_top_score == 0.0:
+            is_out_of_scope = True
+            rejection_reason = "zero_retrieval_matches"
+        elif classification == "out_of_syllabus":
+            # Out-of-syllabus queries are rejected unless exceptionally strong retrieval evidence exists (>= 0.040)
+            if max_top_score < 0.040:
+                is_out_of_scope = True
+                rejection_reason = f"out_of_syllabus_insufficient_evidence (max_score={max_top_score:.4f} < 0.040)"
+        elif classification in ("syllabus", "greeting_syllabus"):
+            # Valid syllabus queries pass with standard minimum score gate (>= 0.020)
+            if max_top_score < 0.020:
+                is_out_of_scope = True
+                rejection_reason = f"syllabus_below_min_score_gate (max_score={max_top_score:.4f} < 0.020)"
+        else:
+            # Fallback default: require >= 0.020
+            if max_top_score < 0.020:
+                is_out_of_scope = True
+                rejection_reason = f"below_default_gate (max_score={max_top_score:.4f} < 0.020)"
+
+        decision = "OUT_OF_SCOPE" if is_out_of_scope else "PROCEED"
+        print(f"[DeepResearch] query='{question[:60]}' | classification={classification} | "
+              f"bm25_available={bm25_available} | max_top_score={max_top_score:.4f} | "
+              f"avg_top_score={avg_top_score:.4f} | decision={decision}")
+
+        if is_out_of_scope:
+            print(f"⚠️ [DeepResearch] Question out of syllabus: {rejection_reason}")
             return DeepResearchResult(
                 answer="⚠️ This question appears to be outside the scope of the IGNOU Media Literacy syllabus.\n\nI can help you with topics like:\n\n• Journalism (print, online, radio, television)\n• Digital Photography & Videography\n• Media Literacy & Media Ethics\n• Advertising & Public Relations\n• Social Media & Digital Communication\n• Visual Communication & Photojournalism\n• Communication Theory & Research Methods\n\nTry asking about one of these topics!",
                 sub_questions=sub_questions,
