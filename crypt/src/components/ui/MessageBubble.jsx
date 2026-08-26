@@ -186,11 +186,26 @@ export function MessageBubble({ message, isIncognito }) {
             await navigator.clipboard.writeText(message.content);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch (err) { }
+        } catch (err) {
+            try {
+                const textarea = document.createElement("textarea");
+                textarea.value = message.content;
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            } catch (e) {
+                console.error("Failed to copy text", e);
+            }
+        }
     };
 
     // Detect quoted message pattern
-    const quoteMatch = message.content.match(/^>\s*"([\s\S]+?)"\n\n([\s\S]*)$/);
+    const quoteMatch = message.content?.match ? message.content.match(/^>\s*"([\s\S]+?)"\n\n([\s\S]*)$/) : null;
 
     // USER MESSAGE
     if (isUser) {
@@ -221,17 +236,37 @@ export function MessageBubble({ message, isIncognito }) {
 
                     {/* Desktop: hover-controlled. Mobile: state-controlled. */}
                     <div className={cn(
-                        "overflow-hidden transition-all duration-200",
-                        // Desktop hover behavior (unchanged) — sm:group-hover: is the correct Tailwind order
-                        "sm:max-h-0 sm:opacity-0 sm:mt-0 sm:group-hover:max-h-6 sm:group-hover:opacity-100 sm:group-hover:mt-1",
+                        "overflow-hidden transition-all duration-200 flex items-center justify-between gap-3",
+                        // Desktop hover behavior — sm:group-hover: is the correct Tailwind order
+                        "sm:max-h-0 sm:opacity-0 sm:mt-0 sm:group-hover:max-h-8 sm:group-hover:opacity-100 sm:group-hover:mt-1.5",
                         // Mobile: driven by showUserTimestamp state
                         showUserTimestamp
-                            ? "max-sm:max-h-6 max-sm:opacity-100 max-sm:mt-1"
+                            ? "max-sm:max-h-8 max-sm:opacity-100 max-sm:mt-1.5"
                             : "max-sm:max-h-0 max-sm:opacity-0 max-sm:mt-0"
                     )}>
-                        <span className="text-[10px] opacity-60 text-white/80">
+                        <span className="text-[10px] opacity-70 text-white/80 select-none">
                             {message.timestamp}
                         </span>
+
+                        <button
+                            type="button"
+                            onClick={handleCopy}
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-white/80 hover:text-white hover:bg-white/20 transition-all active:scale-95 cursor-pointer select-none"
+                            title="Copy message"
+                            aria-label="Copy message"
+                        >
+                            {copied ? (
+                                <>
+                                    <MdCheck size={13} className="text-white" />
+                                    <span className="text-[10px] font-medium">Copied</span>
+                                </>
+                            ) : (
+                                <>
+                                    <MdContentCopy size={13} />
+                                    <span className="text-[10px] font-medium">Copy</span>
+                                </>
+                            )}
+                        </button>
                     </div>
                 </div>
             </motion.div>

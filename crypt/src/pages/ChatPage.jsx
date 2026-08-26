@@ -26,8 +26,7 @@ import { useUI } from "../context/UIContext";
 import { VoiceOverlay } from "../components/ui/VoiceOverlay";
 import { DeepResearchLogo } from "../components/ui/DeepResearchLogo";
 import GlobeChatIcon from "../components/icons/GlobeChatIcon";
-import { Logo } from "../components/ui/Logo";
-import { Sidebar } from "../components/layout/Sidebar";
+
 import {
     ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Layout, Lightbulb,
     MessageSquare, MoreHorizontal, Settings, Share, CheckCircle, Map,
@@ -35,7 +34,7 @@ import {
     CornerDownRight, Sparkles, Zap, ChevronDown, Star, Menu,
     MoreVertical, MessageSquareDashed, Check, Globe
 } from "lucide-react";
-import { MdSearch } from "react-icons/md";
+
 
 import chatbotApi from "../lib/chatbotApi";
 import api from "../lib/api";
@@ -45,7 +44,8 @@ const DISAPPEARING_CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 const MODELS = [
     { id: "Gemini 2.5 Flash", name: "DigiLab", description: "AI Assistant for IGNOU Media SLMs", icon: Sparkles, color: "text-blue-500" },
     { id: "Gemini 2.5 Pro", name: "DigiLab 2.0", description: "AI Assistant for MIL OERs", icon: Zap, color: "text-purple-500" },
-    { id: "DigiLab Pro", name: "DigiLab Pro", description: "AI Assistant combining IGNOU Media SLMs & MIL OERs", icon: Star, color: "text-amber-500" }
+    { id: "DigiLab Pro", name: "DigiLab Pro", description: "AI Assistant combining IGNOU Media SLMs & MIL OERs", icon: Star, color: "text-amber-500" },
+    { id: "Gemini 2.5 Flash", name: "DigiLab Plus", description: "AI Assistant for Deep learning", icon: Globe, color: "text-emerald-500" }
 ];
 
 
@@ -731,8 +731,9 @@ export function ChatPage() {
         try { return sessionStorage.getItem('isIncognito') === 'true'; } catch { return false; }
     });
     const [selectedModel, setSelectedModel] = React.useState(() => {
-        const saved = localStorage.getItem("selectedModelId");
-        return MODELS.find(m => m.id === saved) || MODELS[0];
+        const savedName = localStorage.getItem("selectedModelName");
+        const savedId = localStorage.getItem("selectedModelId");
+        return MODELS.find(m => (savedName && m.name === savedName) || (!savedName && m.id === savedId)) || MODELS[0];
     });
     const [isModelDropdownOpen, setIsModelDropdownOpen] = React.useState(false);
     const [isModeDropdownOpen, setIsModeDropdownOpen] = React.useState(false);
@@ -756,6 +757,7 @@ export function ChatPage() {
 
     React.useEffect(() => {
         localStorage.setItem("selectedModelId", selectedModel.id);
+        localStorage.setItem("selectedModelName", selectedModel.name);
     }, [selectedModel]);
 
     const messagesEndRef = React.useRef(null);
@@ -2601,14 +2603,14 @@ export function ChatPage() {
                                                 <div className="space-y-1">
                                                     {MODELS.map((model) => (
                                                         <button
-                                                            key={model.id}
+                                                            key={model.name}
                                                             onClick={() => {
                                                                 setSelectedModel(model);
                                                                 setIsModelDropdownOpen(false);
                                                             }}
                                                             className={cn(
                                                                 "w-full flex items-start gap-3 max-sm:p-4 sm:p-3 rounded-xl transition-all text-left",
-                                                                selectedModel.id === model.id
+                                                                selectedModel.name === model.name
                                                                     ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
                                                                     : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
                                                             )}
@@ -2617,7 +2619,7 @@ export function ChatPage() {
                                                                 <model.icon className="max-sm:h-5 max-sm:w-5 sm:h-4 sm:w-4" />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <p className={cn("max-sm:text-sm sm:text-xs font-bold leading-none mb-1 truncate", selectedModel.id === model.id ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
+                                                                <p className={cn("max-sm:text-sm sm:text-xs font-bold leading-none mb-1 truncate", selectedModel.name === model.name ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
                                                                     {model.name}
                                                                 </p>
                                                                 <p className="max-sm:text-xs sm:text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
@@ -3168,7 +3170,7 @@ export function ChatPage() {
                                                                             "flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150",
                                                                             selectedLanguage === lang.code
                                                                                 ? "bg-accent text-white shadow-sm"
-                                                                                : "text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/6 hover:text-accent dark:hover:text-white"
+                                                                                : "text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-accent dark:hover:text-white"
                                                                         )}
                                                                     >
                                                                         <span className="text-base leading-none w-5 text-center shrink-0">{lang.flag}</span>
@@ -3500,7 +3502,7 @@ export function ChatPage() {
                                                                                 "flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150",
                                                                                 selectedLanguage === lang.code
                                                                                     ? "bg-accent text-white shadow-sm"
-                                                                                    : "text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/6 hover:text-accent dark:hover:text-white"
+                                                                                    : "text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-accent dark:hover:text-white"
                                                                             )}
                                                                         >
                                                                             <span className="text-base leading-none w-5 text-center shrink-0">{lang.flag}</span>
@@ -3562,7 +3564,7 @@ export function ChatPage() {
                                                                                             "flex items-center gap-4 w-full px-4 py-3.5 rounded-xl text-[14px] font-medium transition-all",
                                                                                             selectedLanguage === lang.code
                                                                                                 ? "bg-accent text-white shadow-md"
-                                                                                                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-accent dark:hover:text-white active:bg-slate-100 dark:active:bg-white/10"
+                                                                                                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-white/10 hover:text-accent dark:hover:text-white active:bg-slate-100 dark:active:bg-white/10"
                                                                                         )}
                                                                                     >
                                                                                         <span className="text-xl">{lang.flag}</span>
