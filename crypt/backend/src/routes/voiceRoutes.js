@@ -40,6 +40,9 @@ router.post('/text-to-text', classifyUser, voiceController.textToText);
 // @route   POST /api/voice/chat
 router.post('/chat', classifyUser, voiceController.chat);
 
+// @route   POST /api/voice/chat/stream
+router.post('/chat/stream', classifyUser, voiceController.chatStream);
+
 // @route   POST /api/voice/chat/simple
 router.post('/chat/simple', classifyUser, voiceController.chatSimple);
 

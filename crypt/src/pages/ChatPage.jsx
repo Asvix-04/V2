@@ -48,6 +48,11 @@ const MODELS = [
     { id: "Gemini 2.5 Flash", name: "DigiLab Plus", description: "AI Assistant for Deep learning", icon: Globe, color: "text-emerald-500" }
 ];
 
+// Models whose backend id resolves to a Gemini model (see MODEL_ALIASES in
+// api_server.py) — streaming_llm.py only knows how to stream Gemini so far,
+// not DeepSeek, so this set gates which selections use /chat/stream.
+const STREAMING_ELIGIBLE_MODEL_IDS = new Set(MODELS.map((m) => m.id));
+
 
 
 const INITIAL_MESSAGE = {
@@ -1978,8 +1983,49 @@ export function ChatPage() {
         setMessages((prev) => [...prev, userMsg]);
         setIsLoading(true);
 
+        // Streaming covers every Gemini-backed model (DigiLab, DigiLab 2.0,
+        // DigiLab Pro — and DigiLab Plus, which currently sends the same id
+        // as DigiLab, see MODEL_ALIASES in api_server.py). DeepSeek isn't in
+        // this set since streaming_llm.py doesn't support that provider yet;
+        // the backend also rejects it as a backstop if it ever gets here.
+        const useStreaming = STREAMING_ELIGIBLE_MODEL_IDS.has(selectedModel.id);
+        let streamingMsgIndex = -1;
+
         try {
-            const response = await chatbotApi.sendMessage(apiPayload, selectedModel.id);
+            let response;
+
+            if (useStreaming) {
+                setMessages((prev) => {
+                    const next = [...prev, {
+                        role: "assistant",
+                        content: "",
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        modelName: selectedModel.name,
+                    }];
+                    streamingMsgIndex = next.length - 1;
+                    return next;
+                });
+
+                const result = await chatbotApi.sendMessageStream(apiPayload, {
+                    useHistory: true,
+                    onToken: (_token, fullText) => {
+                        setMessages((prev) => {
+                            if (streamingMsgIndex < 0 || streamingMsgIndex >= prev.length) return prev;
+                            const next = [...prev];
+                            next[streamingMsgIndex] = { ...next[streamingMsgIndex], content: fullText };
+                            return next;
+                        });
+                    },
+                });
+                // Streamed answers don't carry reference_links/follow_up_questions
+                // (the backend generator only emits answer text) — the finalized
+                // message below just won't have them, same as any other message
+                // type in this app that doesn't set them.
+                response = { answer: result.answer, guestQuota: result.guestQuota, reference_links: undefined };
+            } else {
+                response = await chatbotApi.sendMessage(apiPayload, selectedModel.id);
+            }
+
             if (isGuest && response?.guestQuota) {
                 updateGuestQuota(response.guestQuota);
             }

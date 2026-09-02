@@ -184,6 +184,72 @@ exports.chat = async (req, res) => {
     }
 };
 
+// @desc    Streaming Chat Proxy (Server-Sent Events) — default model only for now
+// @route   POST /api/voice/chat/stream
+exports.chatStream = async (req, res) => {
+    const start = Date.now();
+    const userId = getUserId(req);
+    let reservedQuotaObj = null;
+    let reserved = false;
+
+    if (req.isGuest) {
+        try {
+            reservedQuotaObj = await reserveQuota(req.guestId);
+            reserved = true;
+        } catch (err) {
+            if (err.message === 'limit_exceeded') {
+                return res.status(429).json({ message: 'Guest message limit exceeded. Please log in.', detail: 'guest_quota_exceeded' });
+            }
+            return res.status(503).json({ message: 'Service unavailable' });
+        }
+    }
+
+    try {
+        const upstream = await axios.post(
+            `${PYTHON_BACKEND_URL}/chat/stream`,
+            { ...req.body, user_id: userId },
+            { headers: pythonProxyHeaders(req), responseType: 'stream' }
+        );
+
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no', // disable nginx/proxy buffering so chunks flush immediately
+        });
+
+        // Same guest-quota info the non-streaming routes attach to their JSON
+        // body, sent here as the first SSE event since there's no single
+        // response object to attach it to.
+        if (reservedQuotaObj) {
+            res.write(`data: ${JSON.stringify({ guestQuota: reservedQuotaObj })}\n\n`);
+        }
+
+        upstream.data.pipe(res);
+
+        upstream.data.on('error', (err) => {
+            console.error('Chat Stream Proxy Error (mid-stream):', err.message);
+            try { res.end(); } catch { /* connection already gone */ }
+        });
+
+        req.on('close', () => {
+            // Client navigated away / closed the tab — stop reading from Python.
+            upstream.data.destroy();
+        });
+    } catch (error) {
+        if (reserved) {
+            await compensateQuota(req.guestId);
+        }
+        console.error('Chat Stream Proxy Error:', error.response?.data || error.message);
+        _onProxyError('/chat', error, start, userId);
+        if (!res.headersSent) {
+            res.status(500).json({ message: 'Chat failed', detail: error.response?.data?.detail || error.message });
+        } else {
+            res.end();
+        }
+    }
+};
+
 // @desc    Simple Chat Proxy
 // @route   POST /api/voice/chat/simple
 exports.chatSimple = async (req, res) => {

@@ -12,6 +12,7 @@ from utils import MAX_AUDIO_BYTES, RateLimiter, s2s_limiter
 import base64
 import binascii
 import hashlib
+import json
 import logging
 import re
 import sys
@@ -23,6 +24,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import uvicorn
@@ -1113,6 +1115,87 @@ async def chat(request: QuestionRequest, response: Response, raw_request: Reques
             user_id=request.user_id or "guest"
         )
         raise _fail(e, "/chat", message="Error processing question")
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: QuestionRequest, raw_request: Request):
+    """
+    SSE version of /chat — streams the answer token by token as it's
+    generated instead of the caller waiting for the full answer.
+
+    Streaming supports every Gemini-backed model (DigiLab, DigiLab 2.0,
+    DigiLab Pro, DigiLab Plus) the same way /chat does — apply_requested_model
+    switches the shared retriever/Pinecone index to match, and
+    ask_question_stream follows self.model_config for which Gemini model id
+    to actually stream from. DeepSeek is a different provider/SDK entirely
+    (not just a different model id) and doesn't have a streaming
+    implementation yet, so it's explicitly rejected here rather than
+    silently answering from the wrong model — the frontend is expected to
+    fall back to non-streaming /chat for it, but this is the backstop.
+    Everything else (retrieval, validation, safety, session history, metrics)
+    matches /chat exactly, so a streamed turn is indistinguishable from a
+    regular one once it's done.
+    """
+    _enforce_rate_limit(chat_limiter, raw_request, "Too many requests. Please slow down.")
+
+    if chatbot is None:
+        raise HTTPException(status_code=503, detail="Chatbot not initialized")
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    session_id = _resolve_session_id(raw_request)
+    try:
+        apply_requested_model(request.model)
+    except Exception as e:
+        # Mirrors /chat's handling of a switch_model() failure (e.g. a
+        # provider client that can't construct) — a clean error instead of
+        # an unhandled 500, since this runs before the SSE stream starts.
+        raise _fail(e, "/chat/stream", message="Failed to switch model")
+
+    current_config = getattr(chatbot, "model_config", None)
+    if current_config is None or current_config.api != "gemini":
+        raise HTTPException(status_code=400, detail="Streaming is not supported for this model yet")
+
+    use_history = request.use_history if request.use_history is not None else True
+    question = request.question.strip()
+    user_id = request.user_id or "guest"
+    start_time = time.perf_counter()
+
+    def event_stream():
+        had_error = False
+        try:
+            for token in chatbot.ask_question_stream(
+                question=question,
+                use_history=use_history,
+                session_id=session_id,
+            ):
+                yield f"data: {json.dumps({'token': token})}\n\n"
+        except Exception as e:
+            had_error = True
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            # Same "/chat" endpoint tag as the non-streaming route so the
+            # dashboard's total_questions counts a streamed answer the same
+            # as a regular one.
+            log_request_metrics(
+                endpoint="/chat",
+                status_code=500 if had_error else 200,
+                response_time_ms=(time.perf_counter() - start_time) * 1000,
+                model=request.model or "1",
+                user_id=user_id,
+            )
+            yield f"data: {json.dumps({'done': True})}\n\n"
+
+    stream_response = StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable nginx/proxy buffering so chunks flush immediately
+        },
+    )
+    _set_session_cookie(stream_response, session_id)
+    return stream_response
 
 
 @app.get("/metrics/summary")

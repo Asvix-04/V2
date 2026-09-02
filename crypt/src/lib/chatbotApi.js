@@ -173,6 +173,36 @@ if (typeof window !== 'undefined') {
     _flushPending();
 }
 
+// Streaming (fetch, not axios — axios's browser adapter buffers the whole
+// response before resolving, which defeats the point) needs its own copy of
+// the same auth/guest identity logic chatbotClient's request interceptor
+// applies, since fetch doesn't go through axios interceptors.
+function _streamAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const userStr = localStorage.getItem('user');
+    let isGuest = true;
+    if (userStr) {
+        try {
+            const user = JSON.parse(userStr);
+            if (user && user.token) {
+                headers.Authorization = `Bearer ${user.token}`;
+                isGuest = false;
+            }
+        } catch (e) {
+            console.error('Error parsing user from localStorage', e);
+        }
+    }
+    if (isGuest) {
+        let guestId = localStorage.getItem('digilab-guest-id');
+        if (!guestId) {
+            guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem('digilab-guest-id', guestId);
+        }
+        headers['X-Guest-ID'] = guestId;
+    }
+    return headers;
+}
+
 // ── Public API ────────────────────────────────────────────────────
 
 export const chatbotApi = {
@@ -198,6 +228,79 @@ export const chatbotApi = {
             console.error('Chatbot sendMessage failed:', error);
             throw error;
         }
+    },
+
+    // Streaming version of sendMessage — backend currently only supports
+    // this for the default model (see api_server.py's /chat/stream).
+    // Calls onToken(token, fullTextSoFar) as each chunk arrives and resolves
+    // with { answer, guestQuota } once the stream ends. Note: unlike
+    // sendMessage, the streamed answer doesn't carry reference_links or
+    // follow_up_questions — the backend generator only emits answer text.
+    sendMessageStream: async (question, { useHistory = true, onToken } = {}) => {
+        const startedAt = Date.now();
+        let res;
+        try {
+            res = await fetch(`${CHATBOT_BASE_URL}/chat/stream`, {
+                method: 'POST',
+                headers: _streamAuthHeaders(),
+                body: JSON.stringify({ question, use_history: useHistory }),
+            });
+        } catch (error) {
+            _reportError('/chat/stream', error, startedAt);
+            throw error;
+        }
+
+        if (!res.ok || !res.body) {
+            const error = new Error(`Stream request failed: ${res.status}`);
+            error.response = { status: res.status };
+            _reportError('/chat/stream', error, startedAt);
+            throw error;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let answer = '';
+        let guestQuota = null;
+        let streamError = null;
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE events are separated by a blank line.
+            let sepIndex;
+            while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+                const rawEvent = buffer.slice(0, sepIndex);
+                buffer = buffer.slice(sepIndex + 2);
+
+                const line = rawEvent.startsWith('data:') ? rawEvent.slice(5).trim() : rawEvent.trim();
+                if (!line) continue;
+
+                let payload;
+                try {
+                    payload = JSON.parse(line);
+                } catch {
+                    continue; // malformed chunk — skip it rather than crash the whole stream
+                }
+
+                if (payload.token) {
+                    answer += payload.token;
+                    if (onToken) onToken(payload.token, answer);
+                } else if (payload.guestQuota) {
+                    guestQuota = payload.guestQuota;
+                } else if (payload.error) {
+                    streamError = payload.error;
+                }
+            }
+        }
+
+        if (streamError && !answer) {
+            throw new Error(streamError);
+        }
+
+        return { answer, guestQuota };
     },
 
     sendSimpleMessage: async (question, useHistory = true) => {

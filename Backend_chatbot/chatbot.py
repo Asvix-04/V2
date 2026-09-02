@@ -1612,13 +1612,20 @@ class PDFChatbot:
         self,
         question: str,
         use_history: bool = True,
+        session_id: str = None,
     ) -> Generator[str, None, None]:
         """
         Streaming version of ask_question.
         Yields answer tokens one by one.
         All safety, classification, retrieval, validation logic same as ask_question.
+
+        session_id: same per-caller history isolation as ask_question — loads
+        this session's history onto the shared instance before answering and
+        saves the real (non-placeholder) answer back to Redis afterward, so
+        streamed turns are indistinguishable from non-streamed ones in history.
         """
-        from streaming_llm import StreamingLLM
+        if session_id and use_history:
+            self._sync_session_history(session_id)
 
         # ── Safety gates ──
         if self._contains_profanity(question):
@@ -1701,20 +1708,33 @@ class PDFChatbot:
         # ── Stream answer ──
         if greeting_part:
             yield greeting_part + "\n\n"
+            full_answer_parts = [greeting_part + "\n\n"]
+        else:
+            full_answer_parts = []
 
         llm = self.streaming_llm
-        yield from llm.stream_response(
+        # Follow whichever model is currently selected (switch_model/
+        # apply_requested_model already pointed self.retriever at the right
+        # index above) instead of always answering with the default model.
+        for chunk in llm.stream_response(
             query=question,
             context=retrieved_context.combined_context,
-        )
+            model_name=self.model_config.id if self.model_config else None,
+            max_output_tokens=self.model_config.default_max_tokens if self.model_config else None,
+        ):
+            full_answer_parts.append(chunk)
+            yield chunk
 
-        # ── Record turn (full answer not available token by token, store query only) ──
+        # ── Record turn with the REAL assembled answer (not a placeholder),
+        # same as ask_question, so streamed turns look identical in history ──
         self._record_turn(
             question=question,
-            answer="[streamed]",
+            answer="".join(full_answer_parts),
             use_history=use_history,
             sources=[r.metadata for r in retrieved_context.vector_results],
         )
+        if session_id and use_history:
+            redis_client.save_session_history(session_id, self.conversation_history)
 
     # ─────────────────────────────────────────────────────────
     # Validation
