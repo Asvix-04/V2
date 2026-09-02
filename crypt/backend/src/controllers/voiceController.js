@@ -118,12 +118,15 @@ exports.speechToSpeech = async (req, res) => {
         // Call specialized Python endpoint.
         // response_language_code is intentionally NOT defaulted to 'en-IN' here.
         // When null/undefined, the Python backend uses the STT-detected language,
-        // so the AI responds in whatever language the user spoke.
+        // so the AI responds in whatever language the user spoke. (This used to
+        // default to 'en-IN' below, contradicting this comment — VoiceOverlay
+        // never passes a response language, so every voice reply was silently
+        // forced to English regardless of what was actually spoken.)
         const response = await axios.post(`${PYTHON_BACKEND_URL}/speech-to-speech`, {
             audio_base64: audio_base64,
             mime_type: mime_type || 'audio/wav',
             use_history: use_history !== false,
-            response_language_code: response_language_code || 'en-IN',
+            response_language_code: response_language_code || null,
             user_id: userId
         }, { headers: pythonProxyHeaders(req) });
 
@@ -348,7 +351,12 @@ exports.textToText = async (req, res) => {
     }
 
     try {
-        const { question, languageCode, useHistory } = req.body;
+        const { question } = req.body;
+        // Frontend sends snake_case (chatbotApi.js's textToText/handleTranslate
+        // build language_code/use_history), so those were the actual keys —
+        // accepting camelCase too is just defensive, not the real fix.
+        const languageCode = req.body.language_code ?? req.body.languageCode;
+        const useHistory = req.body.use_history ?? req.body.useHistory;
 
         if (!question) {
             if (reserved) await compensateQuota(req.guestId);
@@ -359,7 +367,11 @@ exports.textToText = async (req, res) => {
 
         const response = await axios.post(`${PYTHON_BACKEND_URL}/text-to-text`, {
             question: question,
-            language_code: languageCode || 'en-IN',
+            // Not defaulted to 'en-IN' — same reasoning as speechToSpeech below:
+            // null/undefined lets Python detect the question's own language and
+            // translate the answer back into it, instead of always answering
+            // in English when no language was explicitly picked.
+            language_code: languageCode || null,
             use_history: useHistory !== false,
             user_id: userId
         }, { headers: pythonProxyHeaders(req) });

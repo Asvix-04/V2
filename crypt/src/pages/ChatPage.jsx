@@ -2278,6 +2278,25 @@ export function ChatPage() {
         }
     };
 
+    // Matches script ranges for languages this app's dropdown supports —
+    // Devanagari (Hindi/Marathi), Bengali, Gurmukhi (Punjabi), Gujarati,
+    // Odia, Tamil, Telugu, Kannada, Malayalam, Arabic/Urdu. Latin-script
+    // input (English, and Hinglish written in Latin letters) doesn't match,
+    // so it still goes through the plain /chat path as before.
+    const NON_LATIN_SCRIPT_RE = /[ऀ-ॿঀ-৿਀-੿઀-૿଀-୿஀-௿ఀ-౿ಀ-೿ഀ-ൿ؀-ۿ]/;
+
+    // Single entry point for both the language dropdown ("selectedLanguage"
+    // set) AND typing in a non-Latin script with no dropdown selection —
+    // previously only the dropdown could reach handleTranslate, so typing
+    // Hindi with the dropdown left on "English" silently skipped translation
+    // entirely and went to the plain (English-only) /chat path.
+    const handleUserSend = (text) => {
+        if (selectedLanguage || NON_LATIN_SCRIPT_RE.test(text || "")) {
+            return handleTranslate(text);
+        }
+        return handleSend(text);
+    };
+
     const handleMarkComplete = async () => {
 
         if (!roadmapId || !topicId) return;
@@ -2853,7 +2872,7 @@ export function ChatPage() {
                                                 unsentTextRef.current = text;
                                                 scheduleAutoSave();
                                             }}
-                                            onSend={selectedLanguage ? handleTranslate : handleSend}
+                                            onSend={handleUserSend}
 
                                             placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
 
@@ -2986,7 +3005,7 @@ export function ChatPage() {
                                                     unsentTextRef.current = text;
                                                     scheduleAutoSave();
                                                 }}
-                                                onSend={selectedLanguage ? handleTranslate : handleSend}
+                                                onSend={handleUserSend}
 
                                                 placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
 
@@ -3166,7 +3185,7 @@ export function ChatPage() {
                                                 unsentTextRef.current = text;
                                                 scheduleAutoSave();
                                             }}
-                                            onSend={selectedLanguage ? handleTranslate : handleSend}
+                                            onSend={handleUserSend}
 
                                             placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
 
@@ -3502,7 +3521,7 @@ export function ChatPage() {
                                                     unsentTextRef.current = text;
                                                     scheduleAutoSave();
                                                 }}
-                                                onSend={selectedLanguage ? handleTranslate : handleSend}
+                                                onSend={handleUserSend}
                                                 placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : "Ask anything...") : ""}
                                                 disabled={isLoading || !isConnected}
                                                 onVoiceToggle={() => setIsVoiceMode(true)}
