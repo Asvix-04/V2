@@ -2017,11 +2017,15 @@ export function ChatPage() {
                         });
                     },
                 });
-                // Streamed answers don't carry reference_links/follow_up_questions
-                // (the backend generator only emits answer text) — the finalized
-                // message below just won't have them, same as any other message
-                // type in this app that doesn't set them.
-                response = { answer: result.answer, guestQuota: result.guestQuota, reference_links: undefined };
+                // Reference links / follow-ups arrive as a trailing SSE event
+                // after the answer text finishes streaming (see chatbot.py's
+                // ask_question_stream) — sendMessageStream already parsed it.
+                response = {
+                    answer: result.answer,
+                    guestQuota: result.guestQuota,
+                    reference_links: result.referenceLinks,
+                    follow_up_questions: result.followUpQuestions,
+                };
             } else {
                 response = await chatbotApi.sendMessage(apiPayload, selectedModel.id);
             }

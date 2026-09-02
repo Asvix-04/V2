@@ -263,6 +263,8 @@ export const chatbotApi = {
         let answer = '';
         let guestQuota = null;
         let streamError = null;
+        let referenceLinks = [];
+        let followUpQuestions = null;
 
         while (true) {
             const { value, done } = await reader.read();
@@ -292,6 +294,11 @@ export const chatbotApi = {
                     guestQuota = payload.guestQuota;
                 } else if (payload.error) {
                     streamError = payload.error;
+                } else if (payload.extras) {
+                    // Trailing event sent once the answer text is done —
+                    // see chatbot.py's ask_question_stream.
+                    referenceLinks = payload.extras.reference_links || [];
+                    followUpQuestions = payload.extras.follow_up_questions || null;
                 }
             }
         }
@@ -300,7 +307,7 @@ export const chatbotApi = {
             throw new Error(streamError);
         }
 
-        return { answer, guestQuota };
+        return { answer, guestQuota, referenceLinks, followUpQuestions };
     },
 
     sendSimpleMessage: async (question, useHistory = true) => {

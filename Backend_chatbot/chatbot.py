@@ -1727,14 +1727,58 @@ class PDFChatbot:
 
         # ── Record turn with the REAL assembled answer (not a placeholder),
         # same as ask_question, so streamed turns look identical in history ──
+        full_answer = "".join(full_answer_parts)
+        source_meta = [r.metadata for r in retrieved_context.vector_results]
         self._record_turn(
             question=question,
-            answer="".join(full_answer_parts),
+            answer=full_answer,
             use_history=use_history,
-            sources=[r.metadata for r in retrieved_context.vector_results],
+            sources=source_meta,
         )
         if session_id and use_history:
             redis_client.save_session_history(session_id, self.conversation_history)
+
+        # ── Reference links + follow-up questions, same as ask_question /
+        # ask_question_with_follow_ups. Both are cheap (no LLM call — pattern-
+        # based extraction and a scored lookup), so computing them after the
+        # stream ends adds negligible delay. Sent as one trailing dict item
+        # (the only non-string thing this generator yields) so the caller can
+        # tell it apart from a text token. ──
+        ref_links = []
+        if source_meta and full_answer.strip():
+            raw_links = find_reference_links(
+                sources=source_meta,
+                answer=full_answer,
+                min_score=0.4,
+                max_links=5
+            )
+            ref_links = [
+                {
+                    "title": link.get("title", ""),
+                    "url": link.get("url", ""),
+                    "relevance_score": link.get("relevance_score", 0.0)
+                }
+                for link in raw_links
+            ]
+
+        follow_up_questions = self.generate_follow_up_questions(
+            assistant_response=full_answer,
+            user_question=question,
+            include_follow_up=True
+        ) if full_answer.strip() else {
+            "type_2_context_aware": [], "follow_up_items": [],
+            "follow_up_markdown_links": [], "status": "skipped"
+        }
+        if follow_up_questions.get("type_2_context_aware"):
+            follow_up_questions["follow_up_items"] = [
+                {"question": q, "href": f"#ask={quote(q)}", "query": q, "type": "type_2"}
+                for q in follow_up_questions["type_2_context_aware"]
+            ]
+            follow_up_questions["follow_up_markdown_links"] = [
+                f"[{q}](#ask={quote(q)})" for q in follow_up_questions["type_2_context_aware"]
+            ]
+
+        yield {"reference_links": ref_links, "follow_up_questions": follow_up_questions}
 
     # ─────────────────────────────────────────────────────────
     # Validation

@@ -1164,12 +1164,18 @@ async def chat_stream(request: QuestionRequest, raw_request: Request):
     def event_stream():
         had_error = False
         try:
-            for token in chatbot.ask_question_stream(
+            for item in chatbot.ask_question_stream(
                 question=question,
                 use_history=use_history,
                 session_id=session_id,
             ):
-                yield f"data: {json.dumps({'token': token})}\n\n"
+                # ask_question_stream yields str tokens throughout, then one
+                # trailing dict with reference_links/follow_up_questions —
+                # the only non-string item it produces.
+                if isinstance(item, dict):
+                    yield f"data: {json.dumps({'extras': item})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'token': item})}\n\n"
         except Exception as e:
             had_error = True
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
