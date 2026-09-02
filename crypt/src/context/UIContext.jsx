@@ -12,10 +12,16 @@ export function UIProvider({ children }) {
         const root = window.document.documentElement;
         if (theme === "dark") {
             root.classList.add("dark");
+            root.style.backgroundColor = "#020203";
+            root.style.colorScheme = "dark";
         } else {
             root.classList.remove("dark");
+            root.style.backgroundColor = "#F8F9FF";
+            root.style.colorScheme = "light";
         }
-        localStorage.setItem("theme", theme);
+        try {
+            localStorage.setItem("theme", theme);
+        } catch (e) {}
     }, [theme]);
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 1024);

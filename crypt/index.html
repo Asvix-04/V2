@@ -1,10 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c67f2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20M12 2a14.5 14.5 0 0 1 0 20'/%3E%3Cpath d='M2 12h20'/%3E%3C/svg%3E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DigiLab - AI Learning Assistant</title>
+    <style>
+      html, body {
+        background-color: #020203;
+        color-scheme: dark;
+      }
+      html:not(.dark), html:not(.dark) body {
+        background-color: #F8F9FF !important;
+        color-scheme: light;
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('theme');
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.backgroundColor = '#F8F9FF';
+            document.documentElement.style.colorScheme = 'light';
+          } else {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.backgroundColor = '#020203';
+            document.documentElement.style.colorScheme = 'dark';
+          }
+        } catch (e) {
+          // Preserve default dark mode if storage access is unavailable
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

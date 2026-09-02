@@ -25,6 +25,7 @@ import { useUI } from "../context/UIContext";
 
 import { VoiceOverlay } from "../components/ui/VoiceOverlay";
 import { DeepResearchLogo } from "../components/ui/DeepResearchLogo";
+import { Logo } from "../components/ui/Logo";
 import GlobeChatIcon from "../components/icons/GlobeChatIcon";
 
 import {
@@ -54,6 +55,14 @@ const MODELS = [
 const STREAMING_ELIGIBLE_MODEL_IDS = new Set(MODELS.map((m) => m.id));
 
 
+
+const PROGRESS_STAGES = [
+    "Thinking",
+    "Understanding your question",
+    "Searching relevant course material",
+    "Analyzing the information",
+    "Preparing your response",
+];
 
 const INITIAL_MESSAGE = {
 
@@ -692,6 +701,27 @@ export function ChatPage() {
 
     const [isLoading, setIsLoading] = React.useState(false);
 
+    const [progressIndex, setProgressIndex] = React.useState(0);
+
+    React.useEffect(() => {
+        if (!isLoading) {
+            setProgressIndex(0);
+            return;
+        }
+
+        setProgressIndex(0);
+        const timeouts = [
+            setTimeout(() => setProgressIndex(1), 2000),
+            setTimeout(() => setProgressIndex(2), 5000),
+            setTimeout(() => setProgressIndex(3), 10000),
+            setTimeout(() => setProgressIndex(4), 16000),
+        ];
+
+        return () => {
+            timeouts.forEach(t => clearTimeout(t));
+        };
+    }, [isLoading]);
+
     const [error, setError] = React.useState(null);
 
     const [isConnected, setIsConnected] = React.useState(false);
@@ -735,6 +765,7 @@ export function ChatPage() {
     const [isIncognito, setIsIncognito] = React.useState(() => {
         try { return sessionStorage.getItem('isIncognito') === 'true'; } catch { return false; }
     });
+    const [isIncognitoLogoHovered, setIsIncognitoLogoHovered] = React.useState(false);
     const [selectedModel, setSelectedModel] = React.useState(() => {
         const savedName = localStorage.getItem("selectedModelName");
         const savedId = localStorage.getItem("selectedModelId");
@@ -2627,82 +2658,106 @@ export function ChatPage() {
                         backdropFilter: 'blur(12px)',
                     } : undefined}>
 
-                    {/* LEFT column — Model Selector (and menu toggle) */}
+                    {/* LEFT column — Model Selector (or Incognito Exit Logo) */}
                     <div className="flex items-center gap-2 min-w-0">
-                        {!isSidebarOpen && !isIncognito && (
+                        {isIncognito ? (
                             <button
-                                onClick={() => setIsSidebarOpen(true)}
-                                aria-label="Open sidebar"
+                                onClick={handleIncognitoToggle}
+                                onMouseEnter={() => setIsIncognitoLogoHovered(true)}
+                                onMouseLeave={() => setIsIncognitoLogoHovered(false)}
                                 className={cn(
-                                    "flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl transition-all lg:hidden",
-                                    isIncognito
-                                        ? "text-zinc-400 hover:text-white hover:bg-white/5"
-                                        : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                    "relative h-10 w-10 transition-all duration-200 rounded-xl flex items-center justify-center shrink-0 cursor-pointer overflow-hidden",
+                                    "text-zinc-400 hover:text-white hover:bg-white/10"
                                 )}
+                                title="Exit incognito"
+                                aria-label="Exit incognito"
                             >
-                                <Menu className="h-5 w-5" />
+                                <div className="relative w-5 h-5 flex items-center justify-center">
+                                    <Logo
+                                        className={cn(
+                                            "absolute w-5 h-5 transition-all duration-300 ease-in-out text-[#5c67f2]",
+                                            isIncognitoLogoHovered ? "opacity-0 scale-75 rotate-90" : "opacity-100 scale-100 rotate-0"
+                                        )}
+                                    />
+                                    <ArrowLeft
+                                        className={cn(
+                                            "absolute w-5 h-5 text-accent transition-all duration-300 ease-in-out",
+                                            isIncognitoLogoHovered ? "opacity-100 scale-100 translate-x-0" : "opacity-0 scale-75 -translate-x-2"
+                                        )}
+                                    />
+                                </div>
                             </button>
-                        )}
+                        ) : (
+                            <>
+                                {!isSidebarOpen && (
+                                    <button
+                                        onClick={() => setIsSidebarOpen(true)}
+                                        aria-label="Open sidebar"
+                                        className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl transition-all lg:hidden text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-white/5"
+                                    >
+                                        <Menu className="h-5 w-5" />
+                                    </button>
+                                )}
 
-                        {isIncognito ? null : (
-                            <div className="relative min-w-0">
-                                <button
-                                    onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                                    className="flex items-center gap-1 sm:gap-2 px-1 sm:px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group max-w-full"
-                                >
-                                    <span className="text-base sm:text-lg font-bold tracking-tight truncate block">
-                                        {selectedModel.name}
-                                    </span>
-                                    <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
-                                </button>
+                                <div className="relative min-w-0">
+                                    <button
+                                        onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                                        className="flex items-center gap-1 sm:gap-2 px-1 sm:px-3 py-1.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-zinc-700 dark:text-zinc-200 group max-w-full"
+                                    >
+                                        <span className="text-base sm:text-lg font-bold tracking-tight truncate block">
+                                            {selectedModel.name}
+                                        </span>
+                                        <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-transform", isModelDropdownOpen && "rotate-180")} />
+                                    </button>
 
-                                <AnimatePresence>
-                                    {isModelDropdownOpen && (
-                                        <>
-                                            <div
-                                                className="fixed inset-0 z-10"
-                                                onClick={() => setIsModelDropdownOpen(false)}
-                                            />
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                className="max-sm:fixed max-sm:top-[60px] max-sm:left-3 max-sm:right-3 max-sm:w-auto sm:absolute sm:top-full sm:left-0 sm:mt-2 sm:w-72 p-2 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
-                                            >
-                                                <div className="space-y-1">
-                                                    {MODELS.map((model) => (
-                                                        <button
-                                                            key={model.name}
-                                                            onClick={() => {
-                                                                setSelectedModel(model);
-                                                                setIsModelDropdownOpen(false);
-                                                            }}
-                                                            className={cn(
-                                                                "w-full flex items-start gap-3 max-sm:p-4 sm:p-3 rounded-xl transition-all text-left",
-                                                                selectedModel.name === model.name
-                                                                    ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
-                                                                    : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
-                                                            )}
-                                                        >
-                                                            <div className={cn("mt-0.5 shrink-0", model.color)}>
-                                                                <model.icon className="max-sm:h-5 max-sm:w-5 sm:h-4 sm:w-4" />
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <p className={cn("max-sm:text-sm sm:text-xs font-bold leading-none mb-1 truncate", selectedModel.name === model.name ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
-                                                                    {model.name}
-                                                                </p>
-                                                                <p className="max-sm:text-xs sm:text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
-                                                                    {model.description}
-                                                                </p>
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </motion.div>
-                                        </>
-                                    )}
-                                </AnimatePresence>
-                            </div>
+                                    <AnimatePresence>
+                                        {isModelDropdownOpen && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-10"
+                                                    onClick={() => setIsModelDropdownOpen(false)}
+                                                />
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                    className="max-sm:fixed max-sm:top-[60px] max-sm:left-3 max-sm:right-3 max-sm:w-auto sm:absolute sm:top-full sm:left-0 sm:mt-2 sm:w-72 p-2 rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 shadow-2xl z-20 backdrop-blur-xl"
+                                                >
+                                                    <div className="space-y-1">
+                                                        {MODELS.map((model) => (
+                                                            <button
+                                                                key={model.name}
+                                                                onClick={() => {
+                                                                    setSelectedModel(model);
+                                                                    setIsModelDropdownOpen(false);
+                                                                }}
+                                                                className={cn(
+                                                                    "w-full flex items-start gap-3 max-sm:p-4 sm:p-3 rounded-xl transition-all text-left",
+                                                                    selectedModel.name === model.name
+                                                                        ? "bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20"
+                                                                        : "hover:bg-zinc-50 dark:hover:bg-white/5 border border-transparent"
+                                                                )}
+                                                            >
+                                                                <div className={cn("mt-0.5 shrink-0", model.color)}>
+                                                                    <model.icon className="max-sm:h-5 max-sm:w-5 sm:h-4 sm:w-4" />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className={cn("max-sm:text-sm sm:text-xs font-bold leading-none mb-1 truncate", selectedModel.name === model.name ? "text-blue-600 dark:text-blue-400" : "text-zinc-800 dark:text-zinc-200")}>
+                                                                        {model.name}
+                                                                    </p>
+                                                                    <p className="max-sm:text-xs sm:text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                                                                        {model.description}
+                                                                    </p>
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            </>
                         )}
                     </div>
 
@@ -2833,18 +2888,11 @@ export function ChatPage() {
                                     <motion.div animate={{ y: [0, -15, 0], opacity: [0.2, 0.6, 0.2] }} transition={{ duration: 6, repeat: Infinity, delay: 2 }} style={{ position: 'absolute', bottom: '30%', left: '20%', width: 6, height: 6, borderRadius: '50%', background: 'rgba(59,130,246,0.4)' }} />
 
                                     <motion.div
-                                        whileHover={{ scale: 1.08, rotate: 3 }}
+                                        whileHover={{ scale: 1.06 }}
                                         whileTap={{ scale: 0.95 }}
-                                        className="mb-8 p-5 rounded-3xl cursor-default"
-                                        style={{
-                                            background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.1))',
-                                            border: '1px solid rgba(99,102,241,0.2)',
-                                            boxShadow: '0 8px 32px rgba(99,102,241,0.15), inset 0 1px 0 rgba(255,255,255,0.05)'
-                                        }}
+                                        className="mb-8 cursor-default flex items-center justify-center"
                                     >
-
-                                        <IncognitoIcon className="h-16 w-16" style={{ filter: 'drop-shadow(0 0 12px rgba(99,102,241,0.4))' }} />
-
+                                        <IncognitoIcon className="h-20 w-20 sm:h-24 sm:w-24" style={{ filter: 'drop-shadow(0 0 20px rgba(99,102,241,0.3))' }} />
                                     </motion.div>
 
                                     <h2 className="text-3xl sm:text-4xl font-bold mb-2 tracking-tight" style={{ color: '#f1f5f9', letterSpacing: '-0.02em' }}>
@@ -2926,26 +2974,36 @@ export function ChatPage() {
                                                     animate={{ opacity: 1, y: 0 }}
                                                     className="flex items-center gap-3 max-sm:p-2 sm:p-4"
                                                 >
-                                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
                                                         <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-sm text-zinc-500 dark:text-zinc-400">Thinking</span>
-                                                        <motion.span
-                                                            animate={{ opacity: [0, 1, 0] }}
-                                                            transition={{ duration: 1.5, repeat: Infinity, delay: 0 }}
-                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
-                                                        >.</motion.span>
-                                                        <motion.span
-                                                            animate={{ opacity: [0, 1, 0] }}
-                                                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
-                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
-                                                        >.</motion.span>
-                                                        <motion.span
-                                                            animate={{ opacity: [0, 1, 0] }}
-                                                            transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
-                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
-                                                        >.</motion.span>
+                                                    <div className="flex items-center gap-1 min-h-[24px]">
+                                                        <AnimatePresence mode="wait">
+                                                            <motion.span
+                                                                key={progressIndex}
+                                                                initial={{ opacity: 0, y: 3 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                exit={{ opacity: 0, y: -3 }}
+                                                                transition={{ duration: 0.25, ease: "easeOut" }}
+                                                                className="text-sm text-zinc-500 dark:text-zinc-400 font-medium"
+                                                            >
+                                                                {PROGRESS_STAGES[progressIndex]}
+                                                            </motion.span>
+                                                        </AnimatePresence>
+                                                        <span className="flex items-center text-sm text-zinc-500 dark:text-zinc-400">
+                                                            <motion.span
+                                                                animate={{ opacity: [0, 1, 0] }}
+                                                                transition={{ duration: 1.5, repeat: Infinity, delay: 0 }}
+                                                            >.</motion.span>
+                                                            <motion.span
+                                                                animate={{ opacity: [0, 1, 0] }}
+                                                                transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
+                                                            >.</motion.span>
+                                                            <motion.span
+                                                                animate={{ opacity: [0, 1, 0] }}
+                                                                transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
+                                                            >.</motion.span>
+                                                        </span>
                                                     </div>
                                                 </motion.div>
                                             )}
@@ -3284,45 +3342,43 @@ export function ChatPage() {
 
 
                                             {isLoading && (
-
                                                 <motion.div
-
                                                     initial={{ opacity: 0, y: 10 }}
-
                                                     animate={{ opacity: 1, y: 0 }}
-
                                                     className="flex items-center gap-3 max-sm:p-2 sm:p-4"
-
                                                 >
-
-                                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-
+                                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
                                                         <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-
                                                     </div>
-
-                                                    <div className="flex items-center gap-1">
-
-                                                        <span className="text-sm text-zinc-500 dark:text-zinc-400">Thinking</span>
-
-                                                        <motion.span
-
-                                                            animate={{ opacity: [0.2, 1, 0.2] }}
-
-                                                            transition={{ repeat: Infinity, duration: 1.5 }}
-
-                                                            className="text-sm text-zinc-500 dark:text-zinc-400"
-
-                                                        >
-
-                                                            ...
-
-                                                        </motion.span>
-
+                                                    <div className="flex items-center gap-1 min-h-[24px]">
+                                                        <AnimatePresence mode="wait">
+                                                            <motion.span
+                                                                key={progressIndex}
+                                                                initial={{ opacity: 0, y: 3 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                exit={{ opacity: 0, y: -3 }}
+                                                                transition={{ duration: 0.25, ease: "easeOut" }}
+                                                                className="text-sm text-zinc-500 dark:text-zinc-400 font-medium"
+                                                            >
+                                                                {PROGRESS_STAGES[progressIndex]}
+                                                            </motion.span>
+                                                        </AnimatePresence>
+                                                        <span className="flex items-center text-sm text-zinc-500 dark:text-zinc-400">
+                                                            <motion.span
+                                                                animate={{ opacity: [0, 1, 0] }}
+                                                                transition={{ duration: 1.5, repeat: Infinity, delay: 0 }}
+                                                            >.</motion.span>
+                                                            <motion.span
+                                                                animate={{ opacity: [0, 1, 0] }}
+                                                                transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
+                                                            >.</motion.span>
+                                                            <motion.span
+                                                                animate={{ opacity: [0, 1, 0] }}
+                                                                transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }}
+                                                            >.</motion.span>
+                                                        </span>
                                                     </div>
-
                                                 </motion.div>
-
                                             )}
 
                                             {/* Follow-up Question Chips */}

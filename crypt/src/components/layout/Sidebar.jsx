@@ -2,13 +2,14 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    ArrowLeft, BookOpen, ChevronDown, ChevronRight, ChevronLeft, Loader2, Plus, User as UserIcon, X,
+    ArrowLeft, BookOpen, ChevronDown, ChevronRight, ChevronLeft, Plus, User as UserIcon, X,
     Star, StarOff, Menu, MessageSquareDashed, MessageSquare, Trash2, MoreVertical
 } from "lucide-react";
 import { MdSearch } from "react-icons/md";
 import { cn } from "../../lib/utils";
 import { DeepResearchLogo } from "../ui/DeepResearchLogo";
 import GlobeChatIcon from "../icons/GlobeChatIcon";
+import DisappearingIcon from "../icons/DisappearingIcon";
 import { Logo } from "../ui/Logo";
 
 const IncognitoIcon = ({ className }) => (
@@ -98,6 +99,8 @@ export function Sidebar({
         return fallback;
     };
 
+    if (isIncognito) return null;
+
     return (
         <>
             {/* Mobile Overlay */}
@@ -134,13 +137,13 @@ export function Sidebar({
                         {/* Top bar (Fixed) */}
                         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-white/5 px-4 bg-white/90 dark:bg-zinc-950/80 sticky top-0 z-10 backdrop-blur-md">
                             <Link
-                                to={isGuest ? "/home" : (isTeacher ? "/dashboard?mode=teacher" : "/dashboard")}
+                                to="/home"
                                 onClick={() => setIsSidebarOpen(false)}
                                 className="flex items-center space-x-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 group"
                             >
                                 <ArrowLeft className="h-4 w-4 shrink-0 group-hover:-translate-x-1 transition-transform" />
                                 <span className="text-[15px] font-semibold">
-                                    {isGuest ? translate("nav.home", "Home") : translate("chat.Dashboard", "Workspace")}
+                                    {translate("nav.home", "Home")}
                                 </span>
                             </Link>
 
@@ -184,11 +187,29 @@ export function Sidebar({
 
                             {/* Disappearing Messages Toggle (Chat mode only) */}
                             {mode === "chat" && (
-                                <div className="flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors">
-                                    <div className="flex items-center gap-2">
-                                        <Loader2 className={cn("h-4 w-4 shrink-0 text-zinc-400 dark:text-zinc-500", isDisappearingMode && "animate-spin text-orange-500 dark:text-orange-400")} />
+                                <div className={cn(
+                                    "flex items-center justify-between px-2 py-2 rounded-xl transition-all duration-200",
+                                    isDisappearingMode
+                                        ? "bg-accent/8 dark:bg-accent/10 ring-1 ring-accent/20 dark:ring-accent/25"
+                                        : "hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+                                )}>
+                                    <div className="flex items-center gap-3">
+                                        {/* Icon pill — gives visual weight in both themes */}
+                                        <span className={cn(
+                                            "flex items-center justify-center h-8 w-8 rounded-lg shrink-0 transition-all duration-200",
+                                            isDisappearingMode
+                                                ? "bg-accent/15 dark:bg-accent/20 text-accent dark:text-accent-bright shadow-sm"
+                                                : "bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-zinc-400"
+                                        )}>
+                                            <DisappearingIcon className="h-5 w-5 shrink-0" />
+                                        </span>
                                         <div className="flex flex-col text-left">
-                                            <span className="text-[15px] font-semibold text-zinc-700 dark:text-zinc-300">Disappearing</span>
+                                            <span className={cn(
+                                                "text-[14px] font-semibold transition-colors",
+                                                isDisappearingMode
+                                                    ? "text-accent dark:text-accent-bright"
+                                                    : "text-zinc-700 dark:text-zinc-300"
+                                            )}>Disappearing</span>
                                             <span className="text-[10.5px] text-zinc-500 dark:text-zinc-500 font-normal">Auto-delete after 24h</span>
                                         </div>
                                     </div>
@@ -201,13 +222,13 @@ export function Sidebar({
                                             }
                                         }}
                                         className={cn(
-                                            "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                                            isDisappearingMode ? "bg-orange-500" : "bg-zinc-300 dark:bg-zinc-700"
+                                            "relative inline-flex h-[18px] w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                            isDisappearingMode ? "bg-accent dark:bg-accent-bright shadow-sm shadow-accent/25" : "bg-zinc-300 dark:bg-zinc-600"
                                         )}
                                     >
                                         <span className={cn(
-                                            "pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                                            isDisappearingMode ? "translate-x-3" : "translate-x-0"
+                                            "pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                                            isDisappearingMode ? "translate-x-[14px]" : "translate-x-0"
                                         )} />
                                     </button>
                                 </div>
@@ -753,14 +774,14 @@ export function Sidebar({
                                 }
                             }}
                             className={cn(
-                                "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mb-4 cursor-pointer",
+                                "h-10 w-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 mb-4 cursor-pointer group",
                                 isDisappearingMode
-                                    ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 shadow-sm"
-                                    : "text-slate-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-slate-100 dark:hover:bg-white/5 hover:shadow-sm"
+                                    ? "bg-accent/15 text-accent dark:bg-accent/20 dark:text-accent-bright border border-accent/25 dark:border-accent/30 shadow-sm shadow-accent/10"
+                                    : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-zinc-900 dark:hover:text-zinc-100 border border-transparent hover:border-slate-200 dark:hover:border-white/10"
                             )}
                             title={isDisappearingMode ? "Disappearing Mode: ON" : "Disappearing Mode: OFF"}
                         >
-                            <Loader2 className={cn("h-5 w-5", isDisappearingMode && "animate-spin")} />
+                            <DisappearingIcon className="h-[22px] w-[22px] shrink-0 transition-transform duration-200 group-hover:scale-110" />
                         </button>
                     )}
 

@@ -882,9 +882,9 @@ export function ResearchDocument({ message, isExpanded = false, onToggleExpand }
 
                  {/* Download Button */}
                  <button
-                   onClick={() => alert("Downloading is disabled in this version.")}
-                   className="hidden sm:flex items-center justify-center h-8.5 w-8.5 rounded-lg text-zinc-400 dark:text-zinc-550 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5 active:scale-95 transition-all duration-200"
-                   title="Download Report"
+                   onClick={handleExportPDF}
+                   className="hidden sm:flex items-center justify-center h-8.5 w-8.5 rounded-lg text-zinc-400 dark:text-zinc-550 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5 active:scale-95 transition-all duration-200 cursor-pointer"
+                   title="Download Report (PDF)"
                  >
                    <FileDown className="h-4 w-4" />
                  </button>

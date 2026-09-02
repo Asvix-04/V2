@@ -257,7 +257,12 @@ export function HomePage() {
     const { t } = useLanguage();
     const navigate = useNavigate();
 
-    const [isDark, setIsDark] = useState(false);
+    const [isDark, setIsDark] = useState(() => {
+        if (typeof document !== 'undefined') {
+            return document.documentElement.classList.contains('dark');
+        }
+        return true;
+    });
 
     useEffect(() => {
         setIsDark(document.documentElement.classList.contains('dark'));
