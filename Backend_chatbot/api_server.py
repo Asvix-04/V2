@@ -293,6 +293,7 @@ class DeepChatRequest(BaseModel):
     question: str
     use_history: Optional[bool] = False
     model: Optional[str] = None
+    language_code: Optional[str] = Field(default=None, max_length=MAX_LANG_CODE_CHARS)
 
 class DeepChatResponse(BaseModel):
     answer: str
@@ -960,6 +961,31 @@ async def deep_chat(request: DeepChatRequest):
     start_time = time.perf_counter()
     print(f"\n🔬 /deepchat request: {request.question[:60]}... | Model: {request.model}")
 
+    # Same translate-in/translate-out pattern as /text-to-text: the 5-layer
+    # engine itself only ever reasons in English (retrieval, web search,
+    # synthesis are all English-indexed/English-prompted), so a non-English
+    # topic is translated to English before running it, and the finished
+    # report is translated back afterward. sarvam_client.translate() already
+    # chunks arbitrarily long text in parallel, so a multi-thousand-word
+    # report translates the same way a short chat answer does.
+    if sarvam_client is None:
+        language_code = "en-IN"
+    elif request.language_code:
+        language_code = _normalize_lang_for_tts(request.language_code)
+    else:
+        language_code = sarvam_client.detect_language(request.question)
+
+    question_for_engine = request.question.strip()
+    if language_code != "en-IN" and sarvam_client is not None:
+        try:
+            question_for_engine = sarvam_client.translate(
+                text=question_for_engine,
+                target_language_code="en-IN",
+                source_language_code=language_code,
+            )
+        except Exception as e:
+            raise _fail(e, "/deepchat translate-in", message="Translation failed")
+
     try:
         # Lazy-init the engine on first call
         if _deep_research_engine is None:
@@ -967,11 +993,25 @@ async def deep_chat(request: DeepChatRequest):
             _deep_research_engine = DeepResearchEngine()
 
         result = await _deep_research_engine.run(
-            question=request.question.strip(),
+            question=question_for_engine,
             chatbot=chatbot,
             model=request.model,
             use_history=request.use_history if request.use_history is not None else False,
         )
+
+        # Translate the finished report back to the requester's language.
+        # sub_questions/layer_trace/sources/web_sources are left in English —
+        # they're internal/citation metadata, not the primary answer.
+        final_answer = result.answer
+        if language_code != "en-IN" and sarvam_client is not None and final_answer.strip():
+            try:
+                final_answer = sarvam_client.translate(
+                    text=final_answer,
+                    target_language_code=language_code,
+                    source_language_code="en-IN",
+                )
+            except Exception as e:
+                raise _fail(e, "/deepchat translate-out", message="Report translation failed")
 
         # Log metrics
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -985,7 +1025,7 @@ async def deep_chat(request: DeepChatRequest):
         )
 
         return {
-            "answer": result.answer,
+            "answer": final_answer,
             "sub_questions": result.sub_questions,
             "layer_trace": result.layer_trace,
             "sources": result.sources,

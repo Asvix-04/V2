@@ -60,7 +60,7 @@ router.get('/quota', protect, getQuotaStatus);
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
 
 router.post('/generate', protect, checkResearchQuota, async (req, res) => {
-    const { topic } = req.body;
+    const { topic, language_code } = req.body;
 
     if (!topic || !topic.trim()) {
         return res.status(400).json({ message: 'Research topic is required' });
@@ -117,7 +117,8 @@ router.post('/generate', protect, checkResearchQuota, async (req, res) => {
             const response = await axios.post(`${PYTHON_BACKEND_URL}/deepchat`, {
                 question: topic,
                 use_history: false,
-                model: null
+                model: null,
+                language_code: language_code || null
             }, {
                 headers: pythonProxyHeaders(req),
                 timeout: 300000 // 300 seconds (5 minutes) production-safe timeout

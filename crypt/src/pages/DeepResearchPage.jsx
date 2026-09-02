@@ -394,7 +394,7 @@ export function DeepResearchPage() {
       }
 
       // 3. Fetch report generation from backend (RAG generation)
-      const response = await api.post("/research/generate", { topic: text });
+      const response = await api.post("/research/generate", { topic: text, language_code: selectedLanguage });
       const data = response.data;
 
       // Clear the progress timer immediately on response
