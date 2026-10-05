@@ -35,3 +35,5 @@ Backend_chatbot/venv/
 *_history.txt
 
 ChatPage_main.jsx
+
+.vscode/

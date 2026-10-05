@@ -1,0 +1,74 @@
+Yes, **clear**. That's actually the better way to handle it.
+
+We'll create **one Phase 6 Testing Roadmap**, divide it into focused sub-phases, and complete them **one by one**. No mixing everything into one giant phase.
+
+### Phase 6 — Automated Testing Roadmap
+
+| Phase | Testing Area | Main Goal |
+|---|---|---|
+| **6A** | Functional & Unit Testing | Verify individual functions and core business logic |
+| **6B** | API & Contract Testing | Verify Node ↔ Python APIs, validation, status codes, payloads |
+| **6C** | Integration Testing | Verify Redis, Pinecone, Gemini, DB, BullMQ and service interactions |
+| **6D** | End-to-End Testing | Automate complete user journeys from API/client → final response |
+| **6E** | Authentication & Authorization | Verify JWT, identity propagation, isolation and access boundaries |
+| **6F** | Rate Limit & Abuse Testing | Verify quotas, concurrent users, bypass attempts and edge cases |
+| **6G** | Document/Ingestion Testing | Corrupt PDFs, empty files, duplicates, re-upload, large files, failures |
+| **6H** | Data Consistency & Integrity | Verify DocumentJob ↔ files ↔ Pinecone ↔ BM25 consistency |
+| **6I** | RAG Retrieval Quality | Measure Recall@K, Precision@K, MRR, RRF and expected-source retrieval |
+| **6J** | RAG Answer Quality | Groundedness, hallucination, relevance and answer correctness |
+| **6K** | Failure & Recovery Testing | Automate Redis/Pinecone/Gemini/Node/Python/BullMQ failure scenarios |
+| **6L** | Security Testing | Injection, path traversal, malicious files, auth bypass, API abuse |
+| **6M** | Extended Soak Testing | Long-running automated workload + memory/thread/resource monitoring |
+| **6N** | Deployment & Smoke Testing | Fresh startup, health checks, configuration and service availability |
+| **6O** | Backup & Disaster Recovery | Backup restoration, state recovery and recovery verification |
+| **6P** | Final Automated QA Sign-off | Run complete automated suite and produce final QA report |
+
+### Then manual testing separately
+
+After **6A–6P**, we can have a separate:
+
+**Phase 7 — Manual / Human Validation**
+
+For things automation can't reliably judge:
+
+- UI/UX
+- Browser behavior
+- Mobile responsiveness
+- Streaming experience
+- Chat usability
+- Voice experience
+- Visual PDF/document behavior
+- Real student workflow
+- Human assessment of answer quality
+
+### The important part
+
+We'll follow this rule for every phase:
+
+```text
+PHASE
+  ↓
+AUDIT EXISTING COVERAGE
+  ↓
+IDENTIFY GAPS
+  ↓
+IMPLEMENT ONLY MISSING TESTS
+  ↓
+RUN TESTS
+  ↓
+FIX ONLY TEST-DISCOVERED BUGS
+  ↓
+REGRESSION
+  ↓
+BENCHMARK / EVIDENCE
+  ↓
+PHASE SIGN-OFF
+  ↓
+NEXT PHASE
+```
+
+And **we won't start implementation yet**.
+
+First, we'll lock this testing roadmap. Then we can take **6A**, understand exactly what it contains, what we already have, and what is missing before writing the implementation prompt.
+
+That keeps the same disciplined approach we used throughout Phase 5.

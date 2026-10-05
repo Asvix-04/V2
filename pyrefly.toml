@@ -1,0 +1,10 @@
+preset = "basic"
+python-interpreter-path = "Backend_chatbot/venv/Scripts/python.exe"
+
+project-includes = [
+    "**/*.py",
+]
+
+search-path = [
+    "Backend_chatbot",
+]

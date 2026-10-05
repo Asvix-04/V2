@@ -2,7 +2,12 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { protect } = require('../middleware/authMiddleware');
+const { DocumentJob, STATUS, STAGE } = require('../models/DocumentJob');
+const { ingestionQueue } = require('../services/ingestionQueue');
+
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
 
 // Configure Multer Storage
 const storage = multer.diskStorage({
@@ -86,27 +91,152 @@ const mergeMessages = (dbMessages, clientMessages) => {
     return [...nonOverlappingDb, ...clientMessages];
 };
 
-// @desc    Upload a file
+// @desc    Upload a file — returns HTTP 202 immediately for documents queued for RAG ingestion
 // @route   POST /api/chat/upload
 // @access  Private
-router.post('/upload', protect, upload.single('file'), (req, res) => {
+router.post('/upload', protect, upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    // Construct URL
-    // Assuming server runs on process.env.PORT or 5001
-    // Ideally use full base URL from env, but relative path works if proxy/cors set up
-    // For now returning relative path that frontend can prepend base URL to
     const filePath = `/uploads/${req.file.filename}`;
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const userId = req.user?.id || 'guest';
 
-    res.json({
+    // If file is a document (.pdf or .docx), create an asynchronous ingestion job
+    if (ext === '.pdf' || ext === '.docx') {
+        const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const documentId = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        try {
+            // Persist document job record
+            const job = await DocumentJob.create({
+                jobId,
+                documentId,
+                userId,
+                filename: req.file.originalname,
+                filePath: req.file.path,
+                fileUrl: filePath,
+                mimeType: req.file.mimetype,
+                size: req.file.size,
+                status: STATUS.QUEUED,
+                stage: STAGE.QUEUED,
+            });
+
+            // Enqueue background processing in BullMQ
+            await ingestionQueue.add('ingest-document', {
+                jobId,
+                documentId,
+                userId,
+                filename: req.file.originalname,
+                filePath: req.file.path,
+                fileUrl: filePath,
+                mimeType: req.file.mimetype,
+            }, {
+                jobId, // Prevent duplicate jobs
+            });
+
+            console.log(`[Upload] Document queued: jobId=${jobId} file=${req.file.originalname} user=${userId}`);
+
+            // Return HTTP 202 Accepted immediately
+            return res.status(202).json({
+                message: 'Document uploaded and queued for processing',
+                documentId,
+                jobId,
+                status: STATUS.QUEUED,
+                url: filePath,
+                originalName: req.file.originalname,
+                mimeType: req.file.mimetype,
+                size: req.file.size,
+            });
+        } catch (queueErr) {
+            console.error('[Upload] Failed to enqueue document ingestion:', queueErr);
+            return res.status(500).json({
+                message: 'Failed to queue document for processing',
+                error: queueErr.message,
+            });
+        }
+    }
+
+    // Non-document files (images, audio, etc.) return HTTP 200 immediately
+    res.status(200).json({
         message: 'File uploaded successfully',
         url: filePath,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
-        size: req.file.size
+        size: req.file.size,
     });
+});
+
+// @desc    Get status of an asynchronous document ingestion job
+// @route   GET /api/chat/upload-status/:jobId
+// @access  Private
+router.get('/upload-status/:jobId', protect, async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const job = await DocumentJob.getById(jobId);
+
+        if (!job) {
+            return res.status(404).json({ message: 'Job not found' });
+        }
+
+        // Verify user ownership if job has a userId
+        if (job.userId && req.user && job.userId !== req.user.id) {
+            return res.status(403).json({ message: 'Not authorized to view this job' });
+        }
+
+        res.json(job.toJSON());
+    } catch (err) {
+        console.error('[UploadStatus] Error fetching job status:', err);
+        res.status(500).json({ message: 'Failed to retrieve job status' });
+    }
+});
+
+// @desc    Retry a failed document ingestion job
+// @route   POST /api/chat/upload-retry/:jobId
+// @access  Private
+router.post('/upload-retry/:jobId', protect, async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const job = await DocumentJob.getById(jobId);
+
+        if (!job) {
+            return res.status(404).json({ message: 'Job not found' });
+        }
+
+        if (job.userId && req.user && job.userId !== req.user.id) {
+            return res.status(403).json({ message: 'Not authorized to retry this job' });
+        }
+
+        // Reset state to QUEUED
+        await DocumentJob.update(jobId, {
+            status: STATUS.QUEUED,
+            stage: STAGE.QUEUED,
+            errorCode: null,
+            errorMessage: null,
+        });
+
+        // Re-add to BullMQ queue
+        await ingestionQueue.add('ingest-document', {
+            jobId: job.jobId,
+            documentId: job.documentId,
+            userId: job.userId,
+            filename: job.filename,
+            filePath: job.filePath,
+            fileUrl: job.fileUrl,
+            mimeType: job.mimeType,
+        });
+
+        console.log(`[UploadRetry] Retried jobId=${jobId} file=${job.filename}`);
+        res.json({
+            message: 'Job re-queued successfully',
+            jobId: job.jobId,
+            status: STATUS.QUEUED,
+        });
+    } catch (err) {
+        console.error('[UploadRetry] Error retrying job:', err);
+        res.status(500).json({ message: 'Failed to retry job' });
+    }
 });
 
 const ChatSession = require('../models/ChatSession');

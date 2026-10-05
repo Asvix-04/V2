@@ -1982,7 +1982,7 @@ export function ChatPage() {
         }
     };
 
-    const handleSend = async (text) => {
+    const handleSend = async (text, attachmentMeta = null) => {
         if (autoSaveTimerRef.current) {
             clearTimeout(autoSaveTimerRef.current);
             autoSaveTimerRef.current = null;
@@ -2009,6 +2009,7 @@ export function ChatPage() {
             role: "user",
             content: displayContent,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            ...(attachmentMeta ? { attachment: attachmentMeta } : {}),
         };
 
         setMessages((prev) => [...prev, userMsg]);
@@ -2231,7 +2232,7 @@ export function ChatPage() {
     };
 
     // ── Text-to-Text (Multilingual) handler ──
-    const handleTranslate = async (text) => {
+    const handleTranslate = async (text, attachmentMeta = null) => {
         if (autoSaveTimerRef.current) {
             clearTimeout(autoSaveTimerRef.current);
             autoSaveTimerRef.current = null;
@@ -2248,6 +2249,7 @@ export function ChatPage() {
             role: "user",
             content: text,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            ...(attachmentMeta ? { attachment: attachmentMeta } : {}),
         };
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
@@ -2321,11 +2323,11 @@ export function ChatPage() {
     // previously only the dropdown could reach handleTranslate, so typing
     // Hindi with the dropdown left on "English" silently skipped translation
     // entirely and went to the plain (English-only) /chat path.
-    const handleUserSend = (text) => {
+    const handleUserSend = (text, attachmentMeta = null) => {
         if (selectedLanguage || NON_LATIN_SCRIPT_RE.test(text || "")) {
-            return handleTranslate(text);
+            return handleTranslate(text, attachmentMeta);
         }
-        return handleSend(text);
+        return handleSend(text, attachmentMeta);
     };
 
     const handleMarkComplete = async () => {

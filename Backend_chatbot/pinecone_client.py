@@ -1,6 +1,7 @@
 import os
 import hashlib
-from typing import List, Dict, Any
+import threading
+from typing import List, Dict, Any, Optional
 from functools import lru_cache
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
@@ -18,8 +19,101 @@ def _deterministic_hash(value: str) -> str:
     return hashlib.sha256(value.encode('utf-8')).hexdigest()[:12]
 
 
+# ─────────────────────────────────────────────────────────────
+# Process-Level Shared Embedding Model & Synchronization Locks
+# ─────────────────────────────────────────────────────────────
+
+_SHARED_EMBEDDING_MODEL: Optional[SentenceTransformer] = None
+_MODEL_INIT_LOCK = threading.Lock()
+_MODEL_INFERENCE_LOCK = threading.Lock()
+
+
+def get_shared_embedding_model() -> SentenceTransformer:
+    """Lazily load and return the process-level shared SentenceTransformer instance.
+
+    Thread-safe double-checked locking ensures only one model is loaded per process,
+    eliminating the ~6-11 second initialization cost on repeated usages.
+    """
+    global _SHARED_EMBEDDING_MODEL
+    if _SHARED_EMBEDDING_MODEL is None:
+        with _MODEL_INIT_LOCK:
+            if _SHARED_EMBEDDING_MODEL is None:
+                _SHARED_EMBEDDING_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
+    return _SHARED_EMBEDDING_MODEL
+
+
+# ─────────────────────────────────────────────────────────────
+# Process-Level Shared Pinecone Index Cache
+# ─────────────────────────────────────────────────────────────
+
+_INDEX_CACHE: Dict[str, Any] = {}
+_INDEX_CACHE_LOCK = threading.Lock()
+
+
+def get_shared_pinecone_index(
+    index_name: str = "pdf-knowledge-base",
+    api_key: Optional[str] = None,
+    pinecone_client: Optional[Any] = None,
+) -> Any:
+    """Return a process-level cached Pinecone Index object for index_name.
+
+    Thread-safe double-checked locking ensures index host resolution (~2.5s)
+    only happens once per index_name across the lifetime of the process.
+    """
+    global _INDEX_CACHE
+    if index_name in _INDEX_CACHE:
+        return _INDEX_CACHE[index_name]
+
+    with _INDEX_CACHE_LOCK:
+        if index_name not in _INDEX_CACHE:
+            if pinecone_client is not None:
+                _INDEX_CACHE[index_name] = pinecone_client.Index(index_name)
+            else:
+                key = api_key or os.getenv("PINECONE_API_KEY")
+                if not key:
+                    raise ValueError(
+                        "PINECONE_API_KEY not found in environment variables. "
+                        "Please set it in your .env file."
+                    )
+                from pinecone import Pinecone
+                pc = Pinecone(api_key=key, connection_pool_maxsize=120)
+                _INDEX_CACHE[index_name] = pc.Index(index_name)
+    return _INDEX_CACHE[index_name]
+
+
+def extract_vector_ids_from_list_response(pages_iterable: Any) -> List[str]:
+    """Extract vector ID strings from Pinecone index.list() generator or pages.
+
+    Handles Pinecone SDK v5+ ListResponse objects (where page.vectors contains ListItem objects),
+    plain lists of IDs, or generic iterables.
+    """
+    vector_ids: List[str] = []
+    if pages_iterable is None:
+        return vector_ids
+
+    for page in pages_iterable:
+        if hasattr(page, "vectors") and page.vectors is not None:
+            vector_ids.extend([v.id for v in page.vectors if hasattr(v, "id")])
+        elif isinstance(page, list):
+            vector_ids.extend([v.id if hasattr(v, "id") else str(v) for v in page])
+        elif hasattr(page, "__iter__") and not isinstance(page, (str, bytes)):
+            for item in page:
+                if hasattr(item, "id"):
+                    vector_ids.append(item.id)
+                elif isinstance(item, str):
+                    vector_ids.append(item)
+        elif isinstance(page, str):
+            vector_ids.append(page)
+    return vector_ids
+
+
 class PineconeClient:
-    def __init__(self, index_name: str = "pdf-knowledge-base"):
+    def __init__(
+        self,
+        index_name: str = "pdf-knowledge-base",
+        embedding_model: Optional[Any] = None,
+        skip_index_check: bool = False,
+    ):
         # FIX for Issue #7: Validate API key before proceeding
         self.api_key = os.getenv("PINECONE_API_KEY")
         if not self.api_key:
@@ -29,34 +123,43 @@ class PineconeClient:
             )
         
         self.index_name = index_name
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        if embedding_model is not None:
+            self.embedding_model = embedding_model
+        else:
+            self.embedding_model = get_shared_embedding_model()
         
         from pinecone import Pinecone, ServerlessSpec
         
         # Initialize Pinecone client
-        self.pc = Pinecone(api_key=self.api_key)
+        self.pc = Pinecone(api_key=self.api_key, connection_pool_maxsize=120)
         
-        # Create index if it doesn't exist
-        existing_indexes = [index.name for index in self.pc.list_indexes()]
-        
-        if index_name not in existing_indexes:
-            print(f"Creating index: {index_name}")
-            self.pc.create_index(
-                name=index_name,
-                dimension=384,  # Dimension of all-MiniLM-L6-v2
-                metric="cosine",
-                spec=ServerlessSpec(
-                    cloud="aws",
-                    region=os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
+        if not skip_index_check:
+            # Create index if it doesn't exist
+            existing_indexes = [index.name for index in self.pc.list_indexes()]
+
+            if index_name not in existing_indexes:
+                print(f"Creating index: {index_name}")
+                self.pc.create_index(
+                    name=index_name,
+                    dimension=384,  # Dimension of all-MiniLM-L6-v2
+                    metric="cosine",
+                    spec=ServerlessSpec(
+                        cloud="aws",
+                        region=os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
+                    )
                 )
-            )
         
-        # Connect to the index
-        self.index = self.pc.Index(index_name)
+        # Connect to the index using the process-level cache
+        self.index = get_shared_pinecone_index(
+            index_name,
+            api_key=self.api_key,
+            pinecone_client=self.pc,
+        )
     
     def create_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Create embeddings for texts"""
-        embeddings = self.embedding_model.encode(texts)
+        with _MODEL_INFERENCE_LOCK:
+            embeddings = self.embedding_model.encode(texts)
         return embeddings.tolist()
 
     def create_embedding_single(self, text: str) -> List[float]:
@@ -66,11 +169,14 @@ class PineconeClient:
     @lru_cache(maxsize=256)
     def _cached_encode(self, text: str) -> tuple:
         """LRU-cached embedding — avoids re-encoding identical queries."""
-        return tuple(self.embedding_model.encode([text])[0].tolist())
+        with _MODEL_INFERENCE_LOCK:
+            embeddings = self.embedding_model.encode([text])
+        return tuple(embeddings[0].tolist())
 
     def create_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """Batch-encode multiple texts in one call (faster than encoding one-by-one)."""
-        embeddings = self.embedding_model.encode(texts)
+        with _MODEL_INFERENCE_LOCK:
+            embeddings = self.embedding_model.encode(texts)
         return embeddings.tolist()
     
     def upsert_chunks(self, chunks: List[Any], namespace: str = "", progress_callback=None) -> None:
@@ -98,7 +204,8 @@ class PineconeClient:
         all_embeddings: List[List[float]] = []
         for i in range(0, len(texts), ENCODE_BATCH):
             batch_texts = texts[i: i + ENCODE_BATCH]
-            batch_emb = self.embedding_model.encode(batch_texts, show_progress_bar=False)
+            with _MODEL_INFERENCE_LOCK:
+                batch_emb = self.embedding_model.encode(batch_texts, show_progress_bar=False)
             all_embeddings.extend(batch_emb.tolist())
             print(f"   Encoded {min(i + ENCODE_BATCH, len(texts))}/{len(texts)} chunks", end="\r")
         print(f"\n✅ Encoding complete — {len(all_embeddings)} embeddings ready")
@@ -137,8 +244,8 @@ class PineconeClient:
     def search(self, query: str, top_k: int = 5, namespaces: List[str] = ["", "uploads"]) -> List[Dict]:
         """Search for similar chunks across multiple namespaces (with LRU-cached embedding)"""
         query_embedding = self.create_embedding_single(query)
-        
-        all_matches = []
+
+        per_ns: Dict[str, List[Dict]] = {}
         for ns in namespaces:
             try:
                 results = self.index.query(
@@ -148,17 +255,58 @@ class PineconeClient:
                     namespace=ns,
                     filter={"type": "document_chunk"}
                 )
-                all_matches.extend(results.get('matches', []))
+                per_ns[ns] = list(results.get('matches', []))
             except Exception as e:
                 print(f"⚠️  [Search] Failed to query namespace '{ns}': {e}")
-                
-        # Sort combined matches by score descending and take top_k
-        all_matches.sort(key=lambda x: x.get('score', 0.0), reverse=True)
-        return all_matches[:top_k]
+                per_ns[ns] = []
+
+        # Same upload-aware merge as search_with_vector().
+        return self._merge_namespace_matches(per_ns, top_k)
+
+    # How many result slots are guaranteed to user-uploaded content when the
+    # 'uploads' namespace has any hit at all. See _merge_namespace_matches().
+    UPLOAD_RESERVED_SLOTS = 2
+
+    def _merge_namespace_matches(self, per_ns: Dict[str, List[Dict]], top_k: int) -> List[Dict]:
+        """
+        Merge per-namespace matches, guaranteeing uploaded documents a foothold.
+
+        A plain "merge everything, sort by score, truncate" loses user uploads:
+        the default namespace holds tens of thousands of bulk-corpus vectors
+        while 'uploads' holds a handful, so the bulk corpus fills every slot even
+        when it beats the uploaded document by a hair. The user then asks about
+        the document they just uploaded and is answered from the bulk corpus.
+
+        We therefore reserve up to UPLOAD_RESERVED_SLOTS for non-default
+        namespaces, then fill the rest by score. Ranking itself is unchanged —
+        this only ensures uploaded chunks reach the RRF fusion stage as
+        candidates instead of being dropped before it.
+        """
+        default_matches = per_ns.get("", [])
+        upload_matches = [m for ns, ms in per_ns.items() if ns for m in ms]
+        upload_matches.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+
+        reserved = upload_matches[:self.UPLOAD_RESERVED_SLOTS] if upload_matches else []
+        reserved_ids = {m.get("id") for m in reserved}
+
+        rest = [m for m in (default_matches + upload_matches)
+                if m.get("id") not in reserved_ids]
+        rest.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+
+        merged = reserved + rest
+        merged.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+
+        # Guarantee the reserved uploads survive the truncation.
+        out = merged[:top_k]
+        if reserved:
+            missing = [m for m in reserved if m not in out]
+            if missing:
+                out = (out[:max(0, top_k - len(missing))] + missing)
+        return out[:top_k]
 
     def search_with_vector(self, vector: List[float], top_k: int = 5, namespaces: List[str] = ["", "uploads"]) -> List[Dict]:
         """Search using a pre-computed embedding vector across multiple namespaces."""
-        all_matches = []
+        per_ns: Dict[str, List[Dict]] = {}
         for ns in namespaces:
             try:
                 results = self.index.query(
@@ -168,13 +316,12 @@ class PineconeClient:
                     namespace=ns,
                     filter={"type": "document_chunk"}
                 )
-                all_matches.extend(results.get('matches', []))
+                per_ns[ns] = list(results.get('matches', []))
             except Exception as e:
                 print(f"⚠️  [Search] Failed to query namespace '{ns}': {e}")
-                
-        # Sort combined matches by score descending and take top_k
-        all_matches.sort(key=lambda x: x.get('score', 0.0), reverse=True)
-        return all_matches[:top_k]
+                per_ns[ns] = []
+
+        return self._merge_namespace_matches(per_ns, top_k)
 
     def upsert_semantic_cache(self, question: str, redis_hash: str, namespace: str = "semantic_cache") -> None:
         """Upsert a question embedding to the semantic cache with a reference to the Redis hash."""
@@ -195,9 +342,12 @@ class PineconeClient:
         )
         print(f"✅ [Cache] Upserted semantic cache vector for query: {question[:30]}...")
 
-    def search_semantic_cache(self, query: str, threshold: float = 0.95, namespace: str = "semantic_cache") -> str:
+    def search_semantic_cache(self, query: str, threshold: float = 0.95, namespace: str = "semantic_cache", precomputed_embedding: Optional[List[float]] = None) -> Optional[str]:
         """Search the semantic cache for a similar question. Returns the Redis hash if found."""
-        query_embedding = self.create_embedding_single(query)
+        if precomputed_embedding is not None:
+            query_embedding = precomputed_embedding
+        else:
+            query_embedding = self.create_embedding_single(query)
         try:
             results = self.index.query(
                 vector=query_embedding,

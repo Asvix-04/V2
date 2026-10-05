@@ -58,6 +58,12 @@ _OFF_DOMAIN_KW_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Words in _DOMAIN_KW_RE that commonly appear in non-media contexts when occurring alone
+_GENERIC_DOMAIN_WORDS = {
+    "content", "source", "bias", "publish", "editor", "headline",
+    "audience", "narrative", "misleading", "manipulat", "camera", "film"
+}
+
 _DECISION_RE = re.compile(r"(\d+)\s*[:.\)\-]\s*(KEEP|DROP)", re.IGNORECASE)
 
 
@@ -81,6 +87,95 @@ def _keyword_keep(paragraph: str) -> bool:
     if has_off and not has_domain:
         return False
     # Short structural fragments with no signal either way: keep (harmless).
+    return True
+
+
+def _fast_classify_paragraph(paragraph: str) -> Optional[bool]:
+    """Deterministic tier-1 fast-path relevance classifier.
+
+    Returns:
+        True:  Clear in-domain paragraph (KEEP, bypass Gemini).
+        False: Clear off-domain paragraph (DROP, bypass Gemini).
+        None:  Ambiguous / mixed / uncertain paragraph (must fall through to Gemini).
+    """
+    has_domain = bool(_DOMAIN_KW_RE.search(paragraph))
+    has_off = bool(_OFF_DOMAIN_KW_RE.search(paragraph))
+
+    # Mixed signals: both domain and off-domain markers present -> ambiguous
+    if has_domain and has_off:
+        return None
+
+    # Clear off-domain: off-domain markers present, NO domain keywords
+    if has_off and not has_domain:
+        return False
+
+    # Neither signal present: neutral/prose/headings -> ambiguous
+    if not has_domain and not has_off:
+        return None
+
+    # Has domain markers and NO off-domain markers:
+    # Be conservative: check whether domain matches are specific or merely generic words.
+    domain_matches = [m.lower() for m in _DOMAIN_KW_RE.findall(paragraph)]
+    has_specific_domain = any(m not in _GENERIC_DOMAIN_WORDS for m in domain_matches)
+
+    if not has_specific_domain:
+        # Paragraph only contains generic vocabulary (e.g. 'source', 'content') -> ambiguous
+        return None
+
+    # Short fragments (< 4 words) with fewer than 2 domain terms may be uncertain headings
+    words = paragraph.split()
+    if len(words) < 4 and len(domain_matches) < 2:
+        return None
+
+    return True
+
+
+def _is_structural_heading_candidate(paragraph: str) -> bool:
+    """Check if a paragraph structurally looks like a section heading rather than normal prose.
+
+    Conservative criteria:
+    1. Short: 1 to 8 words, <= 80 characters.
+    2. Single line (no internal newlines).
+    3. Not multi-sentence prose (no sentence breaks like '. ', '? ', '! ', '; ').
+    4. Not clause/list-heavy prose (at most 1 comma).
+    5. Normal prose sentences typically end with a period; standalone headings
+       typically do not end with a period (unless explicitly numbered/prefixed).
+    """
+    text = paragraph.strip()
+    if not text:
+        return False
+
+    if "\n" in text or "\r" in text:
+        return False
+
+    words = text.split()
+    if not (1 <= len(words) <= 8 and len(text) <= 80):
+        return False
+
+    # Strip optional markdown hashes or common heading prefixes (e.g. "###", "1.", "Chapter 2:")
+    clean = re.sub(r"^#+\s*", "", text)
+    clean = re.sub(
+        r"^(?:(?:chapter|section|part|unit)\s+\d+[:.]?|\d+[\.\)]|\([0-9a-zA-Z]+\)|[A-Za-z][\.\)])\s*",
+        "",
+        clean,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if not clean:
+        return False
+
+    # Headings do not contain internal sentence terminators
+    if any(sep in clean for sep in [". ", "? ", "! ", "; "]):
+        return False
+
+    # Headings should not be comma-spliced prose
+    if text.count(",") > 1:
+        return False
+
+    # Standalone prose typically terminates with a period. Headings typically do not.
+    if text.endswith(".") and not re.match(r"^(?:chapter|section|part|unit|\d+[\.\)])", text, re.IGNORECASE):
+        return False
+
     return True
 
 
@@ -151,16 +246,59 @@ def filter_text(
 
     keep_map: Dict[int, bool] = {}
     method = "keyword"
+    structural_bypassed = 0
 
     if llm_client is not None:
-        method = "llm"
-        # Build batches bounded by count AND chars.
-        i = 0
-        while i < len(paras):
-            batch, chars = [], 0
-            while i < len(paras) and len(batch) < batch_size and chars < max_batch_chars:
-                batch.append(paras[i]); chars += len(paras[i]) + 8; i += 1
-            keep_map.update(_classify_batch(batch, i - len(batch), llm_client))
+        method = "two-tier"
+        ambiguous_indices: List[int] = []
+
+        # Tier 1: deterministic fast path
+        tier1_map: Dict[int, Optional[bool]] = {}
+        for idx, p in enumerate(paras):
+            decision = _fast_classify_paragraph(p)
+            tier1_map[idx] = decision
+            if decision is not None:
+                keep_map[idx] = decision
+
+        # Structural heading fast path:
+        # A short structural heading inherits relevance when adjacent to content
+        # confidently classified as in-domain by Tier 1.
+        for idx, p in enumerate(paras):
+            if tier1_map.get(idx) is not None:
+                continue
+
+            if _is_structural_heading_candidate(p) and not bool(_OFF_DOMAIN_KW_RE.search(p)):
+                prev_is_domain = (idx > 0 and tier1_map.get(idx - 1) is True)
+                next_is_domain = (idx + 1 < len(paras) and tier1_map.get(idx + 1) is True)
+                if prev_is_domain or next_is_domain:
+                    keep_map[idx] = True
+                    structural_bypassed += 1
+                    continue
+
+            ambiguous_indices.append(idx)
+
+        # Tier 2: send only remaining ambiguous paragraphs through Gemini
+        if ambiguous_indices:
+            i = 0
+            while i < len(ambiguous_indices):
+                batch_indices = []
+                batch_paras = []
+                chars = 0
+                while (
+                    i < len(ambiguous_indices)
+                    and len(batch_paras) < batch_size
+                    and chars < max_batch_chars
+                ):
+                    idx = ambiguous_indices[i]
+                    p = paras[idx]
+                    batch_indices.append(idx)
+                    batch_paras.append(p)
+                    chars += len(p) + 8
+                    i += 1
+
+                batch_decisions = _classify_batch(batch_paras, 0, llm_client)
+                for local_idx, orig_idx in enumerate(batch_indices):
+                    keep_map[orig_idx] = batch_decisions.get(local_idx, _keyword_keep(paras[orig_idx]))
     else:
         for idx, p in enumerate(paras):
             keep_map[idx] = _keyword_keep(p)
@@ -179,5 +317,6 @@ def filter_text(
         "dropped": len(paras) - len(kept_paras),
         "method": method,
         "dropped_samples": dropped_samples,
+        "structural_bypassed": structural_bypassed,
     }
     return kept_text, stats

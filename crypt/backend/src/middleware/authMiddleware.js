@@ -15,9 +15,15 @@ const protect = async (req, res, next) => {
             // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+            // Ensure token contains a valid user identifier
+            const userId = decoded.id || decoded.uid;
+            if (!userId) {
+                return res.status(401).json({ message: 'Not authorized, token invalid' });
+            }
+
             // Try to get user from Firestore, fall back to JWT payload if unavailable
             try {
-                const user = await User.findById(decoded.id);
+                const user = await User.findById(userId);
                 if (user) {
                     req.user = user.toJSON();
                 } else {

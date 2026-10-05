@@ -16,19 +16,27 @@ import json
 import logging
 import re
 import sys
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 import time
 import threading
 import shutil
 import uuid
 from datetime import datetime, timedelta
 from collections import defaultdict
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Response
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Response, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import uvicorn
 from contextlib import asynccontextmanager
+from starlette.concurrency import run_in_threadpool
 
 from chatbot import PDFChatbot
 from llm_client import AVAILABLE_MODELS
@@ -47,13 +55,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Force UTF-8 on stdout/stderr so the emoji-bearing log lines below cannot crash
-# the process on a Windows console using a legacy code page.
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except AttributeError:
-    pass
 
 S2S_TIMING_LOG_FILE = "s2s_timing_log.txt"
 
@@ -74,6 +75,11 @@ MODEL_ALIASES = {
 PDF_UPLOAD_DIR = "pdfs"
 MAX_PDF_BYTES = 50 * 1024 * 1024  # 50 MB limit
 os.makedirs(PDF_UPLOAD_DIR, exist_ok=True)
+
+# Document types accepted by /upload-pdf. Word (.docx) goes through the exact
+# same extract -> clean -> chunk -> embed pipeline as PDF, so answers are
+# indistinguishable regardless of the source format.
+SUPPORTED_UPLOAD_EXTENSIONS = (".pdf", ".docx")
 
 # ─────────────────────────────────────────────────────────────
 # Security / runtime configuration
@@ -155,6 +161,9 @@ _upload_status: Dict[str, Any] = {
     "vectors_upserted": 0,
     "duration_seconds": None,
     "error": None,
+    "document_id": None,
+    "user_id": None,
+    "job_id": None,
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -283,6 +292,9 @@ class UploadStatusResponse(BaseModel):
     vectors_upserted: int = 0
     duration_seconds: Optional[float] = None
     error: Optional[str] = None
+    document_id: Optional[str] = None
+    user_id: Optional[str] = None
+    job_id: Optional[str] = None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -353,8 +365,32 @@ async def startup_event():
 # Helpers
 # ─────────────────────────────────────────────────────────────
 
+class ConcurrencyTracker:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.current = 0
+        self.max_observed = 0
+
+    def inc(self):
+        with self._lock:
+            self.current += 1
+            if self.current > self.max_observed:
+                self.max_observed = self.current
+            return self.current
+
+    def dec(self):
+        with self._lock:
+            self.current = max(0, self.current - 1)
+            return self.current
+
+    def reset_max(self):
+        with self._lock:
+            self.max_observed = self.current
+
+_chat_concurrency = ConcurrencyTracker()
+
 def build_metadata(result: dict, ref_links: list) -> dict:
-    return {
+    meta = {
         "total_sources": len(result["sources"]),
         "unique_sections": len(set([s.get("full_section", "") for s in result["sources"]])),
         "completeness_score": result.get("validation", {}).get("completeness_score") if result.get("validation") else None,
@@ -370,6 +406,9 @@ def build_metadata(result: dict, ref_links: list) -> dict:
             for s in result["sources"][:3]
         ],
     }
+    if "_audit_timings" in result:
+        meta["timings"] = result["_audit_timings"]
+    return meta
 
 def apply_requested_model(model_name: Optional[str]) -> None:
     """Accept frontend model labels without passing them into chatbot methods."""
@@ -417,9 +456,41 @@ def _client_ip(request: Request) -> str:
     return client.host if client else "unknown"
 
 
-def _enforce_rate_limit(limiter: RateLimiter, request: Request, message: str) -> None:
-    """Raise 429 when the caller has exceeded its per-IP budget."""
-    if not limiter.is_allowed(_client_ip(request)):
+def _resolve_rate_limit_identity(request: Request, explicit_user_id: Optional[str] = None) -> str:
+    """
+    Resolve a stable rate-limiting identity:
+    1. Authenticated user ID from internal Node bridge header (verified by JWT in Node)
+    2. Explicit user ID passed in request model/form data (if not 'guest')
+    3. Guest ID from X-Guest-ID header
+    4. Fallback to client IP
+    """
+    # 1. Header set by Node proxy after cryptographically verifying JWT
+    auth_header_user = request.headers.get("x-authenticated-user-id")
+    if auth_header_user and auth_header_user.strip() and auth_header_user.strip().lower() != "guest":
+        return f"user:{auth_header_user.strip()}"
+
+    # 2. Explicit user ID in payload/form
+    if explicit_user_id and explicit_user_id.strip() and explicit_user_id.strip().lower() != "guest":
+        return f"user:{explicit_user_id.strip()}"
+
+    # 3. Guest ID
+    guest_id = request.headers.get("x-guest-id")
+    if guest_id and guest_id.strip() and not guest_id.strip().lower().startswith("user-guest"):
+        return f"guest:{guest_id.strip()}"
+
+    # 4. IP fallback
+    return f"ip:{_client_ip(request)}"
+
+
+def _enforce_rate_limit(
+    limiter: RateLimiter,
+    request: Request,
+    message: str,
+    user_id: Optional[str] = None,
+) -> None:
+    """Raise 429 when the caller has exceeded its rate budget."""
+    identity = _resolve_rate_limit_identity(request, user_id)
+    if not limiter.is_allowed(identity):
         raise HTTPException(status_code=429, detail=message)
 
 
@@ -536,7 +607,13 @@ async def root():
 # PDF Upload
 # ─────────────────────────────────────────────────────────────
 
-def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
+def _run_pdf_ingestion(
+    pdf_path: str,
+    filename: str,
+    document_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    job_id: Optional[str] = None,
+) -> None:
     """
     Full ingestion pipeline — runs in a background thread:
       1. PyMuPDF  → extract + clean text
@@ -550,6 +627,9 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
     _upload_status.update({
         "status": "processing",
         "filename": filename,
+        "document_id": document_id,
+        "user_id": user_id,
+        "job_id": job_id,
         "started_at": datetime.utcnow().isoformat(),
         "pages_processed": 0,
         "chunks_created": 0,
@@ -559,16 +639,15 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
     })
 
     try:
-        # ── Step 1: Extract & clean the NEW PDF only ──────────────────────
+        # ── Step 1: Extract & clean the NEW document only ─────────────────
+        # Dispatches on extension: PDF -> PyMuPDF (+OCR for scanned pages),
+        # Word -> python-docx (+OCR for image-only documents). Both return text
+        # in the same cleaned shape, so everything downstream is format-agnostic.
         print(f"📄 [Upload] Extracting: {filename}")
-        from pdf_preprocessor import extract_and_clean_pdf
-        import fitz
+        from pdf_preprocessor import extract_and_clean_document, count_document_pages
 
-        doc = fitz.open(pdf_path)
-        page_count = doc.page_count
-        doc.close()
-
-        cleaned_text = extract_and_clean_pdf(pdf_path)
+        page_count = count_document_pages(pdf_path)
+        cleaned_text = extract_and_clean_document(pdf_path)
         _upload_status["pages_processed"] = page_count
 
         # ── Step 1.5: AI relevance layer — keep ONLY in-domain content ─────
@@ -590,6 +669,9 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
             # Whole PDF was off-domain — don't keep the stray upload file.
             try:
                 os.remove(pdf_path)
+                parent_dir = os.path.dirname(pdf_path)
+                if os.path.basename(parent_dir) and parent_dir != PDF_UPLOAD_DIR and os.path.isdir(parent_dir) and not os.listdir(parent_dir):
+                    os.rmdir(parent_dir)
             except OSError:
                 pass
             raise ValueError(
@@ -601,7 +683,13 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
         # Save individual .txt for this PDF (filtered content only)
         os.makedirs("data/txts", exist_ok=True)
         stem = os.path.splitext(filename)[0]
-        txt_path = f"data/txts/{stem}.txt"
+        if document_id:
+            safe_doc_id = re.sub(r"[^A-Za-z0-9_\-]+", "_", document_id).strip("_") or "doc"
+            doc_key = f"{safe_doc_id}_{stem}"
+        else:
+            safe_doc_id = None
+            doc_key = stem
+        txt_path = f"data/txts/{doc_key}.txt"
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(cleaned_text)
         print(f"✅ [Upload] Saved: {txt_path}  ({page_count} pages, filtered)")
@@ -611,7 +699,7 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
         # instead of appending a duplicate. Duplicate blocks produce identical BM25
         # chunks that inflate/skew lexical scoring (this was a live bug).
         combined_path = "data/txts/combined_book.txt"
-        banner = f"{'='*70}\n=== SOURCE: {stem}.txt ===\n{'='*70}"
+        banner = f"{'='*70}\n=== SOURCE: {doc_key}.txt ===\n{'='*70}"
         block = f"\n\n{banner}\n\n{cleaned_text}"
         existing = ""
         if os.path.exists(combined_path):
@@ -626,7 +714,7 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
             existing = (existing[:start] + (existing[nxt:] if nxt != -1 else "")).rstrip()
             with open(combined_path, "w", encoding="utf-8") as f:
                 f.write(existing + block)
-            print(f"♻️  [Upload] Replaced existing '{stem}' block in combined_book.txt (no duplicate)")
+            print(f"♻️  [Upload] Replaced existing '{doc_key}' block in combined_book.txt (no duplicate)")
         else:
             with open(combined_path, "a", encoding="utf-8") as f:
                 f.write(block)
@@ -645,38 +733,60 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
         # both were why uploaded terms like "doomscrolling" weren't retrievable.
         new_chunks = parser.create_chunks(new_sections, chunk_size=180, overlap=40)
 
-        # Re-id every upload chunk with a deterministic, file-scoped prefix so we can
-        # (a) replace ONLY this file's vectors on re-upload and (b) ACCUMULATE other
-        # uploaded PDFs in the 'uploads' namespace instead of wiping them.
-        safe_stem = re.sub(r"[^A-Za-z0-9]+", "_", stem).strip("_") or "doc"
-        id_prefix = f"up_{safe_stem}_chunk"
+        # Re-id every upload chunk with a deterministic, document-scoped prefix so we can
+        # (a) replace ONLY this document's vectors on re-upload and (b) ACCUMULATE other
+        # uploaded PDFs in the 'uploads' namespace without cross-document collisions.
+        if safe_doc_id:
+            id_prefix = f"up_{safe_doc_id}_chunk"
+        else:
+            safe_stem = re.sub(r"[^A-Za-z0-9]+", "_", stem).strip("_") or "doc"
+            id_prefix = f"up_{safe_stem}_chunk"
+
         for n, c in enumerate(new_chunks):
             c["id"] = f"{id_prefix}{n}"
             c["metadata"]["source_file"] = f"{stem}.txt"
+            if document_id:
+                c["metadata"]["document_id"] = document_id
+            if user_id:
+                c["metadata"]["user_id"] = user_id
+            if job_id:
+                c["metadata"]["job_id"] = job_id
         _upload_status["chunks_created"] = len(new_chunks)
         print(f"✅ [Upload] New PDF → {len(new_sections)} sections → {len(new_chunks)} chunks")
 
         # ── Step 4: Encode + upsert new chunks to 'uploads' namespace ────
         print(f"⚡ [Upload] Embedding {len(new_chunks)} new chunks...")
-        from pinecone_client import PineconeClient
+        from pinecone_client import (
+            PineconeClient,
+            get_shared_embedding_model,
+            extract_vector_ids_from_list_response,
+        )
 
-        pc = PineconeClient()
+        # Ingest into the index the CURRENTLY SELECTED model actually reads from.
+        # Previously this always used the default index, so a document uploaded
+        # while DigiLab Pro / v2 was active landed in "pdf-knowledge-base" and was
+        # never retrievable — the answer came from the bulk corpus instead.
+        _mc = getattr(chatbot, "model_config", None) if chatbot is not None else None
+        _target_index = getattr(_mc, "pinecone_index", None) or "pdf-knowledge-base"
+        print(f"🎯 [Upload] Target Pinecone index: {_target_index}")
+        pc = PineconeClient(
+            _target_index,
+            embedding_model=get_shared_embedding_model(),
+            skip_index_check=True,
+        )
 
-        # ACCUMULATE mode: delete only THIS file's previous vectors (by id prefix),
-        # leaving other uploaded PDFs searchable. (Replaces the old delete_all wipe.)
-        print(f"🗑️  [Upload] Clearing previous vectors for '{stem}' (prefix {id_prefix})...")
-        try:
-            old_ids = []
-            for page in pc.index.list(prefix=id_prefix, namespace="uploads"):
-                old_ids.extend(page if isinstance(page, list) else [page])
-            if old_ids:
-                for i in range(0, len(old_ids), 1000):
-                    pc.index.delete(ids=old_ids[i:i + 1000], namespace="uploads")
-                print(f"✅ [Upload] Removed {len(old_ids)} stale vectors for '{stem}'")
-            else:
-                print(f"✅ [Upload] No previous vectors for '{stem}' (first upload)")
-        except Exception as e:
-            print(f"⚠️  [Upload] Could not clear previous '{stem}' vectors: {e}")
+        # ACCUMULATE mode: delete only THIS document's previous vectors (by document-scoped id prefix),
+        # leaving other uploaded PDFs searchable and preventing cross-document deletions.
+        print(f"🗑️  [Upload] Clearing previous vectors for prefix '{id_prefix}'...")
+        old_ids = extract_vector_ids_from_list_response(
+            pc.index.list(prefix=id_prefix, namespace="uploads")
+        )
+        if old_ids:
+            for i in range(0, len(old_ids), 1000):
+                pc.index.delete(ids=old_ids[i:i + 1000], namespace="uploads")
+            print(f"✅ [Upload] Removed {len(old_ids)} stale vectors for prefix '{id_prefix}'")
+        else:
+            print(f"✅ [Upload] No previous vectors for prefix '{id_prefix}' (first upload)")
 
         @dataclass
         class _PineconeChunk:
@@ -703,9 +813,15 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
         print(f"✅ [Upload] Upserted {len(pinecone_chunks)} new vectors to Pinecone namespace 'uploads'")
 
         # ── Step 5: Rebuild BM25 from combined_book.txt ───────────────────
+        # Write to the BM25 cache belonging to the ACTIVE model, for the same
+        # reason as the Pinecone index above — rebuilding the default cache while
+        # a non-default model is selected left that model reading a stale corpus.
+        # Rebuild skips reparsing the static base syllabus corpus and skips spell vocab.
         print("🔨 [Upload] Rebuilding BM25 keyword index...")
         from build_bm25_cache import build_cache
-        build_cache(txt_path=combined_path)
+        _bm25_out = getattr(_mc, "bm25_cache_path", None) or "data/bm25_corpus.json"
+        print(f"🎯 [Upload] Target BM25 cache: {_bm25_out}")
+        build_cache(txt_path=combined_path, bm25_output=_bm25_out, rebuild_spell=False)
         print("✅ [Upload] BM25 cache rebuilt")
 
         # ── Step 6: Reload BM25 in live chatbot (no server restart) ──────
@@ -719,7 +835,10 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
                     # at the wrong keyword corpus.
                     _mc = getattr(chatbot, "model_config", None)
                     _cache_path = getattr(_mc, "bm25_cache_path", None) or "data/bm25_corpus.json"
-                    chatbot.retriever.bm25 = BM25Index(cache_path=_cache_path)
+                    new_bm25 = BM25Index(cache_path=_cache_path)
+                    if not new_bm25.ready:
+                        raise RuntimeError(f"BM25 index not ready after reload from {_cache_path}")
+                    chatbot.retriever.bm25 = new_bm25
                     print(f"✅ [Upload] BM25 reloaded in live chatbot ({_cache_path})")
                 # Refresh the trusted-uploads cache so the new PDF's content is
                 # answerable immediately (bypasses strict validation) — no restart.
@@ -727,13 +846,17 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
                     chatbot.reload_uploaded_docs()
                     print("✅ [Upload] Trusted-uploads cache refreshed in live chatbot")
             except Exception as e:
-                print(f"⚠️  [Upload] BM25 live reload failed (restart server to apply): {e}")
+                print(f"⚠️  [Upload] BM25 live reload failed: {e}")
+                raise
 
         duration = round(time.perf_counter() - t0, 2)
         _upload_status.update({
             "status": "done",
             "finished_at": datetime.utcnow().isoformat(),
             "duration_seconds": duration,
+            "document_id": document_id,
+            "user_id": user_id,
+            "job_id": job_id,
         })
         print(f"🎉 [Upload] Done in {duration}s — '{filename}' is now searchable via /chat")
 
@@ -747,6 +870,9 @@ def _run_pdf_ingestion(pdf_path: str, filename: str) -> None:
             "finished_at": datetime.utcnow().isoformat(),
             "error": err,
             "duration_seconds": round(time.perf_counter() - t0, 2),
+            "document_id": document_id,
+            "user_id": user_id,
+            "job_id": job_id,
         })
 
 
@@ -755,6 +881,9 @@ def _discard_upload(path: str) -> None:
     try:
         if os.path.exists(path):
             os.remove(path)
+        parent = os.path.dirname(path)
+        if os.path.basename(parent) and parent != PDF_UPLOAD_DIR and os.path.isdir(parent) and not os.listdir(parent):
+            os.rmdir(parent)
     except OSError:
         logger.warning("Could not remove rejected upload: %s", path)
 
@@ -774,9 +903,39 @@ def _looks_like_pdf(path: str) -> bool:
         return False
 
 
-def _safe_pdf_filename(raw_name: Optional[str]) -> str:
+def _looks_like_docx(path: str) -> bool:
     """
-    Reduce a client-supplied filename to a bare, traversal-free '<name>.pdf'.
+    True when the file is genuinely a Word .docx.
+
+    A .docx is a ZIP container, so the magic bytes alone ("PK") would also accept
+    any .zip/.xlsx/.jar renamed to .docx. We therefore open it as a zip and
+    require the Word-specific `word/document.xml` part — that is what actually
+    makes it a Word document.
+    """
+    import zipfile
+    try:
+        if not zipfile.is_zipfile(path):
+            return False
+        with zipfile.ZipFile(path) as zf:
+            names = zf.namelist()
+        return any(n == "word/document.xml" or n.startswith("word/") for n in names)
+    except Exception:
+        return False
+
+
+def _looks_like_supported_document(path: str, ext: str) -> bool:
+    """Content-sniff the stored upload according to its declared extension."""
+    if ext == ".pdf":
+        return _looks_like_pdf(path)
+    if ext == ".docx":
+        return _looks_like_docx(path)
+    return False
+
+
+def _safe_document_filename(raw_name: Optional[str]) -> str:
+    """
+    Reduce a client-supplied filename to a bare, traversal-free supported document
+    name ('<name>.pdf' or '<name>.docx').
 
     Backslashes are normalised first: on Linux os.path.basename() does not treat
     '\\' as a separator, so a Windows-style path would otherwise survive intact.
@@ -787,30 +946,66 @@ def _safe_pdf_filename(raw_name: Optional[str]) -> str:
     candidate = os.path.basename(raw_name.replace("\\", "/")).strip()
     candidate = candidate.lstrip(".")           # no hidden / '..' style names
 
-    if not candidate or not candidate.lower().endswith(".pdf"):
+    if not candidate:
+        raise HTTPException(status_code=400, detail="A filename is required")
+
+    lowered = candidate.lower()
+
+    # Legacy binary Word: give an actionable message rather than a generic reject.
+    if lowered.endswith(".doc"):
         raise HTTPException(
             status_code=400,
-            detail="Only PDF files are accepted (.pdf extension required)",
+            detail="Legacy .doc files are not supported. Please re-save the file as "
+                   ".docx (Word: File > Save As > Word Document) and upload again.",
         )
+
+    if not lowered.endswith(SUPPORTED_UPLOAD_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF and Word files are accepted "
+                   f"({', '.join(SUPPORTED_UPLOAD_EXTENSIONS)} extension required)",
+        )
+
+    # Word leaves ~$name.docx lock files behind; they are not real documents.
+    if candidate.startswith("~$"):
+        raise HTTPException(status_code=400, detail="That looks like a Word lock file, not a document")
+
     if len(candidate) > 200:
         raise HTTPException(status_code=400, detail="Filename is too long")
     return candidate
 
 
-@app.post("/upload-pdf", status_code=202)
-async def upload_pdf(raw_request: Request, file: UploadFile = File(...)):
-    """
-    Upload a PDF to the RAG knowledge base.
+# Backwards-compatible alias — earlier code/tests referenced the PDF-only name.
+_safe_pdf_filename = _safe_document_filename
 
-    - Accepts: multipart/form-data with a PDF file
+
+@app.post("/upload-pdf", status_code=202)
+async def upload_pdf(
+    raw_request: Request,
+    file: UploadFile = File(...),
+    document_id: Optional[str] = Form(None),
+    user_id: Optional[str] = Form(None),
+    job_id: Optional[str] = Form(None),
+):
+    """
+    Upload a PDF or Word document to the RAG knowledge base.
+
+    - Accepts: multipart/form-data with a .pdf or .docx file and optional document_id, user_id, job_id
     - Returns: 202 Accepted immediately
     - Use GET /upload-pdf/status to track progress
-    - Mode: REPLACE — clears and rebuilds the Pinecone index with all PDFs
+    - Both formats run the identical extract -> clean -> chunk -> embed pipeline,
+      including OCR fallback for scanned PDFs and image-only Word documents.
     """
-    _enforce_rate_limit(upload_limiter, raw_request, "Too many uploads. Please wait before retrying.")
+    _enforce_rate_limit(
+        upload_limiter,
+        raw_request,
+        "Too many uploads. Please wait before retrying.",
+        user_id=user_id,
+    )
 
     # Validate + sanitise the filename before anything touches the filesystem
-    safe_name = _safe_pdf_filename(file.filename)
+    safe_name = _safe_document_filename(file.filename)
+    file_ext = os.path.splitext(safe_name)[1].lower()
 
     # Block concurrent uploads
     if _upload_status.get("status") == "processing":
@@ -825,12 +1020,19 @@ async def upload_pdf(raw_request: Request, file: UploadFile = File(...)):
     if declared_length and declared_length.isdigit() and int(declared_length) > MAX_PDF_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"PDF too large. Maximum allowed is {MAX_PDF_BYTES // (1024 * 1024)} MB.",
+            detail=f"Document too large. Maximum allowed is {MAX_PDF_BYTES // (1024 * 1024)} MB.",
         )
 
     # Stream to disk in chunks while enforcing the cap, instead of loading the whole
     # file into memory first. Aborting mid-write removes the partial file.
-    dest_path = os.path.join(PDF_UPLOAD_DIR, safe_name)
+    if document_id:
+        safe_doc_id = re.sub(r"[^A-Za-z0-9_\-]+", "_", document_id).strip("_") or "doc"
+        doc_dir = os.path.join(PDF_UPLOAD_DIR, safe_doc_id)
+        os.makedirs(doc_dir, exist_ok=True)
+        dest_path = os.path.join(doc_dir, safe_name)
+    else:
+        dest_path = os.path.join(PDF_UPLOAD_DIR, safe_name)
+
     digest = hashlib.sha256()
     total = 0
     try:
@@ -843,7 +1045,7 @@ async def upload_pdf(raw_request: Request, file: UploadFile = File(...)):
                 if total > MAX_PDF_BYTES:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"PDF too large. Maximum allowed is {MAX_PDF_BYTES // (1024 * 1024)} MB.",
+                        detail=f"Document too large. Maximum allowed is {MAX_PDF_BYTES // (1024 * 1024)} MB.",
                     )
                 digest.update(chunk)
                 out.write(chunk)
@@ -858,17 +1060,19 @@ async def upload_pdf(raw_request: Request, file: UploadFile = File(...)):
         _discard_upload(dest_path)
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    # Content sniff: a real PDF carries the %PDF marker in its header. This blocks a
-    # non-PDF payload that was simply renamed to .pdf.
-    if not _looks_like_pdf(dest_path):
+    # Content sniff: a real PDF carries the %PDF marker; a real .docx is a zip
+    # containing Word parts. This blocks an arbitrary payload renamed to a
+    # supported extension.
+    if not _looks_like_supported_document(dest_path, file_ext):
         _discard_upload(dest_path)
-        raise HTTPException(status_code=400, detail="File does not appear to be a valid PDF")
+        kind = "Word document (.docx)" if file_ext == ".docx" else "PDF"
+        raise HTTPException(status_code=400, detail=f"File does not appear to be a valid {kind}")
 
     # Audit trail: who uploaded what, and the exact bytes (hash) — so a bad document
     # that reaches the knowledge base can be traced and reversed.
     logger.info(
-        "PDF upload accepted: name=%s size_bytes=%d sha256=%s client=%s",
-        safe_name, total, digest.hexdigest(), _client_ip(raw_request),
+        "Document upload accepted: name=%s type=%s size_bytes=%d sha256=%s client=%s document_id=%s user_id=%s job_id=%s",
+        safe_name, file_ext, total, digest.hexdigest(), _client_ip(raw_request), document_id, user_id, job_id,
     )
     print(f"📥 [Upload] Saved {safe_name} ({total // 1024} KB) to {dest_path}")
 
@@ -876,13 +1080,21 @@ async def upload_pdf(raw_request: Request, file: UploadFile = File(...)):
     thread = threading.Thread(
         target=_run_pdf_ingestion,
         args=(dest_path, safe_name),
+        kwargs={
+            "document_id": document_id,
+            "user_id": user_id,
+            "job_id": job_id,
+        },
         daemon=True,
     )
     thread.start()
 
     return {
-        "message": f"PDF '{safe_name}' accepted. Ingestion started in background.",
+        "message": f"Document '{safe_name}' accepted. Ingestion started in background.",
+        "file_type": file_ext.lstrip("."),
         "filename": safe_name,
+        "document_id": document_id,
+        "job_id": job_id,
         "size_kb": round(total / 1024, 1),
         "status": "processing",
         "track_progress": "GET /upload-pdf/status",
@@ -1038,6 +1250,18 @@ async def deep_chat(request: DeepChatRequest):
         raise HTTPException(status_code=500, detail=f"Deep research error: {str(e)}")
 #ANU TILL HERE
 
+def _clean_question_for_search(raw_question: str) -> str:
+    """
+    Remove markdown file attachment tags like [File: media_literacy.pdf](http://...)
+    from the question so vector search and keyword indices search only against the user's
+    actual question intent rather than URL tokens.
+    """
+    if not raw_question:
+        return ""
+    cleaned = re.sub(r'\[File:[^\]]+\]\([^\)]+\)\s*', '', raw_question).strip()
+    return cleaned if cleaned else raw_question.strip()
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: QuestionRequest, response: Response, raw_request: Request):
     """
@@ -1046,7 +1270,12 @@ async def chat(request: QuestionRequest, response: Response, raw_request: Reques
     Returns the answer, sources, validation metadata, AND reference links
     pulled from the MySQL database matched to the topic of the answer.
     """
-    _enforce_rate_limit(chat_limiter, raw_request, "Too many requests. Please slow down.")
+    _enforce_rate_limit(
+        chat_limiter,
+        raw_request,
+        "Too many requests. Please slow down.",
+        user_id=request.user_id,
+    )
 
     if chatbot is None:
         raise HTTPException(status_code=503, detail="Chatbot not initialized")
@@ -1059,7 +1288,9 @@ async def chat(request: QuestionRequest, response: Response, raw_request: Reques
     _set_session_cookie(response, session_id)
 
     start_time = time.perf_counter()
-    print(f"DEBUG TIMING: Start Processing question: {request.question[:30]} | Model: {request.model}")
+    start_time_ts = time.time()
+    active_now = _chat_concurrency.inc()
+    print(f"DEBUG TIMING: Start Processing question: {request.question[:30]} | Model: {request.model} | Active: {active_now}")
 
     try:
         # ── 1. Get chatbot answer ──
@@ -1072,15 +1303,19 @@ async def chat(request: QuestionRequest, response: Response, raw_request: Reques
         # own `model=` parameter only accepts keys and would silently ignore a label.
         apply_requested_model(request.model)
 
+        question_to_ask = _clean_question_for_search(request.question)
+
         if hasattr(chatbot, 'ask_question_with_follow_ups'):
-            result = chatbot.ask_question_with_follow_ups(
-                question=request.question.strip(),
+            result = await run_in_threadpool(
+                chatbot.ask_question_with_follow_ups,
+                question=question_to_ask,
                 use_history=request.use_history if request.use_history is not None else True,
                 session_id=session_id,
             )
         else:
-            result = chatbot.ask_question(
-                question=request.question.strip(),
+            result = await run_in_threadpool(
+                chatbot.ask_question,
+                question=question_to_ask,
                 use_history=request.use_history if request.use_history is not None else True,
                 session_id=session_id,
             )
@@ -1130,6 +1365,15 @@ async def chat(request: QuestionRequest, response: Response, raw_request: Reques
         is_on_topic = "outside the scope" not in answer_text
         has_sources = len(result["sources"]) > 0
 
+        if "metadata" in chat_response and chat_response["metadata"]:
+            if "timings" not in chat_response["metadata"]:
+                chat_response["metadata"]["timings"] = {}
+            chat_response["metadata"]["timings"]["python_total_ms"] = round(duration_ms, 2)
+            chat_response["metadata"]["timings"]["active_at_entry"] = active_now
+            chat_response["metadata"]["timings"]["max_concurrency"] = _chat_concurrency.max_observed
+            chat_response["metadata"]["timings"]["start_ts"] = start_time_ts
+            chat_response["metadata"]["timings"]["end_ts"] = time.time()
+
         log_request_metrics(
             endpoint="/chat",
             status_code=200,
@@ -1156,6 +1400,9 @@ async def chat(request: QuestionRequest, response: Response, raw_request: Reques
         )
         raise _fail(e, "/chat", message="Error processing question")
 
+    finally:
+        _chat_concurrency.dec()
+
 
 @app.post("/chat/stream")
 async def chat_stream(request: QuestionRequest, raw_request: Request):
@@ -1176,7 +1423,12 @@ async def chat_stream(request: QuestionRequest, raw_request: Request):
     matches /chat exactly, so a streamed turn is indistinguishable from a
     regular one once it's done.
     """
-    _enforce_rate_limit(chat_limiter, raw_request, "Too many requests. Please slow down.")
+    _enforce_rate_limit(
+        chat_limiter,
+        raw_request,
+        "Too many requests. Please slow down.",
+        user_id=request.user_id,
+    )
 
     if chatbot is None:
         raise HTTPException(status_code=503, detail="Chatbot not initialized")
@@ -1197,7 +1449,7 @@ async def chat_stream(request: QuestionRequest, raw_request: Request):
         raise HTTPException(status_code=400, detail="Streaming is not supported for this model yet")
 
     use_history = request.use_history if request.use_history is not None else True
-    question = request.question.strip()
+    question = _clean_question_for_search(request.question)
     user_id = request.user_id or "guest"
     start_time = time.perf_counter()
 
@@ -1256,7 +1508,12 @@ async def chat_simple(request: QuestionRequest, response: Response, raw_request:
     Returns only the answer text + reference links (no full metadata).
     Lightweight endpoint for simple frontend integrations.
     """
-    _enforce_rate_limit(chat_limiter, raw_request, "Too many requests. Please slow down.")
+    _enforce_rate_limit(
+        chat_limiter,
+        raw_request,
+        "Too many requests. Please slow down.",
+        user_id=request.user_id,
+    )
 
     if chatbot is None:
         raise HTTPException(status_code=503, detail="Chatbot not initialized")
@@ -1269,8 +1526,11 @@ async def chat_simple(request: QuestionRequest, response: Response, raw_request:
     try:
         apply_requested_model(request.model)
 
-        result = chatbot.ask_question(
-            question=request.question.strip(),
+        question_to_ask = _clean_question_for_search(request.question)
+
+        result = await run_in_threadpool(
+            chatbot.ask_question,
+            question=question_to_ask,
             use_history=request.use_history if request.use_history is not None else True,
             session_id=session_id,
         )
@@ -1371,7 +1631,12 @@ async def get_history(response: Response, raw_request: Request):
 @app.post("/text-to-text", response_model=TextToTextResponse)
 async def text_to_text(request: TextToTextRequest, response: Response, raw_request: Request):
     """Text pipeline: question (any language) → English → RAG → translate back."""
-    _enforce_rate_limit(chat_limiter, raw_request, "Too many requests. Please slow down.")
+    _enforce_rate_limit(
+        chat_limiter,
+        raw_request,
+        "Too many requests. Please slow down.",
+        user_id=request.user_id,
+    )
 
     if chatbot is None:
         raise HTTPException(status_code=503, detail="Chatbot not initialized")

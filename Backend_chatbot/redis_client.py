@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional
 
 try:
     import redis
+    from redis.retry import Retry
+    from redis.backoff import ExponentialWithJitterBackoff
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -76,13 +78,20 @@ class LocalMemoryCache:
             self._cache.pop(key, None)
 
 
+if REDIS_AVAILABLE:
+    REDIS_ERRORS = (redis.ConnectionError, redis.TimeoutError)
+else:
+    REDIS_ERRORS = ()
+
+
 class RedisManager:
     """Centralized cache manager for Global Response Caching and session memory."""
     def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0, default_ttl: int = 86400):
         self.default_ttl = default_ttl  # Default 24 hours
 
         self.use_local = True
-        self.client = None
+        self.local_cache = LocalMemoryCache()
+        self.client = self.local_cache
 
         redis_host = os.getenv("REDIS_HOST", host)
         redis_port = int(os.getenv("REDIS_PORT", port))
@@ -94,9 +103,13 @@ class RedisManager:
 
         if REDIS_AVAILABLE:
             try:
+                retry = Retry(ExponentialWithJitterBackoff(), 1)
                 self.client = redis.Redis(
                     host=redis_host, port=redis_port, db=db,
                     password=redis_password, ssl=redis_ssl,
+                    socket_timeout=2.0,
+                    socket_connect_timeout=2.0,
+                    retry=retry,
                     decode_responses=True,
                 )
                 self.client.ping()
@@ -104,10 +117,10 @@ class RedisManager:
                 print(f"✅ Connected to Redis cache at {redis_host}:{redis_port}")
             except (redis.ConnectionError, redis.TimeoutError) as e:
                 print(f"⚠️ Redis unavailable at {redis_host}:{redis_port}, falling back to LocalMemoryCache")
-                self.client = LocalMemoryCache()
+                self.client = self.local_cache
         else:
             print("⚠️ Redis python package not found, falling back to LocalMemoryCache")
-            self.client = LocalMemoryCache()
+            self.client = self.local_cache
 
     @staticmethod
     def get_hash_key(question: str) -> str:
@@ -118,7 +131,10 @@ class RedisManager:
     def get_exact_match(self, question: str) -> Optional[Dict[str, Any]]:
         """Hook 1: Exact Match Hook - Retrieve cached response based on the question text."""
         key = self.get_hash_key(question)
-        data = self.client.get(key)
+        try:
+            data = self.client.get(key)
+        except REDIS_ERRORS:
+            data = self.local_cache.get(key)
         if data:
             try:
                 return json.loads(data)
@@ -128,7 +144,10 @@ class RedisManager:
 
     def get_by_hash(self, redis_hash: str) -> Optional[Dict[str, Any]]:
         """Retrieve a cached response directly by its hash key (used by Semantic Fallback)."""
-        data = self.client.get(redis_hash)
+        try:
+            data = self.client.get(redis_hash)
+        except REDIS_ERRORS:
+            data = self.local_cache.get(redis_hash)
         if data:
             try:
                 return json.loads(data)
@@ -139,13 +158,19 @@ class RedisManager:
     def save_response(self, question: str, response_data: Dict[str, Any]) -> str:
         """Hook 4: Success-Only Saving - Store rich metadata JSON object."""
         key = self.get_hash_key(question)
-        self.client.setex(key, self.default_ttl, json.dumps(response_data))
+        try:
+            self.client.setex(key, self.default_ttl, json.dumps(response_data))
+        except REDIS_ERRORS:
+            self.local_cache.setex(key, self.default_ttl, json.dumps(response_data))
         return key
         
     def get_session_history(self, session_id: str) -> Optional[list]:
         """Global Session Memory: Retrieve chat history for load-balanced continuity."""
         key = f"session:{session_id}"
-        data = self.client.get(key)
+        try:
+            data = self.client.get(key)
+        except REDIS_ERRORS:
+            data = self.local_cache.get(key)
         if data:
             try:
                 return json.loads(data)
@@ -156,7 +181,10 @@ class RedisManager:
     def save_session_history(self, session_id: str, history: list) -> None:
         """Global Session Memory: Save chat history to Redis."""
         key = f"session:{session_id}"
-        self.client.setex(key, self.default_ttl, json.dumps(history))
+        try:
+            self.client.setex(key, self.default_ttl, json.dumps(history))
+        except REDIS_ERRORS:
+            self.local_cache.setex(key, self.default_ttl, json.dumps(history))
 
 # Singleton instance
 redis_client = RedisManager()

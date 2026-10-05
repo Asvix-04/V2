@@ -1,9 +1,30 @@
+const http = require('http');
+const https = require('https');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const bridgeMetrics = require('../lib/bridgeMetrics');
-const { reserveQuota, compensateQuota, getGuestQuotaData } = require('../middleware/guestQuotaMiddleware');
+const guestQuotaMiddleware = require('../middleware/guestQuotaMiddleware');
 
-const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8000';
+
+const pythonHttpAgent = new http.Agent({
+    keepAlive: true,
+    maxSockets: 64,
+    maxFreeSockets: 32,
+    keepAliveMsecs: 30000
+});
+
+const pythonHttpsAgent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 64,
+    maxFreeSockets: 32,
+    keepAliveMsecs: 30000
+});
+
+const pythonClient = axios.create({
+    httpAgent: pythonHttpAgent,
+    httpsAgent: pythonHttpsAgent
+});
 
 /**
  * Integrated Voice & Text Bridge
@@ -38,17 +59,13 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8
  * correct on whichever side actually enforces it.
  */
 function pythonProxyHeaders(req) {
-    // Always include a per-user-unique X-Guest-ID fallback, even when we also
-    // forward Authorization. If the receiving side's JWT_SECRET ever differs
-    // from this service's (e.g. Render vs. Hugging Face configured
-    // separately), its own classifyUser will fail to verify our forwarded
-    // token and fall through to its guest path — and needs a guest id to
-    // fall back to right there, or it 400s exactly like the original bug.
-    // Keying it to this user's own id keeps that fallback isolated per user
-    // instead of one shared bucket.
-    const headers = { 'X-Guest-ID': req.guestId || `user-${getUserId(req)}` };
+    const userId = getUserId(req);
+    const headers = { 'X-Guest-ID': req.guestId || `user-${userId}` };
     if (req.headers.authorization) {
         headers.Authorization = req.headers.authorization;
+    }
+    if (userId && userId !== 'guest') {
+        headers['X-Authenticated-User-Id'] = userId;
     }
     return headers;
 }
@@ -95,7 +112,7 @@ exports.speechToSpeech = async (req, res) => {
 
     if (req.isGuest) {
         try {
-            reservedQuotaObj = await reserveQuota(req.guestId);
+            reservedQuotaObj = await guestQuotaMiddleware.reserveQuota(req.guestId);
             reserved = true;
         } catch (err) {
             if (err.message === 'limit_exceeded') {
@@ -109,7 +126,7 @@ exports.speechToSpeech = async (req, res) => {
         const { audio_base64, mime_type, response_language_code, use_history } = req.body;
 
         if (!audio_base64) {
-            if (reserved) await compensateQuota(req.guestId);
+            if (reserved) await guestQuotaMiddleware.compensateQuota(req.guestId);
             return res.status(400).json({ message: 'No audio data provided' });
         }
 
@@ -122,7 +139,7 @@ exports.speechToSpeech = async (req, res) => {
         // default to 'en-IN' below, contradicting this comment — VoiceOverlay
         // never passes a response language, so every voice reply was silently
         // forced to English regardless of what was actually spoken.)
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/speech-to-speech`, {
+        const response = await pythonClient.post(`${PYTHON_BACKEND_URL}/speech-to-speech`, {
             audio_base64: audio_base64,
             mime_type: mime_type || 'audio/wav',
             use_history: use_history !== false,
@@ -142,7 +159,7 @@ exports.speechToSpeech = async (req, res) => {
 
     } catch (error) {
         if (reserved) {
-            await compensateQuota(req.guestId);
+            await guestQuotaMiddleware.compensateQuota(req.guestId);
         }
         console.error('Speech-to-Speech Proxy Error:', error.response?.data || error.message);
         _onProxyError('/speech-to-speech', error, start, userId);
@@ -161,7 +178,7 @@ exports.chat = async (req, res) => {
 
     if (req.isGuest) {
         try {
-            reservedQuotaObj = await reserveQuota(req.guestId);
+            reservedQuotaObj = await guestQuotaMiddleware.reserveQuota(req.guestId);
             reserved = true;
         } catch (err) {
             if (err.message === 'limit_exceeded') {
@@ -172,14 +189,14 @@ exports.chat = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
+        const response = await pythonClient.post(`${PYTHON_BACKEND_URL}/chat`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
         });
     } catch (error) {
         if (reserved) {
-            await compensateQuota(req.guestId);
+            await guestQuotaMiddleware.compensateQuota(req.guestId);
         }
         console.error('Chat Proxy Error:', error.response?.data || error.message);
         _onProxyError('/chat', error, start, userId);
@@ -208,7 +225,7 @@ exports.chatStream = async (req, res) => {
     }
 
     try {
-        const upstream = await axios.post(
+        const upstream = await pythonClient.post(
             `${PYTHON_BACKEND_URL}/chat/stream`,
             { ...req.body, user_id: userId },
             { headers: pythonProxyHeaders(req), responseType: 'stream' }
@@ -263,7 +280,7 @@ exports.chatSimple = async (req, res) => {
 
     if (req.isGuest) {
         try {
-            reservedQuotaObj = await reserveQuota(req.guestId);
+            reservedQuotaObj = await guestQuotaMiddleware.reserveQuota(req.guestId);
             reserved = true;
         } catch (err) {
             if (err.message === 'limit_exceeded') {
@@ -274,14 +291,14 @@ exports.chatSimple = async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
+        const response = await pythonClient.post(`${PYTHON_BACKEND_URL}/chat/simple`, { ...req.body, user_id: userId }, { headers: pythonProxyHeaders(req) });
         res.json({
             ...response.data,
             guestQuota: reservedQuotaObj
         });
     } catch (error) {
         if (reserved) {
-            await compensateQuota(req.guestId);
+            await guestQuotaMiddleware.compensateQuota(req.guestId);
         }
         console.error('Chat Simple Proxy Error:', error.response?.data || error.message);
         _onProxyError('/chat/simple', error, start, userId);
@@ -296,7 +313,7 @@ exports.getGuestQuota = async (req, res) => {
         return res.json({ messagesUsed: 0, limit: 5, sessionStarted: false });
     }
     try {
-        const quota = await getGuestQuotaData(req.guestId);
+        const quota = await guestQuotaMiddleware.getGuestQuotaData(req.guestId);
         res.json(quota);
     } catch (err) {
         console.error('Failed to get guest quota:', err.message);
@@ -309,7 +326,7 @@ exports.getGuestQuota = async (req, res) => {
 exports.clearHistory = async (req, res) => {
     if (req.isGuest) {
         try {
-            const quota = await getGuestQuotaData(req.guestId);
+            const quota = await guestQuotaMiddleware.getGuestQuotaData(req.guestId);
             if (quota && quota.sessionStarted) {
                 return res.status(429).json({
                     message: 'Guest session already started. You cannot clear history or start a new session.',
@@ -322,7 +339,7 @@ exports.clearHistory = async (req, res) => {
         }
     }
     try {
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/clear-history`, {}, { headers: pythonProxyHeaders(req) });
+        const response = await pythonClient.post(`${PYTHON_BACKEND_URL}/clear-history`, {}, { headers: pythonProxyHeaders(req) });
         res.json(response.data);
     } catch (error) {
         console.error('Clear History Proxy Error:', error.response?.data || error.message);
@@ -340,7 +357,7 @@ exports.textToText = async (req, res) => {
 
     if (req.isGuest) {
         try {
-            reservedQuotaObj = await reserveQuota(req.guestId);
+            reservedQuotaObj = await guestQuotaMiddleware.reserveQuota(req.guestId);
             reserved = true;
         } catch (err) {
             if (err.message === 'limit_exceeded') {
@@ -359,13 +376,13 @@ exports.textToText = async (req, res) => {
         const useHistory = req.body.use_history ?? req.body.useHistory;
 
         if (!question) {
-            if (reserved) await compensateQuota(req.guestId);
+            if (reserved) await guestQuotaMiddleware.compensateQuota(req.guestId);
             return res.status(400).json({ message: 'Question is required' });
         }
 
         console.log(`Forwarding T2T request to AI backend: "${question}"`);
 
-        const response = await axios.post(`${PYTHON_BACKEND_URL}/text-to-text`, {
+        const response = await pythonClient.post(`${PYTHON_BACKEND_URL}/text-to-text`, {
             question: question,
             // Not defaulted to 'en-IN' — same reasoning as speechToSpeech below:
             // null/undefined lets Python detect the question's own language and
@@ -387,7 +404,7 @@ exports.textToText = async (req, res) => {
 
     } catch (error) {
         if (reserved) {
-            await compensateQuota(req.guestId);
+            await guestQuotaMiddleware.compensateQuota(req.guestId);
         }
         console.error('Text-to-Text Proxy Error:', error.response?.data || error.message);
         _onProxyError('/text-to-text', error, start, userId);
@@ -448,7 +465,7 @@ exports.deepChat = async (req, res) => {
     const userId = getUserId(req);
 
     try {
-        const response = await axios.post(
+        const response = await pythonClient.post(
             `${PYTHON_BACKEND_URL}/deepchat`,
             req.body,
             {
@@ -468,7 +485,7 @@ exports.deepChat = async (req, res) => {
 
 exports.healthCheck = async (req, res) => {
     try {
-        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: pythonProxyHeaders(req) });
+        const response = await pythonClient.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: pythonProxyHeaders(req) });
         res.json({
             status: 'healthy',
             service: 'Integrated-AI-Bridge',
@@ -484,4 +501,7 @@ exports.healthCheck = async (req, res) => {
 };
 
 exports.pythonProxyHeaders = pythonProxyHeaders;
+exports.pythonHttpAgent = pythonHttpAgent;
+exports.pythonHttpsAgent = pythonHttpsAgent;
+exports.pythonClient = pythonClient;
 

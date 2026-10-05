@@ -1,9 +1,21 @@
 import { cn } from "../../lib/utils";
 import { MdVolumeUp, MdContentCopy, MdCheck, MdLink } from "react-icons/md";
+import { FaFilePdf, FaFileWord, FaFileLines } from "react-icons/fa6";
 import { motion } from "framer-motion";
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown"; // resolved import
 import remarkGfm from "remark-gfm"; // resolved import
+
+function getMessageFileIcon(filename = "") {
+    const ext = filename?.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') {
+        return <FaFilePdf className="text-red-300 dark:text-red-400 shrink-0 text-[14px]" aria-hidden="true" />;
+    }
+    if (ext === 'docx' || ext === 'doc') {
+        return <FaFileWord className="text-blue-300 dark:text-blue-300 shrink-0 text-[14px]" aria-hidden="true" />;
+    }
+    return <FaFileLines className="text-white/80 shrink-0 text-[14px]" aria-hidden="true" />;
+}
 
 // Escape regex special characters
 function escapeRegExp(string) {
@@ -180,16 +192,32 @@ export function MessageBubble({ message, isIncognito }) {
         }
     };
 
+    // Detect attachment and handle backward compatibility for legacy messages containing [File: name](url)
+    let displayContent = message.content || "";
+    let attachment = message.attachment || null;
+
+    if (!attachment && typeof displayContent === "string") {
+        const legacyMatch = displayContent.match(/^\[File:\s*([^\]]+)\]\(([^)]+)\)\s*([\s\S]*)$/);
+        if (legacyMatch) {
+            attachment = {
+                name: legacyMatch[1],
+                url: legacyMatch[2],
+                isDocument: true,
+            };
+            displayContent = legacyMatch[3].trim();
+        }
+    }
+
     const handleCopy = async (e) => {
         if (e) e.stopPropagation();
         try {
-            await navigator.clipboard.writeText(message.content);
+            await navigator.clipboard.writeText(displayContent);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch (err) {
             try {
                 const textarea = document.createElement("textarea");
-                textarea.value = message.content;
+                textarea.value = displayContent;
                 textarea.style.position = "fixed";
                 textarea.style.opacity = "0";
                 document.body.appendChild(textarea);
@@ -205,7 +233,7 @@ export function MessageBubble({ message, isIncognito }) {
     };
 
     // Detect quoted message pattern
-    const quoteMatch = message.content?.match ? message.content.match(/^>\s*"([\s\S]+?)"\n\n([\s\S]*)$/) : null;
+    const quoteMatch = displayContent.match ? displayContent.match(/^>\s*"([\s\S]+?)"\n\n([\s\S]*)$/) : null;
 
     // USER MESSAGE
     if (isUser) {
@@ -222,6 +250,23 @@ export function MessageBubble({ message, isIncognito }) {
                 }}
             >
                 <div className="max-sm:max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] rounded-[24px] bg-accent max-sm:bg-accent/75 max-sm:backdrop-blur-xl max-sm:border max-sm:border-white/10 text-white px-5 py-3.5 text-[15px] leading-relaxed shadow-sm">
+                    {/* Clean attachment chip */}
+                    {attachment && (
+                        <div className="mb-2.5">
+                            <a
+                                href={attachment.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-medium transition-colors cursor-pointer max-w-full"
+                                title={`Open ${attachment.name}`}
+                            >
+                                {getMessageFileIcon(attachment.name)}
+                                <span className="truncate max-w-[190px] sm:max-w-[280px]">
+                                    {attachment.name}
+                                </span>
+                            </a>
+                        </div>
+                    )}
 
                     {quoteMatch ? (
                         <div className="space-y-2">
@@ -231,7 +276,7 @@ export function MessageBubble({ message, isIncognito }) {
                             <div>{quoteMatch[2]}</div>
                         </div>
                     ) : (
-                        message.content
+                        displayContent ? <div>{displayContent}</div> : null
                     )}
 
                     {/* Desktop: hover-controlled. Mobile: state-controlled. */}

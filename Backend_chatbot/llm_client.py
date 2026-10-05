@@ -8,7 +8,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 import time
+import threading
 import concurrent.futures
+
+_llm_timing_local = threading.local()
+
+def get_last_llm_timing() -> dict:
+    return getattr(_llm_timing_local, "last_timing", {
+        "gemini_ttft_ms": 0.0,
+        "gemini_total_ms": 0.0,
+        "start_ts": 0.0,
+        "end_ts": 0.0,
+    })
 
 
 @dataclass
@@ -183,21 +194,52 @@ class UnifiedLLMClient:
 
         for attempt in range(max_retries + 1):
             try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(
-                        self.client.models.generate_content,
-                        model=self.config.id,
-                        contents=prompt,
-                        config=config,
-                    )
+                t0 = time.perf_counter()
+                ts_start = time.time()
+                ttft_holder = [None]
+                chunks = []
+
+                def _call_with_stream():
                     try:
-                        response = future.result(timeout=timeout)
+                        stream = self.client.models.generate_content_stream(
+                            model=self.config.id,
+                            contents=prompt,
+                            config=config,
+                        )
+                        for chunk in stream:
+                            if chunk.text:
+                                if ttft_holder[0] is None:
+                                    ttft_holder[0] = (time.perf_counter() - t0) * 1000
+                                chunks.append(chunk.text)
+                        return "".join(chunks)
+                    except Exception:
+                        # Fallback to standard generate_content if stream has any issue
+                        resp = self.client.models.generate_content(
+                            model=self.config.id,
+                            contents=prompt,
+                            config=config,
+                        )
+                        return resp.text if resp else None
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_call_with_stream)
+                    try:
+                        text_result = future.result(timeout=timeout)
                     except concurrent.futures.TimeoutError:
                         print(f"⏱️  Timed out after {timeout}s (attempt {attempt + 1}/{max_retries + 1})")
                         if attempt < max_retries:
                             continue
                         return None
-                return response.text
+
+                total_time_ms = (time.perf_counter() - t0) * 1000
+                ttft_ms = ttft_holder[0] if ttft_holder[0] is not None else total_time_ms
+                _llm_timing_local.last_timing = {
+                    "gemini_ttft_ms": round(ttft_ms, 2),
+                    "gemini_total_ms": round(total_time_ms, 2),
+                    "start_ts": ts_start,
+                    "end_ts": time.time(),
+                }
+                return text_result
 
             except concurrent.futures.TimeoutError:
                 pass

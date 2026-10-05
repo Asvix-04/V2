@@ -286,14 +286,27 @@ class PDFChatbot:
             if not os.path.isdir(upload_dir):
                 return docs
             for fn in os.listdir(upload_dir):
-                if not fn.lower().endswith(".pdf"):
+                if fn.startswith("~$") or fn.startswith("."):
                     continue
-                stem = os.path.splitext(fn)[0]
-                txt_path = os.path.join("data", "txts", f"{stem}.txt")
-                if os.path.exists(txt_path):
-                    with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
-                        text = f.read().lower()
-                    docs[stem] = text
+                full_path = os.path.join(upload_dir, fn)
+                if os.path.isdir(full_path):
+                    for sub_fn in os.listdir(full_path):
+                        if sub_fn.startswith("~$") or sub_fn.startswith("."):
+                            continue
+                        if sub_fn.lower().endswith((".pdf", ".docx")):
+                            sub_stem = f"{fn}_{os.path.splitext(sub_fn)[0]}"
+                            txt_path = os.path.join("data", "txts", f"{sub_stem}.txt")
+                            if os.path.exists(txt_path):
+                                with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
+                                    text = f.read().lower()
+                                docs[sub_stem] = text
+                elif fn.lower().endswith((".pdf", ".docx")):
+                    stem = os.path.splitext(fn)[0]
+                    txt_path = os.path.join("data", "txts", f"{stem}.txt")
+                    if os.path.exists(txt_path):
+                        with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
+                            text = f.read().lower()
+                        docs[stem] = text
         except Exception as e:
             print(f"⚠️ Could not load uploaded docs for trust check: {e}")
         if docs:
@@ -399,14 +412,15 @@ class PDFChatbot:
         q = (question or '').strip().lower()
         if not q:
             return False
-        
-        print(f"DEBUG history length: {len(self.conversation_history)}")
 
-        if self.conversation_history and len(self.conversation_history) >= 1:
-            # Use LLM to verify it's actually a follow-up
-            is_vague = self._llm_classify_vague(question)
-            if is_vague:
-                return True   
+        # NOTE: this deliberately uses ONLY the cheap deterministic phrase/regex
+        # checks below. An earlier revision called the LLM classifier here, before
+        # the phrase list, on every turn that had history — which meant two
+        # blocking LLM round-trips per question (this one plus the one in
+        # _is_vague_question), each up to its own timeout, before retrieval even
+        # started. The LLM classifier remains where it was originally placed: as
+        # the tier-2 fallback in _is_vague_question(), reached only when the cheap
+        # patterns do not already answer the question.
 
         followup_phrases = (
             "how does it", "how is it", "what about", "how about", "tell me more",
@@ -1060,25 +1074,11 @@ class PDFChatbot:
                 redis_client.save_session_history(session_id, self.conversation_history)
             return exact_match
 
-        # ── Global Cache Hook 2: Semantic Match ──
-        semantic_hash = self.retriever.pinecone_client.search_semantic_cache(q_clean, threshold=0.95)
-        if semantic_hash:
-            semantic_match = redis_client.get_by_hash(semantic_hash)
-            if semantic_match:
-                print("✅ [Cache] Semantic Match Hit!")
-                semantic_match['is_cache_hit'] = True
-                if session_id and use_history:
-                    self._sync_session_history(session_id)
-                    self._record_turn(question, semantic_match.get('answer', ''), use_history=True, is_vague=False)
-                    redis_client.save_session_history(session_id, self.conversation_history)
-                return semantic_match
-
-        # ── Global Cache Hook 3: Session Sync ──
+        # ── Global Cache Hook: Session Sync ──
         if session_id and use_history:
             self._sync_session_history(session_id)
 
         # Phase 1: Pure greeting/conversational fast path (0ms)
-        q_clean = question.strip().lower().strip("?.!,;:")
         common_greetings = {
             "hi": "Hello! I'm Digilab, your Media Literacy assistant. How can I help you today?",
             "hello": "Hello! I'm Digilab, your Media Literacy assistant. How can I help you today?",
@@ -1122,51 +1122,8 @@ class PDFChatbot:
                 'graph_context': {}, 'expanded_queries': [], 'validation': {}
             }
 
-        # Phase 2: Parallel Input Classification & Retrieval
-        print("🔍 Analyzing question and retrieving context in parallel...")
-        recent_context = self._get_recent_conversation_context() if use_history else ""
-        
-        # Pre-strip greeting for retrieval and follow-up checks
-        q_academic_pre = GREETING_PREFIX_RE.sub('', question).strip()
-        if not q_academic_pre:
-            q_academic_pre = question
-
-        likely_followup = (
-            bool(recent_context) 
-            and self._is_likely_followup(q_academic_pre)
-            and _is_contextual_follow_up(q_academic_pre, self.conversation_history)
-        )
-
-        is_vague_turn = False
-        retrieval_query = q_academic_pre
-
-        def run_parallel_retrieval():
-            nonlocal is_vague_turn, retrieval_query
-            if use_history and self._is_vague_question(q_academic_pre):
-                is_vague_turn = True
-                retrieval_query = self._resolve_vague_query(q_academic_pre)
-                print(f"Vague query resolved: '{q_academic_pre}' -> '{retrieval_query}'")
-            elif likely_followup:
-                retrieval_query = self._build_followup_retrieval_query(q_academic_pre)
-                print("Follow-up context added to retrieval query")
-            else:
-                retrieval_query = q_academic_pre
-
-            retrieved_context = self.retriever.retrieve(retrieval_query)
-            if likely_followup and not retrieved_context.vector_results and retrieval_query != q_academic_pre:
-                print("Follow-up retrieval fallback to raw question")
-                retrieved_context = self.retriever.retrieve(q_academic_pre)
-            return retrieved_context
-
         # Classification is now rule-based (instant, ~0ms) — run inline
         classification = self._classify_input(question)
-
-        # Retrieval still runs in a thread (it involves network I/O)
-        import concurrent.futures as _cf
-        with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
-            _ret_future = _pool.submit(run_parallel_retrieval)
-            retrieved_context = _ret_future.result()
-
         print(f"📥 Input classification: {classification}")
 
         # Pure greeting fallback — short-circuit, mark vague so it doesn't anchor follow-ups
@@ -1187,6 +1144,74 @@ class PDFChatbot:
             greeting_part = self._get_brief_greeting_opener(question)
             question = self._strip_greeting(question)
             print(f"🪄 Opener: '{greeting_part}' | Academic question: '{question}'")
+
+        # Phase 2: Query resolution, canonical expansion, single-batch embedding & retrieval
+        recent_context = self._get_recent_conversation_context() if use_history else ""
+        
+        # Pre-strip greeting for retrieval and follow-up checks
+        q_academic_pre = GREETING_PREFIX_RE.sub('', question).strip()
+        if not q_academic_pre:
+            q_academic_pre = question
+
+        likely_followup = (
+            bool(recent_context) 
+            and self._is_likely_followup(q_academic_pre)
+            and _is_contextual_follow_up(q_academic_pre, self.conversation_history)
+        )
+
+        is_vague_turn = False
+        if use_history and self._is_vague_question(q_academic_pre):
+            is_vague_turn = True
+            retrieval_query = self._resolve_vague_query(q_academic_pre)
+            print(f"Vague query resolved: '{q_academic_pre}' -> '{retrieval_query}'")
+        elif likely_followup:
+            retrieval_query = self._build_followup_retrieval_query(q_academic_pre)
+            print("Follow-up context added to retrieval query")
+        else:
+            retrieval_query = q_academic_pre
+
+        # Step 1: Generate canonical queries [canonical_q0, Q1, Q2]
+        canonical_q0 = self.retriever.spell_corrector.correct(retrieval_query)
+        reformulated = self.retriever.reformulator.reformulate(canonical_q0)
+        all_queries = [canonical_q0] + reformulated
+
+        # Step 2: ONE upfront batch embedding operation (Phase 5J unified pipeline)
+        t_emb_0 = time.perf_counter()
+        all_embeddings = self.retriever.pinecone_client.create_embeddings_batch(all_queries)
+        embedding_ms = (time.perf_counter() - t_emb_0) * 1000
+
+        # ── Global Cache Hook 2: Semantic Match (using canonical Q0 precomputed embedding) ──
+        semantic_hash = None
+        try:
+            semantic_hash = self.retriever.pinecone_client.search_semantic_cache(
+                canonical_q0,
+                threshold=0.95,
+                precomputed_embedding=all_embeddings[0]
+            )
+        except Exception as e:
+            print(f"⚠️  [Cache] Semantic cache search failed: {e}")
+
+        if semantic_hash:
+            semantic_match = redis_client.get_by_hash(semantic_hash)
+            if semantic_match:
+                print("✅ [Cache] Semantic Match Hit!")
+                semantic_match['is_cache_hit'] = True
+                if session_id and use_history:
+                    self._record_turn(question, semantic_match.get('answer', ''), use_history=True, is_vague=is_vague_turn)
+                    redis_client.save_session_history(session_id, self.conversation_history)
+                return semantic_match
+
+        # Step 3: Retrieval on cache miss — reuse the precomputed queries and embeddings
+        print("🔍 Retrieving context with precomputed embeddings...")
+        retrieved_context = self.retriever.retrieve(
+            retrieval_query,
+            precomputed_embeddings=all_embeddings,
+            precomputed_queries=all_queries,
+            embedding_ms=embedding_ms
+        )
+        if likely_followup and not retrieved_context.vector_results and retrieval_query != q_academic_pre:
+            print("Follow-up retrieval fallback to raw question")
+            retrieved_context = self.retriever.retrieve(q_academic_pre)
 
         try:
             source_meta = [r.metadata for r in retrieved_context.vector_results]
@@ -1416,6 +1441,11 @@ class PDFChatbot:
                 for link in raw_links
             ]
 
+            from hybrid_retriever import get_last_retrieval_timing
+            from llm_client import get_last_llm_timing
+            ret_t = getattr(retrieved_context, "timing", None) or get_last_retrieval_timing()
+            llm_t = get_last_llm_timing()
+
             response_dict = {
                 'answer': answer,
                 'sources': source_meta,
@@ -1426,6 +1456,10 @@ class PDFChatbot:
                 'reference_links': ref_links,
                 'is_cache_hit': False,
                 'top_score': top_score,
+                '_audit_timings': {
+                    'retrieval': ret_t,
+                    'llm': llm_t,
+                },
             }
 
             # ── Global Cache Hook 4: Success-Only Saving ──
@@ -1446,6 +1480,7 @@ class PDFChatbot:
                 # vector_results objects themselves don't survive the round-trip.
                 cache_copy.pop('vector_results', None)
                 cache_copy.pop('graph_context', None)
+                cache_copy.pop('_audit_timings', None)
                 redis_hash = redis_client.save_response(q_clean, cache_copy)
                 self.retriever.pinecone_client.upsert_semantic_cache(q_clean, redis_hash)
 

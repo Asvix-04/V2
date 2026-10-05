@@ -12,13 +12,33 @@ v7 changes (for reference):
   - All other v6 logic unchanged
 """
 
-from typing import List, Dict, Any, Generator
+from typing import List, Dict, Any, Generator, Optional
 from dataclasses import dataclass
 from pinecone_client import PineconeClient
 from neo4j_client import Neo4jClient
 from streaming_llm import StreamingLLM
 from difflib import get_close_matches
-import os, json, re
+import os, json, re, time, threading
+import concurrent.futures as _cf
+
+# Process-level bounded executor for Pinecone retrieval fan-out (validated Phase 5M configuration)
+_PINECONE_QUERY_EXECUTOR = _cf.ThreadPoolExecutor(
+    max_workers=12,
+    thread_name_prefix="PineconeQueryWorker"
+)
+
+_retriever_timing_local = threading.local()
+
+def get_last_retrieval_timing() -> dict:
+    return getattr(_retriever_timing_local, "last_timing", {
+        "retrieval_total_ms": 0.0,
+        "embedding_ms": 0.0,
+        "pinecone_ms": 0.0,
+        "bm25_ms": 0.0,
+        "context_ms": 0.0,
+        "start_ts": 0.0,
+        "end_ts": 0.0,
+    })
 
 @dataclass
 class RetrievedContext:
@@ -265,39 +285,56 @@ class EnhancedHybridRetriever:
         self.spell_corrector = SpellCorrector()
         self.streaming_llm = StreamingLLM()  # ✅ Gemini only
 
-    def retrieve(self, query: str, top_k: int = 6) -> RetrievedContext:
+    def retrieve(self, query: str, top_k: int = 6,
+                 precomputed_embeddings: Optional[List[List[float]]] = None,
+                 precomputed_queries: Optional[List[str]] = None,
+                 embedding_ms: Optional[float] = None) -> RetrievedContext:
         """Optimized retrieval: batch embeddings, parallel Pinecone + Neo4j."""
-        corrected = self.spell_corrector.correct(query)
-        reformulated = self.reformulator.reformulate(corrected)
-        all_queries = [corrected] + reformulated
+        t_ret_0 = time.perf_counter()
+        ts_start = time.time()
+        if precomputed_queries is not None:
+            all_queries = precomputed_queries
+            corrected = all_queries[0]
+        else:
+            corrected = self.spell_corrector.correct(query)
+            reformulated = self.reformulator.reformulate(corrected)
+            all_queries = [corrected] + reformulated
 
         print(f"🔍 Original query: {query}")
         if corrected != query.lower().strip(): print(f"🔧 Corrected: {corrected}")
         print(f"📝 Search queries ({len(all_queries)}): {all_queries}")
 
         # Batch-encode all queries in one SentenceTransformer.encode() call
-        all_embeddings = self.pinecone_client.create_embeddings_batch(all_queries)
+        if precomputed_embeddings is not None:
+            all_embeddings = precomputed_embeddings
+            if embedding_ms is None:
+                embedding_ms = 0.0
+        else:
+            t_emb_0 = time.perf_counter()
+            all_embeddings = self.pinecone_client.create_embeddings_batch(all_queries)
+            embedding_ms = (time.perf_counter() - t_emb_0) * 1000
+
         query_top_k = [(8 if qi == 0 else 4) for qi in range(len(all_queries))]
 
-        # Parallel Pinecone vector searches + BM25 (BM25 is CPU-local, instant)
-        import concurrent.futures as _cf
-
+        # Parallel Pinecone vector searches using process-level bounded executor
         def _pinecone_search(qi_embed_k):
             qi, embed, k = qi_embed_k
             return qi, self.pinecone_client.search_with_vector(embed, top_k=k)
 
         vector_ranks = {}; vector_meta = {}; vector_objects = {}
-        with _cf.ThreadPoolExecutor(max_workers=len(all_queries)) as pool:
-            pinecone_jobs = [(qi, all_embeddings[qi], query_top_k[qi]) for qi in range(len(all_queries))]
-            for qi, results in pool.map(_pinecone_search, pinecone_jobs):
-                for rank, result in enumerate(results):
-                    rid = result.id if hasattr(result, 'id') else result.get('id', '')
-                    vector_ranks.setdefault(rid, []).append((qi, rank))
-                    if rid not in vector_meta:
-                        vector_meta[rid] = result.metadata if hasattr(result, 'metadata') else result.get('metadata', {})
-                        vector_objects[rid] = result
+        t_pc_0 = time.perf_counter()
+        pinecone_jobs = [(qi, all_embeddings[qi], query_top_k[qi]) for qi in range(len(all_queries))]
+        for qi, results in _PINECONE_QUERY_EXECUTOR.map(_pinecone_search, pinecone_jobs):
+            for rank, result in enumerate(results):
+                rid = result.id if hasattr(result, 'id') else result.get('id', '')
+                vector_ranks.setdefault(rid, []).append((qi, rank))
+                if rid not in vector_meta:
+                    vector_meta[rid] = result.metadata if hasattr(result, 'metadata') else result.get('metadata', {})
+                    vector_objects[rid] = result
+        pinecone_ms = (time.perf_counter() - t_pc_0) * 1000
 
         # BM25 (instant, local — no need to parallelise)
+        t_bm_0 = time.perf_counter()
         bm25_ranks = {}; bm25_meta = {}; bm25_texts = {}
         if self.bm25.ready:
             for qi, q in enumerate(all_queries):
@@ -308,7 +345,9 @@ class EnhancedHybridRetriever:
                     if rid not in bm25_meta:
                         bm25_meta[rid] = result.get('metadata', {})
                         bm25_texts[rid] = result.get('text', '')
+        bm25_ms = (time.perf_counter() - t_bm_0) * 1000
 
+        t_ctx_0 = time.perf_counter()
         rrf_k = 60; rrf_scores = {}
         for rid, rp in vector_ranks.items():
             for qi, rank in rp:
@@ -346,8 +385,25 @@ class EnhancedHybridRetriever:
         # Neo4j graph context — fetched in parallel with nothing blocking
         graph_context = self._get_graph_context(final_results)
         combined = self._build_context(query, final_results, graph_context)
-        return RetrievedContext(vector_results=final_results, graph_context=graph_context,
-                                combined_context=combined, expanded_queries=all_queries)
+        context_ms = (time.perf_counter() - t_ctx_0) * 1000
+        retrieval_total_ms = (time.perf_counter() - t_ret_0) * 1000
+        if precomputed_embeddings is not None:
+            retrieval_total_ms += embedding_ms
+
+        _t_dict = {
+            "retrieval_total_ms": round(retrieval_total_ms, 2),
+            "embedding_ms": round(embedding_ms, 2),
+            "pinecone_ms": round(pinecone_ms, 2),
+            "bm25_ms": round(bm25_ms, 2),
+            "context_ms": round(context_ms, 2),
+            "start_ts": ts_start,
+            "end_ts": time.time(),
+        }
+        _retriever_timing_local.last_timing = _t_dict
+        ctx = RetrievedContext(vector_results=final_results, graph_context=graph_context,
+                               combined_context=combined, expanded_queries=all_queries)
+        ctx.timing = _t_dict
+        return ctx
 
     # ─────────────────────────────────────────────────────────────
     # ✅ Streaming Method — Gemini Only

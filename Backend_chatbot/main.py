@@ -885,7 +885,7 @@ _MAX_UPLOAD_JOBS = _env_int("MAX_UPLOAD_JOBS", 200)
 def _run_pdf_pipeline(job_id: str, pdf_paths: List[str]) -> None:
     """Background thread: preprocess PDFs → index into Pinecone + Neo4j + BM25."""
     import shutil
-    from pdf_preprocessor import extract_and_clean_pdf
+    from pdf_preprocessor import extract_and_clean_document
     from process_txt_pipeline import process_txt_file
 
     def _set(status: str, message: str, error: str = ""):
@@ -901,7 +901,7 @@ def _run_pdf_pipeline(job_id: str, pdf_paths: List[str]) -> None:
             stem = os.path.splitext(filename)[0]
 
             _set("processing", f"[{i}/{total}] Extracting text from {filename}…")
-            cleaned_text = extract_and_clean_pdf(pdf_path)
+            cleaned_text = extract_and_clean_document(pdf_path)
 
             txt_out_path = os.path.join("data", "txts", f"{stem}.txt")
             os.makedirs(os.path.dirname(txt_out_path), exist_ok=True)
@@ -958,10 +958,15 @@ async def upload_pdf(
         raw_name = upload.filename or ""
         safe_name = os.path.basename(raw_name.replace("\\", "/")).strip().lstrip(".")
 
-        if not safe_name.lower().endswith(".pdf"):
+        if safe_name.lower().endswith(".doc"):
             raise HTTPException(
                 status_code=415,
-                detail="Only PDF files are accepted (.pdf extension required)."
+                detail="Legacy .doc files are not supported. Please re-save as .docx."
+            )
+        if not safe_name.lower().endswith((".pdf", ".docx")):
+            raise HTTPException(
+                status_code=415,
+                detail="Only PDF and Word files are accepted (.pdf or .docx required)."
             )
         if len(safe_name) > 200:
             raise HTTPException(status_code=400, detail="Filename is too long.")
