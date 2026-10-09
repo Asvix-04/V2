@@ -326,6 +326,37 @@ def _is_meaningful_question(question: str) -> bool:
 # Startup
 # ─────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────
+# DB status cache — prevents health endpoint from blocking
+# ─────────────────────────────────────────────────────────────
+
+_db_status_cache: Dict[str, Any] = {"connected": False, "checked_at": 0.0}
+_DB_STATUS_TTL = 60  # seconds between real DB checks
+
+
+def _get_cached_db_status() -> bool:
+    """Return cached DB status. Re-checks at most once per minute."""
+    now = time.time()
+    if now - _db_status_cache["checked_at"] > _DB_STATUS_TTL:
+        _db_status_cache["connected"] = check_db_connection()
+        _db_status_cache["checked_at"] = now
+    return _db_status_cache["connected"]
+
+
+def _check_db_in_background():
+    """Run DB check in a background thread so startup never blocks."""
+    import threading
+    def _run():
+        db_ok = check_db_connection()
+        _db_status_cache["connected"] = db_ok
+        _db_status_cache["checked_at"] = time.time()
+        if db_ok:
+            print("✅ MySQL DB connected successfully")
+        else:
+            print("⚠️  MySQL DB connection failed — reference links will be unavailable")
+    threading.Thread(target=_run, daemon=True).start()
+
+
 @app.on_event("startup")
 async def startup_event():
     global chatbot, sarvam_client
@@ -343,11 +374,8 @@ async def startup_event():
         sarvam_client = None
         print(f"⚠️  Sarvam speech client unavailable: {e}")
 
-    db_ok = check_db_connection()
-    if db_ok:
-        print("✅ MySQL DB connected successfully")
-    else:
-        print("⚠️  MySQL DB connection failed — reference links will be unavailable")
+    # Check DB in background — never blocks startup or the health endpoint
+    _check_db_in_background()
 
 # ─────────────────────────────────────────────────────────────
 # Helpers
@@ -910,7 +938,7 @@ async def health_check():
         "message": "Media Literacy Chatbot API is running",
         "chatbot_ready": chatbot is not None,
         "speech_ready": sarvam_client is not None,
-        "db_connected": check_db_connection(),
+        "db_connected": _get_cached_db_status(),   # never blocks — cached
     }
 # ─────────────────────────────────────────────────────────────
 # Deep Research Chat Endpoint      ANU

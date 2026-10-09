@@ -34,19 +34,26 @@ def init_pool():
     if not MYSQL_AVAILABLE:
         return
     
+    # Skip DB init if no host is configured
+    mysql_host = os.getenv("MYSQL_HOST", "")
+    if not mysql_host:
+        print("⚠️  MYSQL_HOST not set — skipping DB pool init")
+        return
+
     try:
         connection_pool = pooling.MySQLConnectionPool(
             pool_name="omeka_pool",
-            pool_size=5,
+            pool_size=3,
             pool_reset_session=True,
-            host=os.getenv("MYSQL_HOST", "127.0.0.1"),
+            host=mysql_host,
             port=int(os.getenv("MYSQL_PORT", 3306)),
             user=os.getenv("MYSQL_USER", "root"),
             password=os.getenv("MYSQL_PASSWORD", ""),
             database=os.getenv("MYSQL_DATABASE", "u604560806_mile"),
-            connect_timeout=5,
+            connect_timeout=3,   # Fail fast — don't block app startup
+            connection_timeout=3,
         )
-        print(" Connection pool initialized!")
+        print("✅ Connection pool initialized!")
     except Exception as e:
         print(f"❌ Failed to initialize pool: {e}")
         connection_pool = None

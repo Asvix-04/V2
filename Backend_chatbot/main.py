@@ -204,10 +204,15 @@ app = FastAPI(
 )
 
 # [F5] CORS — specific origins only
-_ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000"
-).split(",")
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,"
+        "https://asvix-digilab.hf.space,https://*.hf.space"
+    ).split(",")
+    if o.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -410,12 +415,25 @@ async def root():
     }
 
 
+_db_status_cache: Dict[str, Any] = {"connected": False, "checked_at": 0.0}
+_DB_STATUS_TTL = 60  # re-check DB every 60 seconds max
+
+
+def _get_db_status() -> bool:
+    """Return cached DB status to avoid blocking /health on every call."""
+    now = time.time()
+    if now - _db_status_cache["checked_at"] > _DB_STATUS_TTL:
+        _db_status_cache["connected"] = check_db_connection()
+        _db_status_cache["checked_at"] = now
+    return _db_status_cache["connected"]
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     return {
         "status": "healthy",
         "message": "Digilab API is running",
-        "db_connected": check_db_connection(),
+        "db_connected": _get_db_status(),
         "active_sessions": len(_sessions),
         "streaming_available": True,  # always available — uses chatbot pipeline
         "current_model": (
