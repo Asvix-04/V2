@@ -1712,6 +1712,22 @@ class PDFChatbot:
         else:
             full_answer_parts = []
 
+        # ── Infer Intent & Build Synthesis Prompt (Comparison tables, format signals, etc.) ──
+        recent_context = self._get_recent_conversation_context() if use_history else ""
+        response_intent = self._infer_response_intent(
+            user_question=question,
+            recent_context=recent_context,
+        )
+
+        prompt = self._build_synthesis_prompt(
+            user_question=question,
+            retrieval_query=retrieval_query,
+            retrieved_context=retrieved_context,
+            validation=validation,
+            response_intent=response_intent,
+        )
+        generation_temp = _TONE_TEMPERATURE.get(response_intent.tone_signal, 0.35)
+
         llm = self.streaming_llm
         # Follow whichever model is currently selected (switch_model/
         # apply_requested_model already pointed self.retriever at the right
@@ -1719,6 +1735,9 @@ class PDFChatbot:
         for chunk in llm.stream_response(
             query=question,
             context=retrieved_context.combined_context,
+            prompt=prompt,
+            system_instruction=self._system_prompt,
+            temperature=generation_temp,
             model_name=self.model_config.id if self.model_config else None,
             max_output_tokens=self.model_config.default_max_tokens if self.model_config else None,
         ):
@@ -1728,6 +1747,7 @@ class PDFChatbot:
         # ── Record turn with the REAL assembled answer (not a placeholder),
         # same as ask_question, so streamed turns look identical in history ──
         full_answer = "".join(full_answer_parts)
+        full_answer = self._normalize_markdown_table(full_answer)
         source_meta = [r.metadata for r in retrieved_context.vector_results]
         self._record_turn(
             question=question,

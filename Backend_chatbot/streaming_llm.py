@@ -47,13 +47,16 @@ class StreamingLLM:
         # ✅ New SDK: use genai.Client
         self.client = genai.Client(api_key=api_key)
 
-    def _build_generation_config(self, max_output_tokens: int) -> types.GenerateContentConfig:
-        # Built per call (cheap) rather than once in __init__, since different
-        # models have different token budgets (see AVAILABLE_MODELS).
+    def _build_generation_config(
+        self,
+        max_output_tokens: int,
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.35,
+    ) -> types.GenerateContentConfig:
         return types.GenerateContentConfig(
-            system_instruction=self.SYSTEM_INSTRUCTION,
+            system_instruction=system_instruction or self.SYSTEM_INSTRUCTION,
             max_output_tokens=max_output_tokens,
-            temperature=0.3,
+            temperature=temperature,
         )
 
     def stream_response(
@@ -62,45 +65,61 @@ class StreamingLLM:
         context: str = "",
         model_name: Optional[str] = None,
         max_output_tokens: Optional[int] = None,
+        prompt: Optional[str] = None,
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.35,
     ) -> Generator[str, None, None]:
         """
         Stream response token by token.
 
         Args:
-            query:             The student's question.
-            context:           Retrieved course material (optional).
-            model_name:        Gemini model id to use (defaults to the app's
-                                default model if not given).
-            max_output_tokens: Token budget for this model (defaults to the
-                                default model's budget if not given).
+            query:              The student's question.
+            context:            Retrieved course material (optional).
+            model_name:         Gemini model id to use.
+            max_output_tokens:  Token budget for this model.
+            prompt:             Pre-built synthesis prompt (includes format/table rules).
+            system_instruction: Full academic system prompt.
+            temperature:        Sampling temperature.
 
         Yields:
             str — one token / phrase at a time, or an error message string.
         """
         yield from self._stream_google(
-            query,
-            context,
-            model_name or self.DEFAULT_MODEL_NAME,
-            max_output_tokens or self.DEFAULT_MAX_OUTPUT_TOKENS,
+            query=query,
+            context=context,
+            model_name=model_name or self.DEFAULT_MODEL_NAME,
+            max_output_tokens=max_output_tokens or self.DEFAULT_MAX_OUTPUT_TOKENS,
+            prompt=prompt,
+            system_instruction=system_instruction,
+            temperature=temperature,
         )
 
     def _stream_google(
-        self, query: str, context: str, model_name: str, max_output_tokens: int
+        self,
+        query: str,
+        context: str,
+        model_name: str,
+        max_output_tokens: int,
+        prompt: Optional[str] = None,
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.35,
     ) -> Generator[str, None, None]:
         """Internal Gemini streaming generator."""
 
-        # ✅ Proper context check — handles None, empty, whitespace-only
-        context_clean = (context or "").strip()
-        if context_clean:
-            full_prompt = f"Context:\n{context_clean}\n\nUser Query: {query}"
+        if prompt:
+            full_prompt = prompt
         else:
-            full_prompt = query
+            context_clean = (context or "").strip()
+            if context_clean:
+                full_prompt = f"Context:\n{context_clean}\n\nUser Query: {query}"
+            else:
+                full_prompt = query
 
         try:
             response_stream = self.client.models.generate_content_stream(
                 model=model_name,
                 contents=full_prompt,
-                config=self._build_generation_config(max_output_tokens),
+                config=self._build_generation_config(max_output_tokens, system_instruction, temperature),
             )
 
             for chunk in response_stream:
