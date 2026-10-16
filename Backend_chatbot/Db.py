@@ -22,55 +22,83 @@ except ImportError:
     print("⚠️  mysql-connector-python not installed. Run: pip install mysql-connector-python")
 
 
+import time
+
 # ─────────────────────────────────────────────────────────────
-# Connection Pool
+# Connection Pool & Failure Backoff (Circuit Breaker)
 # ─────────────────────────────────────────────────────────────
 
 connection_pool = None
+_last_failure_time: float = 0.0
+_FAILURE_COOLDOWN: float = 300.0  # 5 minutes backoff after connection failure
+_cached_references: Optional[List[Dict]] = None
+
 
 def init_pool():
-    """Initialize MySQL connection pool."""
-    global connection_pool
+    """Initialize MySQL connection pool with circuit-breaker backoff."""
+    global connection_pool, _last_failure_time
     if not MYSQL_AVAILABLE:
         return
-    
+
+    # Check if MySQL is explicitly disabled
+    if os.getenv("ENABLE_MYSQL", "true").lower() in ("false", "0", "no"):
+        return
+
     # Skip DB init if no host is configured
-    mysql_host = os.getenv("MYSQL_HOST", "")
+    mysql_host = os.getenv("MYSQL_HOST", "").strip()
     if not mysql_host:
-        print("⚠️  MYSQL_HOST not set — skipping DB pool init")
+        return
+
+    # Circuit breaker: don't retry if a failure occurred within cooldown window
+    now = time.time()
+    if now - _last_failure_time < _FAILURE_COOLDOWN:
         return
 
     try:
         connection_pool = pooling.MySQLConnectionPool(
             pool_name="omeka_pool",
-            pool_size=3,
+            pool_size=2,
             pool_reset_session=True,
             host=mysql_host,
             port=int(os.getenv("MYSQL_PORT", 3306)),
             user=os.getenv("MYSQL_USER", "root"),
             password=os.getenv("MYSQL_PASSWORD", ""),
             database=os.getenv("MYSQL_DATABASE", "u604560806_mile"),
-            connect_timeout=3,   # Fail fast — don't block app startup
-            connection_timeout=3,
+            connect_timeout=2,   # Fail fast (2s) — never hang requests
+            connection_timeout=2,
         )
-        print("✅ Connection pool initialized!")
+        _last_failure_time = 0.0
+        print("✅ MySQL connection pool initialized!")
     except Exception as e:
-        print(f"❌ Failed to initialize pool: {e}")
+        _last_failure_time = time.time()
         connection_pool = None
+        print(f"⚠️ MySQL connection unavailable ({e}). Backing off for {int(_FAILURE_COOLDOWN)}s — reference links disabled.")
+
 
 def get_connection():
-    """Get connection from pool."""
+    """Get connection from pool or None if unavailable/cooling down."""
     global connection_pool
     if not MYSQL_AVAILABLE:
-        raise RuntimeError("mysql-connector-python is not installed.")
-    
+        return None
+
+    if os.getenv("ENABLE_MYSQL", "true").lower() in ("false", "0", "no"):
+        return None
+
+    now = time.time()
+    if now - _last_failure_time < _FAILURE_COOLDOWN and connection_pool is None:
+        return None
+
     if connection_pool is None:
         init_pool()
-    
+
     if connection_pool is None:
-        raise RuntimeError("Failed to initialize connection pool.")
-    
-    return connection_pool.get_connection()
+        return None
+
+    try:
+        return connection_pool.get_connection()
+    except Exception as e:
+        print(f"⚠️ Could not obtain MySQL connection from pool: {e}")
+        return None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -81,8 +109,21 @@ def get_all_references() -> List[Dict]:
     """
     Fetch all items that have a URL (identifier) from the DB.
     Returns list of dicts with title and url.
-    Cached at module level after first call.
+    Cached in memory after first successful call.
+    Fails fast (returns []) if DB is unavailable.
     """
+    global _cached_references
+    if _cached_references is not None:
+        return _cached_references
+
+    now = time.time()
+    if now - _last_failure_time < _FAILURE_COOLDOWN and connection_pool is None:
+        return []
+
+    conn = get_connection()
+    if conn is None:
+        return []
+
     query = """
         SELECT
             r.id AS item_id,
@@ -96,15 +137,19 @@ def get_all_references() -> List[Dict]:
         HAVING url IS NOT NULL
     """
     try:
-        conn = get_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute(query)
         results = cursor.fetchall()
         cursor.close()
         conn.close()
+        _cached_references = results
         return results
     except Exception as e:
-        print(f" DB error fetching references: {e}")
+        print(f"⚠️ DB error fetching references: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
         return []
 
 
@@ -163,7 +208,7 @@ def find_reference_links(
     Returns:
         List of dicts: [{"title": ..., "url": ..., "relevance_score": ...}]
     """
-    if not MYSQL_AVAILABLE:
+    if not MYSQL_AVAILABLE or os.getenv("ENABLE_MYSQL", "true").lower() in ("false", "0", "no"):
         return []
 
     # ── Build keyword set from all sources + answer ──
@@ -221,15 +266,20 @@ def find_reference_links(
 # ─────────────────────────────────────────────────────────────
 
 def check_db_connection() -> bool:
-    """Returns True if DB connection is healthy."""
-    if not MYSQL_AVAILABLE:
+    """Returns True if DB connection is healthy, fails fast if down."""
+    if not MYSQL_AVAILABLE or os.getenv("ENABLE_MYSQL", "true").lower() in ("false", "0", "no"):
+        return False
+    now = time.time()
+    if now - _last_failure_time < _FAILURE_COOLDOWN and connection_pool is None:
         return False
     try:
         conn = get_connection()
+        if conn is None:
+            return False
         conn.close()
         return True
     except Exception as e:
-        print(f"❌ DB connection failed: {e}")
+        print(f"⚠️ DB connection check failed: {e}")
         return False
 
 

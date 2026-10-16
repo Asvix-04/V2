@@ -331,30 +331,43 @@ def _is_meaningful_question(question: str) -> bool:
 # ─────────────────────────────────────────────────────────────
 
 _db_status_cache: Dict[str, Any] = {"connected": False, "checked_at": 0.0}
-_DB_STATUS_TTL = 60  # seconds between real DB checks
-
-
-def _get_cached_db_status() -> bool:
-    """Return cached DB status. Re-checks at most once per minute."""
-    now = time.time()
-    if now - _db_status_cache["checked_at"] > _DB_STATUS_TTL:
-        _db_status_cache["connected"] = check_db_connection()
-        _db_status_cache["checked_at"] = now
-    return _db_status_cache["connected"]
+_DB_STATUS_TTL = 120  # seconds between background DB re-checks
+_db_is_checking: bool = False
 
 
 def _check_db_in_background():
-    """Run DB check in a background thread so startup never blocks."""
+    """Run DB check in a background thread so requests never block."""
+    global _db_is_checking
     import threading
     def _run():
-        db_ok = check_db_connection()
-        _db_status_cache["connected"] = db_ok
-        _db_status_cache["checked_at"] = time.time()
-        if db_ok:
-            print("✅ MySQL DB connected successfully")
-        else:
-            print("⚠️  MySQL DB connection failed — reference links will be unavailable")
+        global _db_is_checking
+        _db_is_checking = True
+        try:
+            db_ok = check_db_connection()
+            _db_status_cache["connected"] = db_ok
+            _db_status_cache["checked_at"] = time.time()
+            if db_ok:
+                print("✅ MySQL DB connected successfully")
+            else:
+                print("⚠️  MySQL DB connection failed — reference links will be unavailable")
+        except Exception as e:
+            _db_status_cache["connected"] = False
+            _db_status_cache["checked_at"] = time.time()
+            print(f"⚠️  MySQL background check error: {e}")
+        finally:
+            _db_is_checking = False
+
     threading.Thread(target=_run, daemon=True).start()
+
+
+def _get_cached_db_status() -> bool:
+    """Return cached DB status instantly without blocking. Triggers background refresh if expired."""
+    global _db_is_checking
+    now = time.time()
+    if (now - _db_status_cache["checked_at"] > _DB_STATUS_TTL) and not _db_is_checking:
+        _db_status_cache["checked_at"] = now
+        _check_db_in_background()
+    return _db_status_cache["connected"]
 
 
 @app.on_event("startup")

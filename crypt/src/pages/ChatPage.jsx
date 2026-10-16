@@ -724,7 +724,7 @@ export function ChatPage() {
 
     const [error, setError] = React.useState(null);
 
-    const [isConnected, setIsConnected] = React.useState(false);
+    const [isConnected, setIsConnected] = React.useState(true);
 
     const [isCheckingConnection, setIsCheckingConnection] = React.useState(true);
     const [isStarredOpen, setIsStarredOpen] = React.useState(true);
@@ -1801,15 +1801,24 @@ export function ChatPage() {
             }
         }
 
+        let healthRetryTimer = null;
         const checkHealth = async () => {
             try {
                 await chatbotApi.checkHealth();
-                setIsConnected(true);
+                if (!ignore) {
+                    setIsConnected(true);
+                }
             } catch (err) {
-                console.error("Backend not available:", err);
-                setIsConnected(false);
+                console.warn("Backend health check pending/retrying:", err?.message || err);
+                if (!ignore) {
+                    // Don't permanently lock out; schedule auto-retry in 4s
+                    setIsConnected(false);
+                    healthRetryTimer = setTimeout(checkHealth, 4000);
+                }
             } finally {
-                setIsCheckingConnection(false);
+                if (!ignore) {
+                    setIsCheckingConnection(false);
+                }
             }
         };
 
@@ -1931,6 +1940,7 @@ export function ChatPage() {
         initSessions();
         return () => {
             ignore = true;
+            if (healthRetryTimer) clearTimeout(healthRetryTimer);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isGuest]);
@@ -2922,9 +2932,9 @@ export function ChatPage() {
                                             }}
                                             onSend={handleUserSend}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
+                                            placeholder={selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything..."}
 
-                                            disabled={isLoading || !isConnected}
+                                            disabled={isLoading}
 
                                             onVoiceToggle={() => setIsVoiceMode(true)}
                                             isIncognito={true}
@@ -3065,9 +3075,9 @@ export function ChatPage() {
                                                 }}
                                                 onSend={handleUserSend}
 
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
+                                                placeholder={selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything..."}
 
-                                                disabled={isLoading || !isConnected}
+                                                disabled={isLoading}
 
                                                 onVoiceToggle={() => setIsVoiceMode(true)}
                                                 isIncognito={true}
@@ -3245,9 +3255,9 @@ export function ChatPage() {
                                             }}
                                             onSend={handleUserSend}
 
-                                            placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything...") : ""}
+                                            placeholder={selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label}...` : "Ask anything..."}
 
-                                            disabled={isLoading || !isConnected}
+                                            disabled={isLoading}
 
                                             onVoiceToggle={() => setIsVoiceMode(true)}
 
@@ -3578,8 +3588,8 @@ export function ChatPage() {
                                                     scheduleAutoSave();
                                                 }}
                                                 onSend={handleUserSend}
-                                                placeholder={isConnected ? (selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : "Ask anything...") : ""}
-                                                disabled={isLoading || !isConnected}
+                                                placeholder={selectedLanguage ? `Ask in ${TRANSLATE_LANGUAGES.find(l => l.code === selectedLanguage)?.label || 'selected language'}...` : "Ask anything..."}
+                                                disabled={isLoading}
                                                 onVoiceToggle={() => setIsVoiceMode(true)}
                                             />
 

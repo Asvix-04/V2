@@ -468,7 +468,7 @@ exports.deepChat = async (req, res) => {
 
 exports.healthCheck = async (req, res) => {
     try {
-        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 5000, headers: pythonProxyHeaders(req) });
+        const response = await axios.get(`${PYTHON_BACKEND_URL}/health`, { timeout: 8000, headers: pythonProxyHeaders(req) });
         res.json({
             status: 'healthy',
             service: 'Integrated-AI-Bridge',
